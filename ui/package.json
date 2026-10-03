@@ -1,0 +1,18 @@
+{
+  "name": "tsum-stats-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "svelte-check"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tanstack/table-core": "^8.21.3",
+    "d3": "^7.9.0",
+    "svelte": "^5.57.1",
+    "svelte-check": "^4.7.6",
+    "vite": "^8.3.1"
+  }
+}

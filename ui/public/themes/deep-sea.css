@@ -1,0 +1,33 @@
+/* @name Deep Sea
+   A dark teal theme. It only sets the tokens it changes; the rest keep the
+   built-in look's values. */
+:root {
+  --bg: #0f1a24;
+  --bg-top: #1d3345;
+  --bg-mid: #13222f;
+  --bg-bottom: #0a121a;
+  --topbar-bg: rgba(15, 26, 36, 0.9);
+
+  --panel: #16293a;
+  --panel-hi: #24425a;
+  --panel-top: rgba(36, 66, 90, 0.92);
+  --panel-bottom: rgba(22, 41, 58, 0.92);
+  --well: #0b151e;
+  --cell: rgba(11, 21, 30, 0.55);
+  --sticky-bg: rgba(11, 21, 30, 0.92);
+  --tip-bg: #08111a;
+  --muted: #c9dbe6;
+  --faint: #86a3b5;
+
+  --accent-a: #6fe3d6;
+  --accent-b: #22a6b3;
+  --accent-edge: #17737c;
+  --accent-shadow: #0f4f55;
+  --accent-ink: #042326;
+  --hero-top: rgba(34, 166, 179, 0.35);
+
+  --avatar-a: #3f6a85;
+  --avatar-b: #1b3346;
+  --build-intl: #4f7792;
+  --build-jp: #7a6a92;
+}

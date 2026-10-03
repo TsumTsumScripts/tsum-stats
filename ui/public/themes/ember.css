@@ -1,0 +1,241 @@
+/* @name Ember
+   A warm look: glow background over a dot
+   grid, dark glass cards, orange uppercase headings, big rounded buttons and an
+   orange-to-amber accent. Besides the tokens it restyles the page's classes
+   (and even the brand text), so a change to the page's markup may need this
+   file updated. Use it as an example of how far a theme can go.
+   Every rule below the tokens starts with ":root": a theme's <link> loads before
+   the page's own styles, and the extra specificity is what lets these rules win.
+   Space Grotesk and Inter come from Google Fonts; offline, system fonts stand in. */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  color-scheme: dark;
+  --font-body: 'Inter', 'Segoe UI', Roboto, system-ui, sans-serif;
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --radius: 22px;
+  --site-card: oklch(0.24 0.024 265 / 0.62);
+  --site-line: oklch(0.46 0.03 265 / 0.72);
+  --site-cmd: oklch(0.15 0.022 265 / 0.9);
+  --site-cmd-line: oklch(0.66 0.04 265);
+
+  /* Page */
+  --bg: #080b11;
+  --bg-top: #111826;
+  --bg-mid: #0b0f17;
+  --bg-bottom: #04060a;
+  --dots: #1f242e;
+  --noise: none;
+  --topbar-bg: rgba(8, 11, 17, 0.72);
+  --hairline: rgba(80, 88, 105, 0.45);
+  --backdrop: rgba(4, 6, 10, 0.72);
+
+  /* Panels: the site's glass cards */
+  --panel: #151a24;
+  --panel-hi: #232a38;
+  --panel-top: rgba(26, 31, 43, 0.62);
+  --panel-bottom: rgba(26, 31, 43, 0.62);
+  --panel-edge: oklch(0.66 0.04 265);
+  --seam: transparent;
+  --well: rgba(7, 11, 20, 0.7);
+  --cell: rgba(41, 48, 63, 0.5);
+  --sticky-bg: rgba(15, 19, 28, 0.9);
+  --tip-bg: rgba(12, 16, 24, 0.94);
+  --ink: #f3f5f9;
+  --muted: #ccd1da;
+  --faint: #bcc2cf;
+
+  /* Shadows: soft and deep, no hard 3D edge */
+  --drop: 0 10px 30px rgba(3, 5, 10, 0.35);
+  --press: 0 3px 10px rgba(3, 5, 10, 0.4);
+  --lift: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --inset: none;
+  --float: 0 18px 44px rgba(0, 0, 0, 0.55);
+
+  /* Accent: the primary button's orange-to-amber */
+  --accent-a: #f2b036;
+  --accent-b: #ff8244;
+  --accent-edge: transparent;
+  --accent-shadow: rgba(239, 133, 46, 0.4);
+  --accent-ink: #1f0c01;
+  --badge-a: #00cdb1;
+  --badge-b: #00cdb1;
+  --hero-top: #ff8244;
+
+  /* Figures */
+  --score: #52dfbf;
+  --score-shadow: transparent;
+  --coin: #f3c443;
+  --coin-shadow: transparent;
+  --medal: #b58bf9;
+  --medal-shadow: transparent;
+  --good: #52dfbf;
+  --bad: #f66d67;
+
+  /* Charts */
+  --axis-line: rgba(140, 146, 160, 0.3);
+  --grid-line: rgba(140, 146, 160, 0.1);
+  --chart-rule: rgba(204, 209, 218, 0.4);
+  --chart-track: rgba(140, 146, 160, 0.08);
+  --chart-other: #a3a9b7;
+  --build-intl: #607195;
+  --build-jp: #896092;
+  --build-none: #3b4253;
+  --avatar-a: #485269;
+  --avatar-b: #1a1f2b;
+
+  /* This theme's own */
+  --ember-accent: linear-gradient(100deg, #ff8244, #f2b036);
+  --ember-glow: 0 8px 22px rgba(239, 133, 46, 0.35);
+  --ember-btn: rgba(41, 48, 63, 0.72);
+  --ember-btn-hi: rgba(55, 64, 83, 0.85);
+  --ember-btn-line: oklch(0.66 0.04 265);
+  --ember-teal: #00cdb1;
+  --ember-orange: #ef852e;
+  --ember-purple: #b58bf9;
+  --ember-yellow: #f3c443;
+}
+
+/* Page: the site's three glows and dot grid, in its own oklch colours */
+:root body {
+  font-weight: 400;
+  line-height: 1.5;
+  background-color: oklch(0.15 0.014 265);
+  background-image:
+    radial-gradient(circle at 12% 2%,  oklch(0.46 0.13 55 / 0.5)   0%, transparent 46%),
+    radial-gradient(circle at 92% 14%, oklch(0.44 0.11 185 / 0.42) 0%, transparent 42%),
+    radial-gradient(circle at 78% 88%, oklch(0.42 0.12 300 / 0.34) 0%, transparent 44%),
+    radial-gradient(oklch(0.26 0.02 265) 1.5px, transparent 1.5px);
+  background-size: auto, auto, auto, 22px 22px;
+  background-blend-mode: normal;
+  background-attachment: fixed;
+}
+:root .page { max-width: 1240px; }
+:root h1, :root h2, :root h3 { font-weight: 700; letter-spacing: -0.015em; }
+:root :focus-visible { outline: 2px solid var(--ember-orange); }
+:root code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; color: oklch(0.86 0.11 178);
+  background: oklch(0.28 0.032 200 / 0.55); border: 1px solid oklch(0.45 0.03 265 / 0.6); border-radius: 6px; padding: 1px 6px; }
+
+/* Top bar: transparent like the site's, with the badge, "Tsum Tsum Stats" and pills */
+:root .topbar { background: transparent; border-bottom: 0; backdrop-filter: none; -webkit-backdrop-filter: none; padding-top: 22px; padding-bottom: 14px; }
+/* The tint runs the full window width, past the centred page. */
+:root .topbar::before { content: ''; position: absolute; z-index: -1; top: 0; bottom: 0; left: 50%; width: 100vw; transform: translateX(-50%);
+  background: oklch(0.15 0.014 265 / 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); pointer-events: none; }
+:root { overflow-x: clip; }
+:root .brand { background: none; border: 0; box-shadow: none; padding: 0 14px 0 0; }
+:root .brand-badge {
+  width: 34px; height: 34px; border: 0; font-size: 14px; color: var(--accent-ink); background: var(--ember-accent);
+}
+/* The brand text, set by the theme: white "Tsum Tsum", orange "Stats" */
+:root .brand h1 { font-size: 0; letter-spacing: -0.01em; }
+:root .brand h1::before { content: 'Tsum Tsum '; font-size: 23px; color: var(--ink); }
+:root .brand h1::after { content: 'Stats'; font-size: 23px; color: var(--ember-orange); }
+:root .topbar .live { font-size: 0.857em; }
+
+/* Toggles and buttons: the site's big rounded buttons; the pressed one is the orange CTA */
+:root .seg { background: oklch(0.30 0.026 265 / 0.55); border: 1px solid oklch(0.66 0.04 265); box-shadow: none; padding: 4px; gap: 4px; }
+:root .seg button, :root .btn { border-width: 1px; font-family: var(--font-body); font-weight: 600; letter-spacing: 0; }
+:root .seg button[aria-pressed="true"], :root .btn.primary {
+  background: var(--ember-accent); border-color: transparent; color: var(--accent-ink); font-weight: 700; box-shadow: var(--ember-glow);
+}
+:root .btn { background: oklch(0.31 0.028 265 / 0.72); border-color: oklch(0.66 0.04 265); color: oklch(0.95 0.008 265);
+  box-shadow: none; border-radius: 14px; padding: 7px 16px; }
+:root .btn:hover { filter: none; background: oklch(0.37 0.035 265 / 0.85); }
+:root .btn.primary:hover { filter: brightness(1.08); background: var(--ember-accent); }
+:root .btn:active { transform: translateY(1px); box-shadow: none; }
+:root .theme-pick select, :root .pager select { border-width: 1px; border-radius: 10px; background: oklch(0.31 0.028 265 / 0.72); }
+
+/* Pills, chips and tags: the site's grey pills; the badge is its teal one */
+:root .pill, :root .chip, :root .tag { background: oklch(0.30 0.026 265 / 0.7); border-color: oklch(0.66 0.04 265); font-weight: 600; }
+:root .chip { font-weight: 700; }
+:root .chip:hover { border-color: var(--ember-orange); }
+:root .pill.online { color: oklch(0.82 0.13 175); background: oklch(0.36 0.09 178 / 0.85); border-color: oklch(0.6 0.11 178 / 0.6);
+  text-transform: uppercase; letter-spacing: 0.04em; font-size: 11.5px; font-weight: 700; }
+
+/* Panels: the site's dark glass cards, roomier */
+:root .panel {
+  padding: 22px 24px; background: var(--site-card); border: 1px solid var(--site-line);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: none;
+}
+:root .panel::before { display: none; }
+:root .panel.card { padding: 16px 14px; border-top: 3px solid var(--tsum, var(--site-line)); border-radius: 20px; }
+:root .panel.kpi { padding: 18px 20px; border-radius: 20px; }
+:root .panel.rail-panel, :root .panel.focus-bar { padding: 16px 18px; }
+:root .panel.focus-bar { padding: 8px 14px; }
+:root .panel.expanded, :root .panel.col-list, :root dialog .panel { background: oklch(0.2 0.02 265 / 0.97); }
+:root .rail.open .rail-body { background: oklch(0.2 0.02 265 / 0.97); border-width: 1px; }
+
+/* Section titles: the site's orange, uppercase, wide-set eyebrow */
+:root .panel-head h2, :root .panel > h2 { font-family: var(--font-body); font-size: 17px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--ember-orange); }
+:root .panel-head { margin-bottom: 14px; }
+:root .panel-head .sub { font-size: 14px; color: var(--muted); }
+:root .empty-state h2 { color: var(--ember-orange); }
+
+/* Rail: the jump menu as the site's checklist rows */
+:root .jump button { font-weight: 500; color: oklch(0.9 0.006 255); border-radius: 13px; padding: 8px 12px; font-size: 14px; }
+:root .jump button:hover { background: oklch(0.31 0.028 265 / 0.7); }
+:root .jump button[aria-current="true"] { background: var(--ember-accent); color: var(--accent-ink); font-weight: 700; box-shadow: var(--ember-glow); }
+@media (min-width: 1180px) {
+  :root .jump { border-top: 1px solid var(--hairline); gap: 6px; }
+  :root .jump button { background: oklch(0.31 0.028 265 / 0.45); }
+}
+
+/* Inputs: the site's command-box look */
+:root .field input, :root .field select, :root .search { border-width: 1px; border-color: var(--site-cmd-line); background: var(--site-cmd); border-radius: 12px; font-weight: 500; }
+:root .field input:focus, :root .field select:focus, :root .search:focus { border-color: var(--ember-orange); outline: none; }
+:root .field { font-weight: 600; font-size: 12.5px; letter-spacing: 0.02em; }
+
+/* KPI tiles: the site's small caps labels; the hero as its orange call to action */
+:root .kpi .label { font-family: var(--font-body); font-size: 11.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
+:root .kpi .value { font-weight: 700; letter-spacing: -0.02em; }
+:root .kpi .note { color: var(--faint); }
+:root .kpi.hero {
+  background: linear-gradient(105deg, oklch(0.74 0.17 42), oklch(0.8 0.15 80)); border-color: transparent;
+  box-shadow: 0 24px 70px oklch(0.72 0.16 55 / 0.3);
+}
+:root .kpis .kpi.hero .value { color: #1f0c01; text-shadow: none; font-size: 50px; }
+:root .kpis .kpi.hero .label { color: oklch(0.25 0.04 55); }
+:root .kpis .kpi.hero .note { color: oklch(0.25 0.04 55); font-weight: 600; }
+
+/* Tables */
+:root th { font-family: var(--font-body); font-weight: 700; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
+:root td { background: oklch(0.31 0.028 265 / 0.5); }
+:root .dt .pager { border: 1px solid var(--hairline); backdrop-filter: blur(16px); background: oklch(0.19 0.02 265 / 0.9); }
+:root .tsum-list th { border-bottom-color: var(--hairline); }
+:root .tsum-list td { border-bottom-color: oklch(0.46 0.03 265 / 0.3); }
+:root .panel.expanded th { background: oklch(0.2 0.02 265); }
+
+/* Catalog */
+:root .progress, :root .meter .bar { background: var(--site-cmd); box-shadow: none; border: 1px solid var(--hairline); }
+:root .progress > div { background: var(--ember-accent); }
+:root .sort-chip { background: oklch(0.30 0.026 265 / 0.7); border: 1px solid oklch(0.66 0.04 265); }
+:root .avatar.lg { border-width: 1px; }
+:root .card .name { font-weight: 700; }
+
+/* Tooltips */
+:root .tip { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 12px; }
+
+/* Help: numbered steps as the site's coloured tiles, the code boxes as its terminal */
+:root .help h3 { font-size: 19px; }
+:root .help a { color: var(--ember-orange); }
+:root .help p, :root .help li { color: oklch(0.86 0.014 265); }
+:root .steps li::before { border: 0; border-radius: 7px; width: 24px; height: 24px; font-size: 13px; font-weight: 700;
+  background: var(--ember-teal); color: #07110f; }
+:root .steps li:nth-child(4n+2)::before { background: var(--ember-orange); }
+:root .steps li:nth-child(4n+3)::before { background: var(--ember-purple); }
+:root .steps li:nth-child(4n+4)::before { background: var(--ember-yellow); }
+:root .help .status-tile, :root .addr-box, :root .shot img { border-width: 1px; }
+:root .help .status-tile { background: oklch(0.31 0.028 265 / 0.55); border-radius: 16px; }
+:root .status-tile b { font-weight: 700; }
+:root .addr-box { border-color: oklch(0.72 0.16 55 / 0.6); background: oklch(0.34 0.07 70 / 0.35); border-radius: 16px; }
+:root .pull-box { border-color: var(--site-line); background: oklch(0.31 0.028 265 / 0.4); }
+:root .more { border-top: 1px solid var(--hairline); }
+:root .more summary { color: var(--ember-orange); }
+:root .help pre { background: var(--site-cmd); border: 1px solid var(--site-cmd-line); border-radius: 13px; color: oklch(0.85 0.006 255); }
+:root .drop-hint { border: 2px dashed var(--ember-orange); }
+
+/* Head to head */
+:root .versus thead th { text-transform: none; letter-spacing: -0.01em; font-size: 14px; color: var(--ink); }
+:root .versus thead th .sub { text-transform: uppercase; letter-spacing: 0.08em; }
+:root .versus tbody th { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; }

@@ -1,0 +1,7 @@
+# The page's build output (npm run build in ui/) and its packages
+web/
+ui/node_modules/
+# Binaries from tools/build.sh
+build/
+# A local `go run . serve`
+pb_data/
