@@ -31,3 +31,7 @@ tools/build.sh                     # all five binaries and the pin
 ```
 
 The full documentation is [docs/STATS-SITE.md](docs/STATS-SITE.md).
+
+## License
+
+MIT, see [LICENSE](LICENSE).
