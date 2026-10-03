@@ -77,6 +77,8 @@ for t in $TARGETS; do
   } >> "$PIN"
 done
 cp "$PIN" "$root/tsum-stats.txt"
+# The Windows launcher: a readable script that fetches and starts the program.
+cp "$root/tsum-stats.cmd" "$OUT/tsum-stats.cmd"
 
 # Archives for people: the executable bit survives a tar.gz, so macOS and Linux
 # users extract and run. The raw binaries above are what the updater and

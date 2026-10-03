@@ -27,9 +27,11 @@ download? Get `tsum-stats-<system>.tar.gz` from the
 [latest release](https://github.com/TsumTsumScripts/tsum-stats/releases/latest),
 extract it and run `./tsum-stats`.
 
-**Windows:** download `tsum-stats-windows-amd64.zip` from the latest release,
-extract it and double-click `tsum-stats.exe`. If Windows warns about an unknown
-publisher, choose More info, then Run anyway.
+**Windows:** download [`tsum-stats.cmd`](https://github.com/TsumTsumScripts/tsum-stats/releases/latest/download/tsum-stats.cmd)
+and double-click it. It is a short text file you can read first: it downloads
+the program, checks it, and starts it. If Windows asks whether to run it, choose
+Run (or More info, then Run anyway). Prefer the program itself? The release also
+has `tsum-stats-windows-amd64.zip`.
 
 It opens in your browser at <http://127.0.0.1:8090>. Starting it again while it
 runs just opens the page. Stop it with Ctrl+C in its window. It updates itself
