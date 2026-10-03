@@ -8,6 +8,9 @@
 # cross-compiles from one machine -- and build/<version>/tsum-stats.txt, the
 # pin: version, then url_/sha256_/size_ per system.
 #
+# Also written: a .tar.gz (macOS, Linux; executable inside) or .zip (Windows)
+#   per system, for people to download.
+#
 # --publish creates the GitHub release v<version> with the binaries and the pin
 #   as assets. A running tsum-stats updates itself from the newest release's
 #   pin, so publish the binaries in the same step (this does) and never edit a
@@ -28,7 +31,7 @@ PUBLISH=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --publish) PUBLISH=1 ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -74,6 +77,21 @@ for t in $TARGETS; do
   } >> "$PIN"
 done
 cp "$PIN" "$root/tsum-stats.txt"
+
+# Archives for people: the executable bit survives a tar.gz, so macOS and Linux
+# users extract and run. The raw binaries above are what the updater and
+# install.sh's fallback use.
+for t in $TARGETS; do
+  os="${t%/*}" arch="${t#*/}"
+  if [ "$os" = windows ]; then
+    stage="$(mktemp -d)"; cp "$OUT/tsum-stats-$os-$arch.exe" "$stage/tsum-stats.exe"
+    ( cd "$stage" && zip -q "$OUT/tsum-stats-$os-$arch.zip" tsum-stats.exe )
+  else
+    stage="$(mktemp -d)"; cp "$OUT/tsum-stats-$os-$arch" "$stage/tsum-stats"; chmod +x "$stage/tsum-stats"
+    tar -czf "$OUT/tsum-stats-$os-$arch.tar.gz" -C "$stage" tsum-stats
+  fi
+  rm -rf "$stage"
+done
 
 if [ "$PUBLISH" = 1 ]; then
   command -v gh >/dev/null || die "gh is needed to publish"

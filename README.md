@@ -13,13 +13,28 @@ browser at <http://127.0.0.1:8090>.
 
 Everything stays on your computer. Sharing a read-only copy (Share) is opt-in.
 
-## Download
+## Run it
 
-Get the file for your system from the
-[latest release](https://github.com/TsumTsumScripts/tsum-stats/releases/latest)
-and run it (on macOS and Linux, `chmod +x` first). It updates itself from new
-releases, checking a sha256 before replacing itself; `TSUM_STATS_NO_UPDATE=1`
-turns that off. Stop it with Ctrl+C. Data lives in your user config folder
+**macOS and Linux:** paste this into a terminal. It downloads the right file,
+checks it, and starts Tsum Tsum Stats.
+
+```
+curl -fsSL https://raw.githubusercontent.com/TsumTsumScripts/tsum-stats/main/install.sh | sh
+```
+
+Next time, run `tsum-stats` (the installer says where it put it). Prefer a
+download? Get `tsum-stats-<system>.tar.gz` from the
+[latest release](https://github.com/TsumTsumScripts/tsum-stats/releases/latest),
+extract it and run `./tsum-stats`.
+
+**Windows:** download `tsum-stats-windows-amd64.zip` from the latest release,
+extract it and double-click `tsum-stats.exe`. If Windows warns about an unknown
+publisher, choose More info, then Run anyway.
+
+It opens in your browser at <http://127.0.0.1:8090>. Starting it again while it
+runs just opens the page. Stop it with Ctrl+C in its window. It updates itself
+from new releases, checking a sha256 before replacing itself;
+`TSUM_STATS_NO_UPDATE=1` turns that off. Data lives in your user config folder
 under `TsumTsumStats/data` (`--dir` changes it).
 
 ## Build

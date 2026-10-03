@@ -20,6 +20,9 @@ import (
 //go:embed all:web
 var webFS embed.FS
 
+// The address `serve` listens on by default, which a launch opens.
+const siteURL = "http://127.0.0.1:8090"
+
 // Set by tools/build.sh from VERSION.
 var version = "dev"
 
@@ -32,6 +35,11 @@ func main() {
 	// then serve and open the site.
 	launched := len(os.Args) == 1
 	if launched {
+		if alreadyRunning(siteURL) {
+			fmt.Println("Tsum Tsum Stats is already running; opening it:", siteURL)
+			openBrowser(siteURL)
+			return
+		}
 		clearOld()
 		if os.Getenv("TSUM_STATS_NO_UPDATE") == "" && updateURL != "" {
 			if done, err := selfUpdate(updateURL, log.Printf); err != nil {
@@ -75,7 +83,7 @@ func main() {
 	stats.Register(app, cfg, embedded)
 	if launched {
 		app.OnServe().BindFunc(func(se *core.ServeEvent) error {
-			go openWhenUp("http://127.0.0.1:8090")
+			go openWhenUp(siteURL)
 			return se.Next()
 		})
 	}
