@@ -96,6 +96,9 @@ func Register(app core.App, cfg *Config, embedded fs.FS) {
 		importer = NewImporter(se.App, dirs, func(r ImportResult) { broadcast(se.App, TopicImports, r) })
 		puller := NewPuller(cfg.ADB, cfg.DeviceStorage, pullDest, importer)
 		go importer.Run(cfg.ScanInterval, stop)
+		if puller.ADB() == "" {
+			go puller.InstallADB(filepath.Join(se.App.DataDir(), "adb"))
+		}
 		se.App.OnTerminate().BindFunc(func(e *core.TerminateEvent) error {
 			close(stop)
 			return e.Next()

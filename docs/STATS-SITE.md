@@ -534,7 +534,7 @@ cd .. && go run . serve --dir /tmp/tsum-stats-data --import-dir ~/some/tsum_reco
 | `--import-dir DIR` | none. Repeatable |
 | `--scan-interval` | `10s` |
 | `--web-dir DIR` | none. Files here replace the embedded site's |
-| `--adb PATH` | adb on `PATH`, else the Android SDK's.  |
+| `--adb PATH` | adb on `PATH`, else the Android SDK's, else Google's platform-tools, downloaded on first start into `<data dir>/adb` |
 | `--device-storage DIR` | `/sdcard/Download/GameAutomationPlatform`. |
 
 `go test ./...` covers:
@@ -559,7 +559,9 @@ cd .. && go run . serve --dir /tmp/tsum-stats-data --import-dir ~/some/tsum_reco
 4. Opens the site in the default browser.
 
 Stop it with Ctrl+C in its window. It needs no adb and no device: **Import from
-devices** finds adb itself (`--adb` points it at one).
+devices** finds adb itself (`--adb` points it at one). When none is on the PC, the
+program downloads Google's platform-tools for this OS in the background on start
+(`internal/stats/adb_install.go`); Import from devices works once it finishes.
 
 Databases made by 0.6 and earlier (which named their tables `gap_*`) are
 renamed on first start.

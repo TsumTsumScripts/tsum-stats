@@ -27,6 +27,7 @@ var emuPorts = []int{16384, 16416, 16448, 16480, 7555, 5555, 5557, 5559, 5561, 6
 // Puller copies stats_*.csv and tsum_list_*.csv off devices through adb into
 // dest/<serial>/, keeping the device's layout, then imports them.
 type Puller struct {
+	adbMu    sync.RWMutex
 	adb      string // "" when none was found
 	storage  string
 	dest     string
@@ -59,7 +60,11 @@ func NewPuller(adb, storage, dest string, importer *Importer) *Puller {
 	return &Puller{adb: FindADB(adb), storage: strings.TrimRight(storage, "/"), dest: dest, importer: importer}
 }
 
-func (p *Puller) ADB() string { return p.adb }
+func (p *Puller) ADB() string {
+	p.adbMu.RLock()
+	defer p.adbMu.RUnlock()
+	return p.adb
+}
 
 // FindADB returns explicit when given, else the first adb on PATH or in the
 // usual Android SDK folders, else "".
@@ -95,14 +100,14 @@ func FindADB(explicit string) string {
 func (p *Puller) run(ctx context.Context, timeout time.Duration, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, p.adb, args...).Output()
+	out, err := exec.CommandContext(ctx, p.ADB(), args...).Output()
 	return strings.ReplaceAll(string(out), "\r", ""), err
 }
 
 // Devices connects to emulators on the known ports, then lists every device
 // once: an emulator reached on two ports has one boot_id.
 func (p *Puller) Devices(ctx context.Context) ([]ADBDevice, error) {
-	if p.adb == "" {
+	if p.ADB() == "" {
 		return nil, errors.New("adb was not found")
 	}
 	p.connectEmulators(ctx)
@@ -159,7 +164,7 @@ func (p *Puller) connectEmulators(ctx context.Context) {
 
 // Pull copies and imports each device's files, one device at a time.
 func (p *Puller) Pull(ctx context.Context, serials []string) ([]DevicePull, error) {
-	if p.adb == "" {
+	if p.ADB() == "" {
 		return nil, errors.New("adb was not found")
 	}
 	if !p.busy.TryLock() {
