@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -64,9 +65,10 @@ func Register(app core.App, cfg *Config, embedded fs.FS) {
 		// admin UI stays reachable through `tsum-stats superuser upsert`.
 		se.InstallerFunc = nil
 
+		bc := newBroadcaster(se.App, stop)
 		events = NewEvents(se.App, cfg.EventsToken,
-			func(d []Device) { broadcast(se.App, TopicDevices, d) },
-			func(r Round) { broadcast(se.App, TopicRounds, r) })
+			func(d []Device) { bc.send(TopicDevices, d) },
+			func(r Round) { bc.send(TopicRounds, r) })
 		if cfg.EventsAddr != "" {
 			l, err := events.Listen(cfg.EventsAddr)
 			if err != nil {
@@ -93,7 +95,7 @@ func Register(app core.App, cfg *Config, embedded fs.FS) {
 		} else {
 			dirs = append(dirs, pullDest)
 		}
-		importer = NewImporter(se.App, dirs, func(r ImportResult) { broadcast(se.App, TopicImports, r) })
+		importer = NewImporter(se.App, dirs, func(r ImportResult) { bc.send(TopicImports, r) })
 		puller := NewPuller(cfg.ADB, cfg.DeviceStorage, pullDest, importer)
 		go importer.Run(cfg.ScanInterval, stop)
 		if puller.ADB() == "" {
@@ -109,7 +111,7 @@ func Register(app core.App, cfg *Config, embedded fs.FS) {
 			return fmt.Errorf("--web-dir: %w", err)
 		}
 		publisher := NewPublisher(se.App.DataDir(), cfg.GitHubClientID, cfg.GitHubToken, site, se.App.DB, cfg.Version,
-			func(st PublishState) { broadcast(se.App, TopicPublish, st) })
+			func(st PublishState) { bc.send(TopicPublish, st) })
 		registerRoutes(se, events, importer, puller, publisher, overlay, embedded, cfg)
 		se.Router.GET("/{path...}", serveSite(site))
 		return se.Next()
@@ -311,16 +313,72 @@ func sameOrigin(e *core.RequestEvent) error {
 	return e.Next()
 }
 
-func broadcast(app core.App, topic string, v any) {
+// broadcaster sends realtime messages from one goroutine, so a device's event
+// reader never waits on a browser. PocketBase's Send blocks until the page's
+// stream takes the message, and a stream to a sleeping PC can stall for minutes.
+type broadcaster struct {
+	app   core.App
+	queue chan subscriptions.Message
+}
+
+const (
+	broadcastQueue = 256
+	// A page that has not taken a message in this long is dropped; its
+	// EventSource reconnects if it is still there.
+	broadcastTimeout = 2 * time.Second
+)
+
+func newBroadcaster(app core.App, stop <-chan struct{}) *broadcaster {
+	b := &broadcaster{app: app, queue: make(chan subscriptions.Message, broadcastQueue)}
+	go b.run(stop)
+	return b
+}
+
+func (b *broadcaster) send(topic string, v any) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return
 	}
-	msg := subscriptions.Message{Name: topic, Data: data}
-	for _, c := range app.SubscriptionsBroker().Clients() {
-		if c.HasSubscription(topic) {
-			c.Send(msg)
+	select {
+	case b.queue <- subscriptions.Message{Name: topic, Data: data}:
+	default:
+		b.app.Logger().Warn("Realtime queue full, dropped a message", slog.String("topic", topic))
+	}
+}
+
+func (b *broadcaster) run(stop <-chan struct{}) {
+	for {
+		select {
+		case <-stop:
+			return
+		case msg := <-b.queue:
+			for _, c := range b.app.SubscriptionsBroker().Clients() {
+				if c.IsDiscarded() || !c.HasSubscription(msg.Name) {
+					continue
+				}
+				if !deliver(c, msg) {
+					b.app.SubscriptionsBroker().Unregister(c.Id())
+				}
+			}
 		}
+	}
+}
+
+// deliver is Send with a time limit. False means the page is not reading.
+func deliver(c subscriptions.Client, msg subscriptions.Message) (ok bool) {
+	// The channel is closed when the page disconnects mid-send.
+	defer func() {
+		if recover() != nil {
+			ok = true
+		}
+	}()
+	t := time.NewTimer(broadcastTimeout)
+	defer t.Stop()
+	select {
+	case c.Channel() <- msg:
+		return true
+	case <-t.C:
+		return false
 	}
 }
 

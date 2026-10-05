@@ -9,10 +9,10 @@
   import SnapshotNote from './components/SnapshotNote.svelte';
   import Tip from './components/Tip.svelte';
   import Toasts from './components/Toasts.svelte';
-  import {onReconnect, start, subscribe} from './lib/realtime.js';
+  import {onReconnect, restart, start, subscribe} from './lib/realtime.js';
   import {isSnapshot} from './lib/snapshot/client.js';
   import {expand, shared, toast} from './lib/ui.svelte.js';
-  import {api, fmt, loadCatalog} from './lib/util.js';
+  import {api, fmt, isOnline, loadCatalog} from './lib/util.js';
   import Catalog from './sections/Catalog.svelte';
   import Help from './sections/Help.svelte';
   import Stats from './sections/Stats.svelte';
@@ -104,12 +104,25 @@
     stats?.refresh();
   });
 
+  // A stream can go quiet without an error (a PC waking from sleep, a frozen tab).
+  // A device gone stale here but fresh on the server means pushes stopped: reconnect.
+  async function checkDevices() {
+    if (!shared.devices.some(d => d.online && !isOnline(d))) return;
+    const fresh = await api('devices').catch(() => null);
+    if (!fresh) return;
+    shared.devices = fresh;
+    if (fresh.some(isOnline)) restart();
+  }
+
   onMount(async () => {
     shared.catalog = await loadCatalog();
     show();
     if (snapshot) return;
     start();
     shared.devices = await api('devices');
+    // The shell is never unmounted, so these are not cleared.
+    setInterval(checkDevices, 15000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) checkDevices(); });
     api('status').then(s => { version = s.version || ''; if (s.override && !s.override.active && !s.override.unused) toast(overrideText(s), 8000); }).catch(() => {});
   });
 </script>

@@ -162,6 +162,11 @@ live updates from three custom realtime topics:
 
 None of these goes through a collection subscription.
 
+Messages are sent from one goroutine, never from a device's event reader, and
+a page that takes nothing for 2 s is dropped. The page reopens its stream when
+it closes or its subscribe fails, and refetches `/api/stats/devices` when a
+device looks stale: fresh data there means pushes had stopped, so it reconnects.
+
 ## Where the data comes from
 
 | Source | How | Code |
