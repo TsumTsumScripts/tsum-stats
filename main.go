@@ -27,7 +27,7 @@ const siteURL = "http://127.0.0.1:8090"
 var version = "dev"
 
 // The GitHub OAuth app the Share dialog signs in through. It is public (a
-// device-flow app has no secret); the build script sets it, see docs/STATS-SITE.md.
+// device-flow app has no secret); the build script sets it, see docs/INTERNALS.md.
 var githubClientID = ""
 
 func main() {

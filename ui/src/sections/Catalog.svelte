@@ -174,7 +174,7 @@
     const s = prefs.sorts.find(o => o.key === key);
     return s ? (s.dir === 'asc' ? 'ascending' : 'descending') : 'none';
   };
-  // Max level and max skill: themes style these through `.maxed` (see docs/STATS-SITE.md).
+  // Max level and max skill: themes style these through `.maxed` (see docs/USING.md).
   const isMaxed = o => Boolean(o) && o.level >= MAX_LEVEL && o.skillMax > 0 && o.skill >= o.skillMax;
   const compact = new Intl.NumberFormat(undefined, {notation: 'compact', maximumFractionDigits: 1});
   const leftTitle = l => `${fmt(l.boxes)} boxes · ${fmt(l.cost)} ${l.unit} to max the skill`;

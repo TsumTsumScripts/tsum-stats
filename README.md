@@ -47,7 +47,9 @@ cd .. && go test ./... && go run . serve --dir /tmp/tsum-stats-data
 tools/build.sh                     # all five binaries and the pin
 ```
 
-The full documentation is [docs/STATS-SITE.md](docs/STATS-SITE.md).
+Full documentation: [docs/USING.md](docs/USING.md) is the manual — what every
+figure means, getting data in, themes and publishing a snapshot.
+[docs/INTERNALS.md](docs/INTERNALS.md) is how it is built and how to change it.
 
 ## License
 
