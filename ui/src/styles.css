@@ -73,6 +73,7 @@
   --medal-shadow: #0b2a4a;
   /* Maxed Tsums: main and highlight colour, glow, and text on the badge */
   --maxed-a: #f5b800;
+  --fav: #f7c629;
   --maxed-b: #ffe680;
   --maxed-glow: rgba(245, 184, 0, 0.35);
   --maxed-ink: #3a2a00;
@@ -458,6 +459,13 @@ tr.fresh td { animation: fresh 2.4s ease-out; }
 .maxed-badge::before { content: '★'; }
 .card > .maxed-badge { position: absolute; top: 8px; right: 8px; }
 .tsum-list .maxed-badge { margin-left: auto; }
+/* Favorite: the game's gold star, at the portrait's lower left in a card and after the name in a list. */
+.card .portrait { position: relative; display: grid; align-self: start; }
+.fav-star { display: inline-grid; width: 22px; height: 22px; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45)); }
+.fav-star::before { content: ''; background: var(--fav);
+  clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+.card .fav-star { position: absolute; left: -2px; bottom: 0; }
+.tsum-list .fav-star { width: 13px; height: 13px; margin-left: 5px; vertical-align: -1px; }
 .tsum-list tr.maxed td { background: color-mix(in srgb, var(--maxed-a) 10%, transparent); }
 .cat-sort { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .sort-btn { border: 1px solid transparent; border-radius: 999px; background: var(--well); color: var(--muted); font: inherit; font-size: 13px; padding: 5px 12px; cursor: pointer; }

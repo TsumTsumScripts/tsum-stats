@@ -47,6 +47,15 @@ func cell(header map[string]int, row []string, name string) string {
 	return ""
 }
 
+// boolCell reads a "1"/"0" cell; nil when empty or anything else.
+func boolCell(s string) *bool {
+	if s != "1" && s != "0" {
+		return nil
+	}
+	b := s == "1"
+	return &b
+}
+
 func intCell(s string) *int64 {
 	if s == "" {
 		return nil
@@ -167,6 +176,7 @@ func parseTsumListCSV(r io.Reader) (build, device string, rows []OwnedTsum, err 
 			SkillMax:      intCell(cell(header, rec, "skill_max")),
 			SkillProgress: intCell(cell(header, rec, "skill_progress")),
 			Acquired:      cell(header, rec, "acquired"),
+			Favorite:      boolCell(cell(header, rec, "favorite")),
 		})
 	}
 	if build == "" {

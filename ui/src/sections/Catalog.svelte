@@ -289,7 +289,7 @@
               {#each view.shown as e (e.id)}
                 {@const o = e.own}
                 <tr class:missing={!o} class:maxed={isMaxed(o)} style:--tsum={e.color}>
-                  <td class="who"><Avatar id={e.id} name={e.name} /><span class="names"><b>{e.name}</b>{#if e.alt}<span class="alt">{e.alt}</span>{/if}</span>{#if isMaxed(o)}<span class="maxed-badge" title="Max level and skill" role="img" aria-label="Max level and skill"></span>{/if}</td>
+                  <td class="who"><Avatar id={e.id} name={e.name} /><span class="names"><b>{e.name}{#if o?.favorite}<span class="fav-star" title="Favorite" role="img" aria-label="Favorite"></span>{/if}</b>{#if e.alt}<span class="alt">{e.alt}</span>{/if}</span>{#if isMaxed(o)}<span class="maxed-badge" title="Max level and skill" role="img" aria-label="Max level and skill"></span>{/if}</td>
                   <td class="num">{@render figure(o, o?.level, MAX_LEVEL, o ? `${o.level ?? '?'}/${MAX_LEVEL}` : '', 'level')}</td>
                   <td class="num">{@render figure(o, o?.skill, o?.skillMax, o ? skillText(o) : '', 'skill')}</td>
                   <td class="num">{@render toMaxText(e.left)}</td>
@@ -304,7 +304,7 @@
           {@const o = e.own}
           <div class="panel card" class:missing={!o} class:maxed={isMaxed(o)} style:--tsum={e.color}>
             {#if isMaxed(o)}<span class="maxed-shine" aria-hidden="true"></span><span class="maxed-badge" title="Max level and skill" role="img" aria-label="Max level and skill"></span>{/if}
-            <Avatar id={e.id} name={e.name} large />
+            <span class="portrait"><Avatar id={e.id} name={e.name} large />{#if o?.favorite}<span class="fav-star" title="Favorite" role="img" aria-label="Favorite"></span>{/if}</span>
             <div class="name">{e.name}</div>
             {#if e.alt}<div class="alt">{e.alt}</div>{/if}
             {#if o}

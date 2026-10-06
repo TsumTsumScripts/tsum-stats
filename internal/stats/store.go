@@ -95,6 +95,8 @@ type OwnedTsum struct {
 	// SkillProgress is the percent (0-100) through the current skill level.
 	SkillProgress *int64 `db:"skill_progress" json:"skillProgress"`
 	Acquired      string `db:"acquired" json:"acquired"`
+	// Favorite is the game's favourite star; nil on a list from before it was read.
+	Favorite *bool `db:"favorite" json:"favorite"`
 }
 
 // replaceTsumList stores one export whole. The script rewrites the file after
@@ -120,10 +122,10 @@ func replaceTsumList(db dbx.Builder, file, build, device, stamp string, rows []O
 		return err
 	}
 	for _, r := range rows {
-		_, err := db.NewQuery(`INSERT INTO ts_owned (list_id, ord, tsum, name, level, level_cap, skill, skill_max, skill_progress, acquired)
-			VALUES ({:l}, {:o}, {:t}, {:n}, {:lv}, {:lc}, {:s}, {:sm}, {:sp}, {:a})`).Bind(dbx.Params{
+		_, err := db.NewQuery(`INSERT INTO ts_owned (list_id, ord, tsum, name, level, level_cap, skill, skill_max, skill_progress, acquired, favorite)
+			VALUES ({:l}, {:o}, {:t}, {:n}, {:lv}, {:lc}, {:s}, {:sm}, {:sp}, {:a}, {:fv})`).Bind(dbx.Params{
 			"l": listID, "o": r.Order, "t": r.Tsum, "n": r.Name, "lv": r.Level, "lc": r.LevelCap,
-			"s": r.Skill, "sm": r.SkillMax, "sp": r.SkillProgress, "a": r.Acquired,
+			"s": r.Skill, "sm": r.SkillMax, "sp": r.SkillProgress, "a": r.Acquired, "fv": r.Favorite,
 		}).Execute()
 		if err != nil {
 			return err

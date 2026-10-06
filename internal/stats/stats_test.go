@@ -59,8 +59,8 @@ func TestParseStatsCSV(t *testing.T) {
 
 func TestParseTsumList(t *testing.T) {
 	build, device, rows, err := parseTsumListCSV(strings.NewReader(
-		"order,tsum,name,level,level_cap,skill,skill_max,skill_progress,acquired,build,device\n1,mickey,Mickey,5,10,3,6,40,2024-05,jp,tsum-left\n2,,,,,,,,2024-06,jp,tsum-left\n"))
-	if err != nil || build != "jp" || device != "tsum-left" || len(rows) != 1 || *rows[0].LevelCap != 10 || *rows[0].SkillProgress != 40 || rows[0].Acquired != "2024-05" {
+		"order,tsum,name,level,level_cap,skill,skill_max,skill_progress,acquired,favorite,build,device\n1,mickey,Mickey,5,10,3,6,40,2024-05,1,jp,tsum-left\n2,,,,,,,,2024-06,,jp,tsum-left\n"))
+	if err != nil || build != "jp" || device != "tsum-left" || len(rows) != 1 || *rows[0].LevelCap != 10 || *rows[0].SkillProgress != 40 || rows[0].Acquired != "2024-05" || !*rows[0].Favorite {
 		t.Fatalf("build=%q rows=%+v err=%v", build, rows, err)
 	}
 	// Older exports have no build column: Japanese names mean a JP list.
@@ -292,15 +292,16 @@ func TestCompleteRoundsAndRanges(t *testing.T) {
 func TestTsumListReplaced(t *testing.T) {
 	app := testApp(t)
 	one := int64(1)
+	fav := true
 	if err := replaceTsumList(app.DB(), "tsum_list_20260920-140211.csv", "global", "tsum-left", "20260920-140211", []OwnedTsum{{Order: &one, Tsum: "abu"}}); err != nil {
 		t.Fatal(err)
 	}
 	// The script rewrites the file after every page; the re-import replaces it.
-	if err := replaceTsumList(app.DB(), "tsum_list_20260920-140211.csv", "global", "tsum-left", "20260920-140211", []OwnedTsum{{Tsum: "abu", SkillProgress: &one}, {Tsum: "mickey"}}); err != nil {
+	if err := replaceTsumList(app.DB(), "tsum_list_20260920-140211.csv", "global", "tsum-left", "20260920-140211", []OwnedTsum{{Tsum: "abu", SkillProgress: &one, Favorite: &fav}, {Tsum: "mickey"}}); err != nil {
 		t.Fatal(err)
 	}
 	l, err := LatestTsumList(app.DB(), "global", "tsum-left")
-	if err != nil || l == nil || len(l.Items) != 2 || l.Tsums != 2 || *l.Items[0].SkillProgress != 1 {
+	if err != nil || l == nil || len(l.Items) != 2 || l.Tsums != 2 || *l.Items[0].SkillProgress != 1 || !*l.Items[0].Favorite || l.Items[1].Favorite != nil {
 		t.Fatalf("list: %+v %v", l, err)
 	}
 	if l, _ := LatestTsumList(app.DB(), "jp", "tsum-left"); l != nil {

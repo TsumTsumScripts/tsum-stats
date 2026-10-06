@@ -510,6 +510,10 @@ so a theme can restyle them completely. Hooks, all optional:
 Start each rule with `:root` (see above). The default is a gold border, glow,
 sheen and star badge.
 
+**Favourite Tsums** (the Tsum List's `favorite` column, the game's gold star)
+show a `.fav-star` at the portrait's lower left in a card and after the name in
+a list, coloured by `--fav`. The shape is drawn by its `::before`.
+
 ## Working on the page
 
 ```

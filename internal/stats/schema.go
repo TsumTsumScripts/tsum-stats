@@ -53,7 +53,8 @@ var schema = []string{
 		skill     INTEGER,
 		skill_max INTEGER,
 		skill_progress INTEGER,
-		acquired  TEXT NOT NULL DEFAULT ''
+		acquired  TEXT NOT NULL DEFAULT '',
+		favorite  INTEGER
 	)`,
 	`CREATE INDEX IF NOT EXISTS ts_owned_list ON ts_owned (list_id)`,
 	// What has been read, so a rescan skips files that have not changed.
@@ -106,6 +107,9 @@ func migrate(app core.App) error {
 		}
 	}
 	if err := addListColumn(app, "ts_owned", "skill_progress", "INTEGER"); err != nil {
+		return err
+	}
+	if err := addListColumn(app, "ts_owned", "favorite", "INTEGER"); err != nil {
 		return err
 	}
 	if err := addListColumn(app, "ts_tsum_lists", "device", "TEXT NOT NULL DEFAULT ''"); err != nil {

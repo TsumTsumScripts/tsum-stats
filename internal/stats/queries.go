@@ -316,7 +316,7 @@ func LatestTsumList(db dbx.Builder, build, device string) (*TsumList, error) {
 		return nil, err
 	}
 	l := &TsumList{File: row.File, Build: row.Build, Device: row.Device, Stamp: row.Stamp, ImportedAt: row.ImportedAt, Tsums: row.Tsums}
-	err = db.NewQuery(`SELECT ord, tsum, name, level, level_cap, skill, skill_max, skill_progress, acquired FROM ts_owned
+	err = db.NewQuery(`SELECT ord, tsum, name, level, level_cap, skill, skill_max, skill_progress, acquired, favorite FROM ts_owned
 		WHERE list_id = {:id} ORDER BY ord`).Bind(dbx.Params{"id": row.ID}).All(&l.Items)
 	if l.Items == nil {
 		l.Items = []OwnedTsum{}
