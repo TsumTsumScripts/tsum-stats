@@ -98,8 +98,7 @@
       </div>
 
     {:else}
-      <p class="sub" style="margin:0">Signed in to GitHub as <b>{st.login || 'your account'}</b>.
-        <button type="button" class="linkish" onclick={signOut} disabled={busy || working}>Sign out</button></p>
+      <p class="sub" style="margin:0">Signed in to GitHub as <b>{st.login || 'your account'}</b>.</p>
 
       {#if st.phase === 'done'}
         <p><b>Published.</b> {fmt(st.rounds)} rounds are on your page.</p>
@@ -137,6 +136,7 @@
         <button type="button" class="btn primary" onclick={publish} disabled={busy || working || checking || !agreed || !repo}>
           {working ? 'Publishing…' : st.url ? 'Update my page' : 'Publish'}</button>
         <button type="button" class="btn" onclick={close}>Close</button>
+        <button type="button" class="btn" onclick={signOut} disabled={busy || working}>Sign out</button>
       </div>
     {/if}
   </div>
