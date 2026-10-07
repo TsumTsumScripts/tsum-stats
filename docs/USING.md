@@ -250,16 +250,14 @@ The top bar's **Share** button publishes a snapshot to the player's own
 GitHub Pages site, at `https://<account>.github.io/tsum-stats/`. It needs no
 git and no command line:
 
-1. **Sign in.** Either of two ways; Help section 4 walks the player through
-   the second, which every build has:
-   - *GitHub's device flow* (only a build with an OAuth app, below): the dialog
-     shows a short code and an *Open GitHub* button; the player types the code
-     there and the dialog carries on by itself.
-   - *A token the player makes*: a link opens GitHub's token page with
-     `public_repo` and the name filled in; the player generates it and pastes
-     it into the dialog (`POST /publish/token`, `Publisher.SaveToken`, which
-     checks it against GitHub first). No OAuth app is needed, and the player's
-     password never reaches Tsum Tsum Stats either way.
+1. **Connect.** Help section 4 walks the player through it: a link opens
+   GitHub's token page with `public_repo` and the name filled in; the player
+   generates a token and pastes it into the dialog (`POST /publish/token`,
+   `Publisher.SaveToken`, which checks it against GitHub first). The player's
+   password never reaches Tsum Tsum Stats. Each time the dialog opens it asks
+   GitHub whether the saved token still works (`POST /publish/check`); one
+   that has expired or been revoked is forgotten, and the dialog asks for a
+   new one.
 2. **Choose.** Device names (hidden as *Device 1*, not shown, or shown), and
    whether the Tsum lists go on the page. The player ticks *I understand that
    anyone with the link can see this page* before Publish is enabled.

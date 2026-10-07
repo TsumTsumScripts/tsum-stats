@@ -30,10 +30,6 @@ type Config struct {
 	ADB           string // adb for importing from devices; "" looks for one
 	DeviceStorage string // the app's storage root on the device
 	Version       string // this build's, for WebDir's override.json
-	// GitHubClientID is the OAuth app the Share dialog signs in through ("" turns it off);
-	// GitHubToken skips the sign-in, for a machine with no browser.
-	GitHubClientID string
-	GitHubToken    string
 }
 
 // Realtime topics the page subscribes to through PocketBase's /api/realtime.
@@ -110,7 +106,7 @@ func Register(app core.App, cfg *Config, embedded fs.FS) {
 		if err != nil {
 			return fmt.Errorf("--web-dir: %w", err)
 		}
-		publisher := NewPublisher(se.App.DataDir(), cfg.GitHubClientID, cfg.GitHubToken, site, se.App.DB, cfg.Version,
+		publisher := NewPublisher(se.App.DataDir(), site, se.App.DB, cfg.Version,
 			func(st PublishState) { bc.send(TopicPublish, st) })
 		registerRoutes(se, events, importer, puller, publisher, overlay, embedded, cfg)
 		se.Router.GET("/{path...}", serveSite(site))
@@ -239,12 +235,9 @@ func registerRoutes(se *core.ServeEvent, events *Events, importer *Importer, pul
 	g.GET("/publish", func(e *core.RequestEvent) error {
 		return e.JSON(http.StatusOK, publisher.State())
 	})
-	g.POST("/publish/login", func(e *core.RequestEvent) error {
-		if err := publisher.StartLogin(); err != nil {
-			return e.BadRequestError(err.Error(), err)
-		}
-		return e.JSON(http.StatusOK, publisher.State())
-	}).BindFunc(sameOrigin)
+	g.POST("/publish/check", func(e *core.RequestEvent) error {
+		return e.JSON(http.StatusOK, publisher.Check())
+	})
 	g.POST("/publish/token", func(e *core.RequestEvent) error {
 		var body struct {
 			Token string `json:"token"`

@@ -90,10 +90,10 @@
 
   // ---- Live updates ----
 
-  subscribe('gap/devices', d => { shared.devices = d; });
-  subscribe('gap/publish', s => publishDialog?.update(s));
-  subscribe('gap/rounds', r => stats?.roundArrived(r));
-  subscribe('gap/imports', res => {
+  subscribe('ts/devices', d => { shared.devices = d; });
+  subscribe('ts/publish', s => publishDialog?.update(s));
+  subscribe('ts/rounds', r => stats?.roundArrived(r));
+  subscribe('ts/imports', res => {
     if (res.rounds) stats?.refresh();
     if (res.lists) catalog?.listsChanged();
     help?.refresh();
@@ -102,6 +102,7 @@
   onReconnect(async () => {
     shared.devices = await api('devices');
     stats?.refresh();
+    publishDialog?.update(await api('publish'));
   });
 
   // A stream can go quiet without an error (a PC waking from sleep, a frozen tab).

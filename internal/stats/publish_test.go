@@ -26,8 +26,6 @@ type fakeGitHub struct {
 
 	mu          sync.Mutex
 	token       string // the one token it accepts
-	polls       int    // sign-in checks so far; the first ones are "pending"
-	deny        bool   // the player refuses the code
 	repoExists  bool
 	blobs       map[string][]byte
 	trees       map[string]map[string]string // tree sha -> path -> blob sha
@@ -41,8 +39,6 @@ type fakeGitHub struct {
 func newFakeGitHub(t *testing.T) *fakeGitHub {
 	f := &fakeGitHub{t: t, token: "tok-1", blobs: map[string][]byte{}, trees: map[string]map[string]string{}, commits: map[string]string{}}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/login/device/code", f.deviceCode)
-	mux.HandleFunc("/login/oauth/access_token", f.accessToken)
 	mux.HandleFunc("/", f.api)
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
@@ -53,29 +49,6 @@ func (f *fakeGitHub) json(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
-}
-
-func (f *fakeGitHub) deviceCode(w http.ResponseWriter, r *http.Request) {
-	_ = r.ParseForm()
-	if r.Form.Get("client_id") != "client-1" || r.Form.Get("scope") != "public_repo" {
-		f.json(w, 200, map[string]string{"error": "incorrect_client_credentials"})
-		return
-	}
-	f.json(w, 200, map[string]any{"device_code": "dc", "user_code": "ABCD-1234", "verification_uri": f.srv.URL + "/login/device", "expires_in": 900, "interval": 1})
-}
-
-func (f *fakeGitHub) accessToken(w http.ResponseWriter, r *http.Request) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.polls++
-	switch {
-	case f.deny:
-		f.json(w, 200, map[string]string{"error": "access_denied"})
-	case f.polls < 3:
-		f.json(w, 200, map[string]string{"error": "authorization_pending"})
-	default:
-		f.json(w, 200, map[string]string{"access_token": f.token, "token_type": "bearer"})
-	}
 }
 
 func (f *fakeGitHub) sha(kind string, parts ...string) string {
@@ -247,14 +220,14 @@ func TestPublishEndToEnd(t *testing.T) {
 	dataDir := t.TempDir()
 	var states []PublishState
 	var smu sync.Mutex
-	pub := NewPublisher(dataDir, "client-1", "", site, app.DB, "test", func(s PublishState) {
+	pub := NewPublisher(dataDir, site, app.DB, "test", func(s PublishState) {
 		smu.Lock()
 		states = append(states, s)
 		smu.Unlock()
 	})
 	pub.newGH = func(token string) *GitHub {
-		g := NewGitHub("client-1", token)
-		g.API, g.Web, g.PollEvery = gh.srv.URL, gh.srv.URL, 5*time.Millisecond
+		g := NewGitHub(token)
+		g.API = gh.srv.URL
 		return g
 	}
 	clock := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
@@ -266,15 +239,11 @@ func TestPublishEndToEnd(t *testing.T) {
 		t.Fatalf("publishing while signed out: %v", err)
 	}
 
-	// Sign in: the page gets a code to type, then the sign-in completes by itself.
-	if err := pub.StartLogin(); err != nil {
+	// Sign in with a pasted token.
+	if err := pub.SaveToken("tok-1"); err != nil {
 		t.Fatal(err)
 	}
-	if st := pub.State(); st.Phase != PhaseLogin || st.UserCode != "ABCD-1234" || !strings.HasSuffix(st.VerificationURI, "/login/device") {
-		t.Fatalf("waiting for the code: %+v", st)
-	}
-	waitFor(t, "sign-in", func() bool { return pub.State().SignedIn })
-	if st := pub.State(); st.Login != "ada" || st.Phase != PhaseIdle {
+	if st := pub.State(); !st.SignedIn || st.Login != "ada" || st.Phase != PhaseIdle {
 		t.Fatalf("signed in: %+v", st)
 	}
 	info, err := os.Stat(filepath.Join(dataDir, "github.json"))
@@ -382,7 +351,7 @@ func TestPublishRefusesARepoThatIsNotOurs(t *testing.T) {
 	gh := newFakeGitHub(t)
 	gh.repoExists = true
 	gh.seed(map[string][]byte{"README.md": []byte("mine"), "src/main.go": []byte("package main")})
-	g := NewGitHub("client-1", "tok-1")
+	g := NewGitHub("tok-1")
 	g.API = gh.srv.URL
 	dir := t.TempDir()
 	_ = os.WriteFile(filepath.Join(dir, "index.html"), []byte("x"), 0o644)
@@ -396,31 +365,15 @@ func TestPublishRefusesARepoThatIsNotOurs(t *testing.T) {
 }
 
 func TestPublishSignInProblems(t *testing.T) {
-	// A refused code.
 	gh := newFakeGitHub(t)
-	gh.deny = true
-	g := NewGitHub("client-1", "")
-	g.API, g.Web, g.PollEvery = gh.srv.URL, gh.srv.URL, 5*time.Millisecond
-	dc, err := g.StartLogin(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := g.WaitForLogin(t.Context(), dc); err == nil || !strings.Contains(err.Error(), "cancelled") {
-		t.Fatalf("a refused code: %v", err)
-	}
-
-	// A build with no GitHub app cannot sign in, and says why.
-	if _, err := NewGitHub("", "").StartLogin(t.Context()); err == nil {
-		t.Fatal("signing in without a client id should fail")
-	}
 
 	// A token GitHub stopped accepting sends the player back to sign in.
 	app := testApp(t)
-	pub := NewPublisher(t.TempDir(), "client-1", "", fstest.MapFS{"index.html": {Data: []byte("<head></head>")}}, app.DB, "test", nil)
+	pub := NewPublisher(t.TempDir(), fstest.MapFS{"index.html": {Data: []byte("<head></head>")}}, app.DB, "test", nil)
 	pub.saved = saved{Token: "stale", Login: "ada"}
 	pub.newGH = func(token string) *GitHub {
-		x := NewGitHub("client-1", token)
-		x.API, x.Web = gh.srv.URL, gh.srv.URL
+		x := NewGitHub(token)
+		x.API = gh.srv.URL
 		return x
 	}
 	if err := pub.Run(PublishOptions{Repo: "tsum-stats", Devices: DevicesAnonymous, Public: true}); err != nil {
@@ -431,12 +384,9 @@ func TestPublishSignInProblems(t *testing.T) {
 		t.Fatalf("after a rejected token: %+v", st)
 	}
 
-	// A pasted token is checked with GitHub, then kept; a build with no app still takes one.
-	pub2 := NewPublisher(t.TempDir(), "", "", fstest.MapFS{"index.html": {Data: []byte("<head></head>")}}, app.DB, "test", nil)
+	// A pasted token is checked with GitHub, then kept.
+	pub2 := NewPublisher(t.TempDir(), fstest.MapFS{"index.html": {Data: []byte("<head></head>")}}, app.DB, "test", nil)
 	pub2.newGH = pub.newGH
-	if st := pub2.State(); !st.Available || st.DeviceFlow {
-		t.Fatalf("a build with no app: %+v", st)
-	}
 	if err := pub2.SaveToken("  "); err == nil {
 		t.Fatal("an empty token was accepted")
 	}
@@ -448,5 +398,56 @@ func TestPublishSignInProblems(t *testing.T) {
 	}
 	if st := pub2.State(); !st.SignedIn || st.Login != "ada" {
 		t.Fatalf("after pasting a token: %+v", st)
+	}
+}
+
+func TestPublishCheckFindsADeadToken(t *testing.T) {
+	gh := newFakeGitHub(t)
+	app := testApp(t)
+	site := fstest.MapFS{"index.html": {Data: []byte("<head></head>")}}
+	newGH := func(token string) *GitHub {
+		x := NewGitHub(token)
+		x.API = gh.srv.URL
+		return x
+	}
+
+	// A good token stays, and the last publish is still offered for an update.
+	pub := NewPublisher(t.TempDir(), site, app.DB, "test", nil)
+	pub.newGH = newGH
+	pub.saved = saved{Token: "tok-1", Login: "ada", URL: "https://ada.github.io/tsum-stats/"}
+	if st := pub.Check(); !st.SignedIn || st.Phase != PhaseIdle || st.URL == "" {
+		t.Fatalf("a good token: %+v", st)
+	}
+
+	// A dead one is forgotten before the player presses Publish; the page's address is kept.
+	pub.saved.Token = "stale"
+	if st := pub.Check(); st.SignedIn || !strings.Contains(st.Error, "Sign in again") || st.URL == "" {
+		t.Fatalf("a dead token: %+v", st)
+	}
+
+	// GitHub out of reach is not a dead token.
+	pub.saved.Token = "tok-1"
+	pub.newGH = func(token string) *GitHub {
+		x := newGH(token)
+		x.API = "http://127.0.0.1:1"
+		return x
+	}
+	if st := pub.Check(); !st.SignedIn {
+		t.Fatalf("an unreachable GitHub signed the player out: %+v", st)
+	}
+
+}
+
+// The page listens for each topic the server sends on; a name that differs
+// means the page silently never hears it.
+func TestPageSubscribesToEveryTopic(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "ui", "src", "App.svelte"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, topic := range []string{TopicDevices, TopicRounds, TopicImports, TopicPublish} {
+		if !strings.Contains(string(src), "subscribe('"+topic+"'") {
+			t.Errorf("App.svelte does not subscribe to %q", topic)
+		}
 	}
 }

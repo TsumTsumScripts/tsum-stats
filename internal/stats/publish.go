@@ -30,7 +30,6 @@ var repoName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
 // Phases of PublishState.
 const (
 	PhaseIdle      = "idle"
-	PhaseLogin     = "login" // waiting for the player to type the code on github.com
 	PhaseExporting = "exporting"
 	PhaseUploading = "uploading"
 	PhaseDone      = "done"
@@ -40,19 +39,13 @@ const (
 // PublishState is what the page shows. It never holds the token.
 type PublishState struct {
 	// Available is always true: a pasted token works in every build.
-	Available bool `json:"available"`
-	// DeviceFlow is false when this build has no GitHub app for the code sign-in.
-	DeviceFlow bool   `json:"deviceFlow"`
-	SignedIn   bool   `json:"signedIn"`
-	Login      string `json:"login"`
+	Available bool   `json:"available"`
+	SignedIn  bool   `json:"signedIn"`
+	Login     string `json:"login"`
 
 	Phase   string `json:"phase"`
 	Message string `json:"message"`
 	Error   string `json:"error,omitempty"`
-
-	// While signing in.
-	UserCode        string `json:"userCode,omitempty"`
-	VerificationURI string `json:"verificationUri,omitempty"`
 
 	// The choices, kept between publishes.
 	Repo       string `json:"repo"`
@@ -80,52 +73,39 @@ type saved struct {
 
 // Publisher holds the sign-in and the publish that may be running.
 type Publisher struct {
-	file       string
-	site       fs.FS
-	db         func() dbx.Builder
-	version    string
-	notify     func(PublishState)
-	newGH      func(token string) *GitHub
-	deviceFlow bool   // the build has an OAuth app for StartLogin
-	envToken   string // TSUM_GITHUB_TOKEN or --github-token: skips the sign-in
-	now        func() time.Time
+	file    string
+	site    fs.FS
+	db      func() dbx.Builder
+	version string
+	notify  func(PublishState)
+	newGH   func(token string) *GitHub
+	now     func() time.Time
 
-	mu     sync.Mutex
-	saved  saved
-	state  PublishState
-	cancel context.CancelFunc // of the sign-in in progress
-	gen    int                // counts sign-ins, so a cancelled one finishes without effect
-	busy   bool               // a publish is running
+	mu    sync.Mutex
+	saved saved
+	state PublishState
+	gen   int  // counts sign-ins and sign-outs, so a check that overlaps one has no effect
+	busy  bool // a publish is running
 }
 
-// NewPublisher reads any saved sign-in from dataDir. clientID is the GitHub
-// OAuth app the player signs in through; "" means this build cannot.
-func NewPublisher(dataDir, clientID, token string, site fs.FS, db func() dbx.Builder, version string, notify func(PublishState)) *Publisher {
+// NewPublisher reads any saved sign-in from dataDir.
+func NewPublisher(dataDir string, site fs.FS, db func() dbx.Builder, version string, notify func(PublishState)) *Publisher {
 	p := &Publisher{
-		file: filepath.Join(dataDir, "github.json"), site: site, db: db, version: version, notify: notify, envToken: token,
-		newGH: func(token string) *GitHub { return NewGitHub(clientID, token) }, now: time.Now,
-		deviceFlow: clientID != "",
+		file: filepath.Join(dataDir, "github.json"), site: site, db: db, version: version, notify: notify,
+		newGH: NewGitHub, now: time.Now,
 	}
 	if data, err := os.ReadFile(p.file); err == nil {
 		_ = json.Unmarshal(data, &p.saved)
 	}
-	p.state = PublishState{Available: true, DeviceFlow: clientID != "", Phase: PhaseIdle}
+	p.state = PublishState{Available: true, Phase: PhaseIdle}
 	return p
-}
-
-func (p *Publisher) token() string {
-	if p.envToken != "" {
-		return p.envToken
-	}
-	return p.saved.Token
 }
 
 // view fills the state from what is saved. The caller holds the lock.
 func (p *Publisher) view() PublishState {
 	s := p.state
 	s.Available = true
-	s.DeviceFlow = p.deviceFlow
-	s.SignedIn = p.token() != ""
+	s.SignedIn = p.saved.Token != ""
 	s.Login = p.saved.Login
 	s.Repo = cmpOr(p.saved.Repo, DefaultRepo)
 	s.Devices = cmpOr(p.saved.Devices, DevicesAnonymous)
@@ -161,63 +141,6 @@ func (p *Publisher) persist() error {
 	return os.Rename(tmp, p.file)
 }
 
-// StartLogin begins signing in: the state gets a code to type at GitHub, and
-// the sign-in finishes in the background once it has been.
-func (p *Publisher) StartLogin() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.busy {
-		return errors.New("a publish is running")
-	}
-	if p.cancel != nil {
-		p.cancel()
-	}
-	gh := p.newGH("")
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
-	dc, err := gh.StartLogin(ctx)
-	if err != nil {
-		cancel()
-		return err
-	}
-	p.cancel = cancel
-	p.gen++
-	gen := p.gen
-	p.set(func(s *PublishState) {
-		*s = PublishState{Available: s.Available, Phase: PhaseLogin, UserCode: dc.UserCode, VerificationURI: dc.VerificationURI,
-			Message: "Type the code on GitHub to let Tsum Tsum Stats publish for you"}
-	})
-	go func() {
-		defer cancel()
-		token, err := gh.WaitForLogin(ctx, dc)
-		var login string
-		if err == nil {
-			gh.Token = token
-			login, err = gh.Login(ctx)
-		}
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		if gen != p.gen {
-			return // replaced by a new sign-in, or cancelled by a sign-out
-		}
-		p.cancel = nil
-		if err != nil {
-			p.set(func(s *PublishState) {
-				*s = PublishState{Available: s.Available, Phase: PhaseError, Error: err.Error()}
-			})
-			return
-		}
-		p.saved.Token, p.saved.Login = token, login
-		if err := p.persist(); err != nil {
-			p.set(func(s *PublishState) {
-				*s = PublishState{Available: s.Available, Phase: PhaseError, Error: err.Error()}
-			})
-			return
-		}
-		p.set(func(s *PublishState) { *s = PublishState{Available: s.Available, Phase: PhaseIdle} })
-	}()
-	return nil
-}
-
 // SaveToken signs in with a token the player made on github.com. It is checked
 // against GitHub before it is kept.
 func (p *Publisher) SaveToken(token string) error {
@@ -242,10 +165,6 @@ func (p *Publisher) SaveToken(token string) error {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.cancel != nil {
-		p.cancel()
-		p.cancel = nil
-	}
 	p.gen++
 	p.saved.Token, p.saved.Login = token, login
 	if err := p.persist(); err != nil {
@@ -262,15 +181,43 @@ func (p *Publisher) Logout() error {
 	if p.busy {
 		return errors.New("a publish is running")
 	}
-	if p.cancel != nil {
-		p.cancel()
-		p.cancel = nil
-	}
 	p.gen++
 	p.saved.Token, p.saved.Login = "", ""
 	err := p.persist()
 	p.set(func(s *PublishState) { *s = PublishState{Available: s.Available, Phase: PhaseIdle} })
 	return err
+}
+
+// Check asks GitHub whether the saved token still works, so a dead one sends the
+// player back to sign in before they press Publish. Only a refusal counts:
+// when GitHub cannot be reached the state stays as it was.
+func (p *Publisher) Check() PublishState {
+	p.mu.Lock()
+	token, gen := p.saved.Token, p.gen
+	if token == "" || p.busy {
+		defer p.mu.Unlock()
+		return p.view()
+	}
+	p.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err := p.newGH(token).Login(ctx)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if errors.Is(err, ErrSignedOut) && gen == p.gen && !p.busy && p.saved.Token == token {
+		p.rejected()
+	}
+	return p.view()
+}
+
+// rejected is GitHub refusing the token, revoked or expired: the next step is
+// to sign in again. The caller holds the lock.
+func (p *Publisher) rejected() {
+	p.saved.Token, p.saved.Login = "", ""
+	_ = p.persist()
+	p.set(func(s *PublishState) {
+		*s = PublishState{Available: s.Available, Phase: PhaseError, Error: "GitHub no longer accepts the saved sign-in. Sign in again."}
+	})
 }
 
 // PublishOptions are the player's choices for a publish.
@@ -298,13 +245,13 @@ func (p *Publisher) Run(o PublishOptions) error {
 	if p.busy {
 		return errors.New("a publish is already running")
 	}
-	if p.token() == "" {
+	if p.saved.Token == "" {
 		return errors.New("sign in to GitHub first")
 	}
 	p.busy = true
 	p.saved.Repo, p.saved.Devices, p.saved.NoOwned = o.Repo, o.Devices, !o.Collection
 	_ = p.persist()
-	token := p.token()
+	token := p.saved.Token
 	p.set(func(s *PublishState) {
 		*s = PublishState{Available: s.Available, Phase: PhaseExporting, Message: "Collecting your stats"}
 	})
@@ -317,14 +264,13 @@ func (p *Publisher) run(token string, o PublishOptions) {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		p.busy = false
-		msg := err.Error()
 		if errors.Is(err, ErrSignedOut) {
-			// The token is no good any more: the next step is to sign in again.
-			p.saved.Token, p.saved.Login = "", ""
-			_ = p.persist()
-			msg = "GitHub no longer accepts the saved sign-in. Sign in again."
+			p.rejected()
+			return
 		}
-		p.set(func(s *PublishState) { *s = PublishState{Available: s.Available, Phase: PhaseError, Error: msg} })
+		p.set(func(s *PublishState) {
+			*s = PublishState{Available: s.Available, Phase: PhaseError, Error: err.Error()}
+		})
 	}
 	dir, err := os.MkdirTemp("", "tsum-stats-publish-")
 	if err != nil {
@@ -344,15 +290,6 @@ func (p *Publisher) run(token string, o PublishOptions) {
 	p.mu.Lock()
 	login := p.saved.Login
 	p.mu.Unlock()
-	if login == "" { // a token given on the command line
-		if login, err = gh.Login(ctx); err != nil {
-			fail(err)
-			return
-		}
-		p.mu.Lock()
-		p.saved.Login = login
-		p.mu.Unlock()
-	}
 	p.mu.Lock()
 	p.set(func(s *PublishState) { s.Phase, s.Message = PhaseUploading, "Connecting to GitHub" })
 	p.mu.Unlock()

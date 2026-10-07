@@ -26,10 +26,6 @@ const siteURL = "http://127.0.0.1:8090"
 // Set by tools/build.sh from VERSION.
 var version = "dev"
 
-// The GitHub OAuth app the Share dialog signs in through. It is public (a
-// device-flow app has no secret); the build script sets it, see docs/INTERNALS.md.
-var githubClientID = ""
-
 func main() {
 	// Double-clicked or started with no command: update if a newer one is out,
 	// then serve and open the site.
@@ -66,9 +62,6 @@ func main() {
 	flags.DurationVar(&cfg.ScanInterval, "scan-interval", 10*time.Second, "how often the import folders are rescanned")
 	flags.StringVar(&cfg.ADB, "adb", "", "adb used to import stats files from devices (default: adb on PATH or in the Android SDK)")
 	flags.StringVar(&cfg.DeviceStorage, "device-storage", stats.DefaultDeviceStorage, "the automation app's storage folder on the device")
-	flags.StringVar(&cfg.GitHubClientID, "github-client-id", githubClientID, "GitHub OAuth app for the Share dialog's sign-in (\"\" turns sign-in off)")
-	flags.StringVar(&cfg.GitHubToken, "github-token", os.Getenv("TSUM_GITHUB_TOKEN"),
-		"publish with this GitHub token instead of signing in (also TSUM_GITHUB_TOKEN); needs the public_repo scope")
 	flags.StringVar(&cfg.WebDir, "web-dir", "",
 		"serve files in this folder in place of the built-in site's; created with a README when missing")
 

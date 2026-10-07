@@ -7,7 +7,7 @@
   let dialog;
   let st = $state.raw(null);
   let repo = $state(''), devices = $state('anonymous'), collection = $state(true), agreed = $state(false);
-  let busy = $state(false), token = $state('');
+  let busy = $state(false), checking = $state(false), token = $state('');
   const day = new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'});
 
   /** Takes a new state from the server; the choices are only copied while the player is not editing them. */
@@ -17,9 +17,21 @@
     if (first || s.phase === 'done') { repo = s.repo; devices = s.devices; collection = s.collection; }
   }
 
+  /** Opens on what is saved, then asks GitHub whether the saved sign-in still works. */
   export async function open() {
     dialog.showModal();
     update(await api('publish'));
+    if (st.signedIn && !working) {
+      checking = true;
+      try {
+        const res = await fetch('/api/stats/publish/check', {method: 'POST'});
+        if (res.ok) update(await res.json());
+      } catch {
+        // GitHub or the app could not be reached: the form stays, and a publish says what is wrong.
+      } finally {
+        checking = false;
+      }
+    }
   }
   const close = () => dialog.close();
 
@@ -39,7 +51,6 @@
     }
   }
 
-  const signIn = () => post('login');
   async function useToken() {
     await post('token', {token});
     if (st?.signedIn) token = '';
@@ -68,62 +79,36 @@
     {#if !st}
       <p class="sub">Loading…</p>
 
-    {:else if st.phase === 'login'}
-      <p>On GitHub, enter this code to let Tsum Tsum Stats publish for you.</p>
-      <div class="addr-box">
-        <div class="addr">
-          <code>{st.userCode}</code>
-          <button type="button" class="btn" onclick={() => copy(st.userCode)}>Copy</button>
-        </div>
-      </div>
-      <div class="filter-actions">
-        <a class="btn primary" href={st.verificationUri} target="_blank" rel="noopener">Open GitHub</a>
-        <button type="button" class="btn" onclick={signOut} disabled={busy}>Cancel</button>
-      </div>
-      <p class="sub" style="margin:0">Waiting for you to approve it on GitHub… this page continues by itself.</p>
-
     {:else if !st.signedIn}
       <p>Publish your stats as a web page on GitHub Pages, at your own address, so you can share it or look at it anywhere. It is a copy: it does not update until you press Publish again.</p>
       {#if st.phase === 'error'}<p class="error">{st.error}</p>{/if}
-      {#if st.deviceFlow}
-        <p class="sub" style="margin:0">You need a free GitHub account. Tsum Tsum Stats never sees your password: GitHub asks you to type a short code.</p>
-        <div class="filter-actions">
-          <button type="button" class="btn primary" onclick={signIn} disabled={busy}>Sign in with GitHub</button>
-          <button type="button" class="btn" onclick={close}>Close</button>
-        </div>
-      {/if}
-      <details class="more" open={!st.deviceFlow}>
-        <summary>{st.deviceFlow ? 'Or use a token you make yourself' : 'Connect your GitHub account'}</summary>
-        <ol class="steps">
-          <li>Have a free GitHub account. <a href="https://github.com/signup" target="_blank" rel="noopener">Create one</a> if you do not.</li>
-          <li><a href="https://github.com/settings/tokens/new?scopes=public_repo&description=Tsum%20Tsum%20Stats" target="_blank" rel="noopener">Open GitHub's token page</a>
-            and sign in there if it asks. “public_repo” is already ticked. Set <b>Expiration</b> to what you like (a short one means making a new token later), then press <b>Generate token</b>.</li>
-          <li>Copy the token (it starts with <code>ghp_</code>) and paste it here. GitHub shows it once.</li>
-        </ol>
-        <label class="field"><span>Token</span>
-          <input type="password" bind:value={token} autocomplete="off" spellcheck="false" placeholder="ghp_…"></label>
-        <p class="sub" style="margin:6px 0">It lets Tsum Tsum Stats create and update public repositories in your account, nothing else. It is kept in this computer's Tsum Tsum Stats folder, never sent anywhere but GitHub. Sign out forgets it, and you can revoke it on GitHub any time.</p>
-        <div class="filter-actions">
-          <button type="button" class="btn primary" onclick={useToken} disabled={busy || !token.trim()}>Connect</button>
-          {#if !st.deviceFlow}<button type="button" class="btn" onclick={close}>Close</button>{/if}
-        </div>
-      </details>
-
-    {:else if st.phase === 'done'}
-      <p><b>Published.</b> {fmt(st.rounds)} rounds are on your page.</p>
-      <div class="addr-box">
-        <div class="addr"><a href={st.url} target="_blank" rel="noopener"><code>{st.url}</code></a>
-          <button type="button" class="btn" onclick={() => copy(st.url)}>Copy link</button></div>
-      </div>
-      <p class="callout" role="note"><b>Wait 1–2 minutes before opening it.</b> The first time, GitHub needs that long to switch your page on. Until then the link shows “404”: wait, then refresh.</p>
+      <p style="margin:0"><b>Connect your GitHub account</b></p>
+      <ol class="steps">
+        <li>Have a free GitHub account. <a href="https://github.com/signup" target="_blank" rel="noopener">Create one</a> if you do not.</li>
+        <li><a href="https://github.com/settings/tokens/new?scopes=public_repo&description=Tsum%20Tsum%20Stats" target="_blank" rel="noopener">Open GitHub's token page</a>
+          and sign in there if it asks. “public_repo” is already ticked. Set <b>Expiration</b> to what you like (a short one means making a new token later), then press <b>Generate token</b>.</li>
+        <li>Copy the token (it starts with <code>ghp_</code>) and paste it here. GitHub shows it once.</li>
+      </ol>
+      <label class="field"><span>Token</span>
+        <input type="password" bind:value={token} autocomplete="off" spellcheck="false" placeholder="ghp_…"></label>
+      <p class="sub" style="margin:6px 0">It lets Tsum Tsum Stats create and update public repositories in your account, nothing else. It is kept in this computer's Tsum Tsum Stats folder, never sent anywhere but GitHub. Sign out forgets it, and you can revoke it on GitHub any time.</p>
       <div class="filter-actions">
-        <a class="btn primary" href={st.url} target="_blank" rel="noopener">Open my page</a>
+        <button type="button" class="btn primary" onclick={useToken} disabled={busy || !token.trim()}>Connect</button>
         <button type="button" class="btn" onclick={close}>Close</button>
       </div>
 
     {:else}
       <p class="sub" style="margin:0">Signed in to GitHub as <b>{st.login || 'your account'}</b>.
         <button type="button" class="linkish" onclick={signOut} disabled={busy || working}>Sign out</button></p>
+
+      {#if st.phase === 'done'}
+        <p><b>Published.</b> {fmt(st.rounds)} rounds are on your page.</p>
+        <div class="addr-box">
+          <div class="addr"><a href={st.url} target="_blank" rel="noopener"><code>{st.url}</code></a>
+            <button type="button" class="btn" onclick={() => copy(st.url)}>Copy link</button></div>
+        </div>
+        <p class="callout" role="note">If the link shows “404”, GitHub is still switching your page on. Wait a minute or two, then refresh.</p>
+      {/if}
 
       <fieldset class="share-choices" disabled={working}>
         <label class="field"><span>Device names on the page</span>
@@ -145,11 +130,11 @@
 
       {#if st.phase === 'error'}<p class="error">{st.error}</p>{/if}
       {#if working}<p class="sub" style="margin:0" aria-live="polite">{st.message}…</p>{/if}
-      {#if st.url && !working}<p class="sub" style="margin:0">Last published {st.publishedAt ? day.format(new Date(st.publishedAt)) : ''}:
+      {#if st.url && !working && st.phase !== 'done'}<p class="sub" style="margin:0">Last published {st.publishedAt ? day.format(new Date(st.publishedAt)) : ''}:
         <a href={st.url} target="_blank" rel="noopener">{st.url}</a></p>{/if}
 
       <div class="filter-actions">
-        <button type="button" class="btn primary" onclick={publish} disabled={busy || working || !agreed || !repo}>
+        <button type="button" class="btn primary" onclick={publish} disabled={busy || working || checking || !agreed || !repo}>
           {working ? 'Publishing…' : st.url ? 'Update my page' : 'Publish'}</button>
         <button type="button" class="btn" onclick={close}>Close</button>
       </div>

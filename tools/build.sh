@@ -18,13 +18,11 @@
 #
 # Needs Go (GOTOOLCHAIN fetches the version go.mod asks for) and node with npm,
 # which builds the page (ui/) into web/ for the binary to embed. The version is
-# in VERSION. TSUM_GITHUB_CLIENT_ID is the GitHub OAuth app the Share dialog
-# signs in through; public, and empty turns the dialog's sign-in off.
+# in VERSION.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="${TSUM_STATS_REPO:-TsumTsumScripts/tsum-stats}"
-GITHUB_CLIENT_ID="${TSUM_GITHUB_CLIENT_ID:-}"
 TARGETS="darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64"
 
 PUBLISH=0
@@ -51,7 +49,6 @@ UPDATE_URL="https://github.com/$REPO/releases/latest/download/tsum-stats.txt"
 OUT="$root/build/$VERSION"
 
 ( cd "$root/ui" && npm ci && npm run build )
-[ -n "$GITHUB_CLIENT_ID" ] || echo "note: TSUM_GITHUB_CLIENT_ID is not set, so this build's Share dialog cannot sign in to GitHub"
 ( cd "$root" && go vet ./... && go test ./... )
 
 rm -rf "$OUT" && mkdir -p "$OUT"
@@ -69,7 +66,7 @@ for t in $TARGETS; do
   name="tsum-stats-$os-$arch$exe"
   echo "building $name"
   ( cd "$root" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-      go build -trimpath -ldflags "-s -w -X main.version=$VERSION -X main.githubClientID=$GITHUB_CLIENT_ID -X main.updateURL=$UPDATE_URL" -o "$OUT/$name" . )
+      go build -trimpath -ldflags "-s -w -X main.version=$VERSION -X main.updateURL=$UPDATE_URL" -o "$OUT/$name" . )
   {
     echo "url_${os}_${arch}=$BASE/$name"
     echo "sha256_${os}_${arch}=$(sha256_of "$OUT/$name")"

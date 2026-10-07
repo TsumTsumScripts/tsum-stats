@@ -86,21 +86,6 @@ The GitHub calls are in `internal/stats/github.go`; the sign-in, saved choices
 and background job are in `publish.go`. `publish_test.go` runs them against an
 in-memory fake of GitHub's API with git's real content hashing.
 
-**Optional setup for a build.** The code sign-in needs a GitHub OAuth app owned
-by the project (not per player; it has no secret). Without one the dialog
-offers only the token steps, which every build has.
-
-1. github.com › Settings › Developer settings › OAuth Apps › New OAuth App.
-   Name: *Tsum Tsum Stats*. Homepage and callback URL: anything.
-2. Tick **Enable Device Flow**, then register it.
-3. Build with its Client ID: `TSUM_GITHUB_CLIENT_ID=... tools/build.sh`
-   (or run with `--github-client-id`).
-
-To publish from a machine with no browser, or to try it without the app, give a
-personal access token with the `public_repo` scope instead:
-`TSUM_GITHUB_TOKEN=... tsum-stats serve` (or `--github-token`, which shows in
-the process list). The dialog then skips the sign-in.
-
 ## The catalog
 
 `ui/public/data/catalog.json` is generated from the Tsum script's portrait

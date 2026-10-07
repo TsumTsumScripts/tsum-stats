@@ -12,7 +12,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,9 +20,8 @@ import (
 	"time"
 )
 
-// A small GitHub client: signing in with the device flow (the player types a
-// short code on github.com, so no token is ever pasted), and publishing a
-// folder to a repo's Pages site as one commit. It uses only the REST API, so
+// A small GitHub client, for a token the player made on github.com: publishing
+// a folder to a repo's Pages site as one commit. It uses only the REST API, so
 // the player needs neither git nor the gh tool.
 
 const (
@@ -31,24 +29,20 @@ const (
 	// more: no private repos, no account settings.
 	githubScope = "public_repo"
 
-	// GitHubAPI and GitHubWeb are where the client talks; tests point them at a fake.
+	// GitHubAPI is where the client talks; tests point it at a fake.
 	GitHubAPI = "https://api.github.com"
-	GitHubWeb = "https://github.com"
 )
 
 // GitHub talks to one account with one token.
 type GitHub struct {
-	API, Web string // base URLs
-	ClientID string // of the OAuth app that asks the player to sign in
-	Token    string
-	HTTP     *http.Client
-	// PollEvery, when set, replaces the interval GitHub asks for between sign-in checks (tests).
-	PollEvery time.Duration
+	API   string // base URL
+	Token string
+	HTTP  *http.Client
 }
 
 // NewGitHub is a client for github.com.
-func NewGitHub(clientID, token string) *GitHub {
-	return &GitHub{API: GitHubAPI, Web: GitHubWeb, ClientID: clientID, Token: token, HTTP: &http.Client{Timeout: 60 * time.Second}}
+func NewGitHub(token string) *GitHub {
+	return &GitHub{API: GitHubAPI, Token: token, HTTP: &http.Client{Timeout: 60 * time.Second}}
 }
 
 // APIError is GitHub's answer to a request that was refused.
@@ -111,109 +105,11 @@ func (g *GitHub) do(ctx context.Context, method, endpoint string, body, out any)
 
 // ---- Signing in ----
 
-// DeviceCode is what the player is shown: type UserCode at VerificationURI.
-type DeviceCode struct {
-	DeviceCode      string `json:"device_code"`
-	UserCode        string `json:"user_code"`
-	VerificationURI string `json:"verification_uri"`
-	ExpiresIn       int    `json:"expires_in"`
-	Interval        int    `json:"interval"`
-}
-
-func (g *GitHub) form(ctx context.Context, endpoint string, values url.Values, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, g.Web+endpoint, strings.NewReader(values.Encode()))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", "tsum-stats")
-	res, err := g.HTTP.Do(req)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if res.StatusCode >= 300 {
-		return &APIError{Status: res.StatusCode, Message: http.StatusText(res.StatusCode)}
-	}
-	return json.Unmarshal(data, out)
-}
-
-// StartLogin asks GitHub for a code the player can type in.
-func (g *GitHub) StartLogin(ctx context.Context) (DeviceCode, error) {
-	var dc DeviceCode
-	if g.ClientID == "" {
-		return dc, errors.New("this build of Tsum Tsum Stats has no GitHub app to sign in with")
-	}
-	var res struct {
-		DeviceCode
-		Error string `json:"error"`
-		Desc  string `json:"error_description"`
-	}
-	err := g.form(ctx, "/login/device/code", url.Values{"client_id": {g.ClientID}, "scope": {githubScope}}, &res)
-	if err != nil {
-		return dc, err
-	}
-	if res.Error != "" {
-		return dc, fmt.Errorf("GitHub refused the sign-in: %s", cmpOr(res.Desc, res.Error))
-	}
-	if res.Interval < 1 {
-		res.Interval = 5
-	}
-	return res.DeviceCode, nil
-}
-
 func cmpOr(a, b string) string {
 	if a != "" {
 		return a
 	}
 	return b
-}
-
-// WaitForLogin polls until the player has approved the code, and returns the token.
-func (g *GitHub) WaitForLogin(ctx context.Context, dc DeviceCode) (string, error) {
-	interval := time.Duration(dc.Interval) * time.Second
-	if g.PollEvery > 0 {
-		interval = g.PollEvery
-	}
-	deadline := time.Now().Add(time.Duration(dc.ExpiresIn) * time.Second)
-	for {
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-time.After(interval):
-		}
-		if dc.ExpiresIn > 0 && time.Now().After(deadline) {
-			return "", errors.New("the code expired before it was entered; start again")
-		}
-		var res struct {
-			AccessToken string `json:"access_token"`
-			Error       string `json:"error"`
-		}
-		err := g.form(ctx, "/login/oauth/access_token", url.Values{
-			"client_id": {g.ClientID}, "device_code": {dc.DeviceCode},
-			"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"},
-		}, &res)
-		if err != nil {
-			return "", err
-		}
-		switch res.Error {
-		case "":
-			if res.AccessToken != "" {
-				return res.AccessToken, nil
-			}
-		case "authorization_pending":
-		case "slow_down":
-			interval += 5 * time.Second
-		case "expired_token":
-			return "", errors.New("the code expired before it was entered; start again")
-		case "access_denied":
-			return "", errors.New("the sign-in was cancelled on GitHub")
-		default:
-			return "", fmt.Errorf("GitHub refused the sign-in: %s", res.Error)
-		}
-	}
 }
 
 // Login is the signed-in account's name.
