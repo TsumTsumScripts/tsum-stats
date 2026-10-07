@@ -27,6 +27,9 @@ type Filter struct {
 	Complete bool
 	// FinalCoins counts coins after the coin bonus; the default is base coins.
 	FinalCoins bool
+	// Net subtracts what the round's boost items cost from its coins. A round
+	// recorded before items were has no net coins.
+	Net bool
 	// Medals makes medals the primary stat instead of coins, and keeps only
 	// rounds that earned medals.
 	Medals bool
@@ -57,18 +60,20 @@ func (f Filter) coin() string {
 	if f.Medals {
 		return "medals"
 	}
-	if f.FinalCoins {
-		return "final_coins"
-	}
-	return "base_coins"
+	return f.coins()
 }
 
-// coins is the coin range's column: base or final coins, even in Medals mode.
+// coins is the coin range's column: base or final coins, net when asked, even
+// in Medals mode.
 func (f Filter) coins() string {
+	c := "base_coins"
 	if f.FinalCoins {
-		return "final_coins"
+		c = "final_coins"
 	}
-	return "base_coins"
+	if f.Net {
+		return "(" + c + " - " + costSQL + ")"
+	}
+	return c
 }
 
 // medalTsumsSQL is every Tsum that has earned medals in any round. Its rounds
@@ -83,7 +88,8 @@ var sqlTimeRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
 
 // ParseFilter reads tsum and device (comma lists), build, from, to, the outlier
 // ranges (min/max Coins, Score, Medals), incomplete ("1" keeps rounds with an
-// unread figure) and coins (the primary stat: "final", "medals", or base coins by default).
+// unread figure), coins (the primary stat: "final", "medals", or base coins by
+// default) and net ("1" subtracts the items' cost from coins).
 // from/to are UTC in either the sqlTime or the ISO form; the page sends the
 // user's local day bounds already converted.
 func ParseFilter(q url.Values) Filter {
@@ -113,6 +119,7 @@ func ParseFilter(q url.Values) Filter {
 	f.Complete = q.Get("incomplete") != "1"
 	f.FinalCoins = q.Get("coins") == "final"
 	f.Medals = q.Get("coins") == "medals"
+	f.Net = q.Get("net") == "1"
 	return f
 }
 

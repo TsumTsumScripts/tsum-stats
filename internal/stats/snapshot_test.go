@@ -248,6 +248,9 @@ func TestSnapshotParity(t *testing.T) {
 		c := testCase{Name: "rounds " + name, Route: "rounds", Params: params,
 			Expected: roundtrip(map[string]any{"items": rows, "page": max(page, 1)}), TieProne: tieProne,
 			SortColumn: strings.TrimPrefix(p["sort"], "-"), CoinColumn: map[bool]string{true: "finalCoins", false: "baseCoins"}[p["coins"] == "final"]}
+		if p["net"] == "1" {
+			c.CoinColumn = "net:" + c.CoinColumn
+		}
 		cases = append(cases, c)
 	}
 
@@ -277,6 +280,11 @@ func TestSnapshotParity(t *testing.T) {
 	summary("nothing matches", map[string]string{"from": "2030-01-01T00:00:00Z"})
 	summary("unknown Tsum", map[string]string{"tsum": "nope"})
 	summary("junk numbers", map[string]string{"minCoins": "abc", "minScore": "12.7"})
+	summary("net", map[string]string{"net": "1"})
+	summary("net final", map[string]string{"net": "1", "coins": "final", "tz": "-300"})
+	summary("net, incomplete kept", map[string]string{"net": "1", "incomplete": "1"})
+	summary("net range", map[string]string{"net": "1", "minCoins": "-1000", "maxCoins": "4000"})
+	summary("net range in medal mode", map[string]string{"net": "1", "maxCoins": "3000", "coins": "medals"})
 	summary("everything filtered", map[string]string{"tsum": "elsa", "build": "global", "minCoins": "100", "coins": "final", "from": "2026-09-01T00:00:00Z", "tz": "-480"})
 
 	roundsCase("newest first", map[string]string{}, false)
@@ -291,6 +299,9 @@ func TestSnapshotParity(t *testing.T) {
 	roundsCase("coins a second", map[string]string{"sort": "-coinsPerSec", "perPage": "25"}, true)
 	roundsCase("coins a second, final", map[string]string{"sort": "coinsPerSec", "perPage": "25", "coins": "final"}, true)
 	roundsCase("medals a second", map[string]string{"sort": "-medalsPerSec", "perPage": "25", "coins": "medals"}, true)
+	roundsCase("coins a second, net", map[string]string{"sort": "-coinsPerSec", "perPage": "25", "net": "1"}, true)
+	roundsCase("coins a second, net final", map[string]string{"sort": "coinsPerSec", "perPage": "25", "coins": "final", "net": "1"}, true)
+	roundsCase("net range", map[string]string{"net": "1", "minCoins": "0", "sort": "-playedAt"}, false)
 	roundsCase("unknown sort", map[string]string{"sort": "bogus"}, false)
 	roundsCase("largest page", map[string]string{"perPage": "200"}, false)
 	roundsCase("too large a page size", map[string]string{"perPage": "500", "page": "1"}, false)

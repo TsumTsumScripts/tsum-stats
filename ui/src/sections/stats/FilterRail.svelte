@@ -138,7 +138,7 @@
                 {/each}
               {/each}
             </div>
-            <p class="sub outlier-note">Rounds outside a range are left out. Coins are {filter.coins === 'final' ? 'final' : 'base'} coins;
+            <p class="sub outlier-note">Rounds outside a range are left out. Coins are {filter.net === '1' && filter.coins !== 'medals' ? 'net ' : ''}{filter.coins === 'final' ? 'final' : 'base'} coins;
               the medal range only judges Tsums that earn medals.</p>
             <label class="outlier-check"><input type="checkbox" checked={filter.incomplete === '1'}
               onchange={e => set({incomplete: e.target.checked ? '1' : ''})}> Include incomplete rounds</label>
@@ -154,6 +154,10 @@
           <div class="field" title="Base coins are before the coin bonus; final coins are what the round paid; medals counts only rounds that earned medals">Primary stat
             <Seg label="Primary stat" value={filter.coins} onpick={v => set({coins: v})}
               options={[['', 'Base', 'coin'], ['final', 'Final', 'coin'], ['medals', '', 'medal', 'Medals']]} />
+            {#if filter.coins !== 'medals'}
+              <label class="outlier-check" title="Subtract what each round's boost items cost. Rounds recorded before items were have no net coins.">
+                <input type="checkbox" checked={filter.net === '1'} onchange={e => set({net: e.target.checked ? '1' : ''})}> Less item costs</label>
+            {/if}
           </div>
         </div>
       </div>

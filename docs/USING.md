@@ -88,6 +88,14 @@ earned medals (`medals > 0`) and relabels the page. Coins per hour is the same
 rate × 3600. The spread figures (quartiles, median, 90th percentile) are
 nearest-rank values, so each is a real round's coins.
 
+**Less item costs** under the switch (`net=1`) subtracts what each round's
+boost items cost from its coins, base or final, in every figure, chart, the
+coin range and the Rounds table's rate and *Net coins* column: +Score, +Coin
+and +Exp 500, +Time 1,000, +Combo 1,200, +Bubble 1,500 and 5>4 1,800
+(`itemBits` in `summary.go`). A round recorded before items were has no net
+coins, so it drops out of the coin figures like an unread one. Medals mode
+hides the box and ignores it.
+
 **Incomplete rounds are left out** of every figure and both tables: a round
 with no Tsum, or no score, base coins, final coins or time. Medals count too,
 but only for a medal Tsum: one that has earned medals in any round

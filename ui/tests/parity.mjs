@@ -4,7 +4,7 @@
 // DIR/data/snapshot/ (the exported files). Exits 1 on any difference.
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {createEngine} from '../src/lib/snapshot/engine.js';
+import {createEngine, itemCost} from '../src/lib/snapshot/engine.js';
 
 const dir = process.argv[2];
 const cases = JSON.parse(readFileSync(join(dir, 'cases.json'), 'utf8'));
@@ -47,6 +47,13 @@ function diff(a, b, path = '') {
   return out;
 }
 
+// A row's coins in the case's column; "net:baseCoins" is base coins less the items' cost.
+function coinsOf(r, column) {
+  if (!column.startsWith('net:')) return r[column];
+  const v = r[column.slice(4)], cost = itemCost(r.items);
+  return v === null || cost === null ? null : v - cost;
+}
+
 let failed = 0;
 for (const c of cases) {
   let got = await engine.call(c.route, c.params);
@@ -63,7 +70,7 @@ for (const c of cases) {
       let r0;
       const key = r => {
         r0 = r;
-        if (col === 'coinsPerSec') return perSec(r[c.coinColumn]);
+        if (col === 'coinsPerSec') return perSec(coinsOf(r, c.coinColumn));
         if (col === 'medalsPerSec') return perSec(r.medals);
         return r[col];
       };

@@ -80,11 +80,17 @@ export function tsumColor(catalog, id) {
   return `oklch(0.61 0.13 ${h % 360})`;
 }
 
-// Boost items, as a bitmask; the server's itemBits has the same list.
+// Boost items, as a bitmask, with what each costs; the server's itemBits has the same list.
 export const ITEMS = [
-  {bit: 1, label: '+Coin'}, {bit: 2, label: '5>4'}, {bit: 4, label: '+Time'}, {bit: 8, label: '+Exp'},
-  {bit: 16, label: '+Score'}, {bit: 32, label: '+Bubble'}, {bit: 64, label: '+Combo'},
+  {bit: 1, label: '+Coin', cost: 500}, {bit: 2, label: '5>4', cost: 1800}, {bit: 4, label: '+Time', cost: 1000},
+  {bit: 8, label: '+Exp', cost: 500}, {bit: 16, label: '+Score', cost: 500}, {bit: 32, label: '+Bubble', cost: 1500},
+  {bit: 64, label: '+Combo', cost: 1200},
 ];
+/** What a round's items cost, or null for rounds recorded before items were. */
+export function itemsCost(mask) {
+  if (mask === null || mask === undefined || mask < 0) return null;
+  return ITEMS.reduce((sum, i) => (mask & i.bit ? sum + i.cost : sum), 0);
+}
 /** "+Coin · 5>4", "No items", or "Unknown" for rounds recorded before items were. */
 export function itemsLabel(mask) {
   if (mask === null || mask === undefined || mask < 0) return 'Unknown';

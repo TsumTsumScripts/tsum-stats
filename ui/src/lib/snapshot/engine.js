@@ -10,12 +10,25 @@ const MAX_PER_PAGE = 200;
 
 // ---- Reading the files ----
 
+// What each boost item costs, by its bit (summary.go: itemBits).
+const ITEM_COSTS = [[1, 500], [2, 1800], [4, 1000], [8, 500], [16, 500], [32, 1500], [64, 1200]];
+/** What a round's items cost; null when it predates the items. */
+export function itemCost(mask) {
+  if (mask === null || mask === undefined || mask < 0) return null;
+  return ITEM_COSTS.reduce((sum, [bit, cost]) => (mask & bit ? sum + cost : sum), 0);
+}
+
 /** Turns a month file's columns into rows' worth of typed columns. */
 function decodeMonth(m) {
   const at = new Float64Array(m.n);
   let t = 0;
   for (let i = 0; i < m.n; i++) { t += m.at[i]; at[i] = t; }
-  return {...m, at};
+  // Coins less the items' cost (queries.go: Filter.Net).
+  const net = coins => coins.map((c, i) => {
+    const cost = itemCost(m.items[i]);
+    return c === null || cost === null ? null : c - cost;
+  });
+  return {...m, at, netBaseCoins: net(m.baseCoins), netFinalCoins: net(m.finalCoins)};
 }
 
 const two = n => String(n).padStart(2, '0');
@@ -51,7 +64,7 @@ function intCell(s) {
 
 /** The query parameters as the server reads them. */
 export function parseFilter(q) {
-  const f = {tsums: [], devices: [], build: '', from: null, to: null, finalCoins: false, medals: false};
+  const f = {tsums: [], devices: [], build: '', from: null, to: null, finalCoins: false, medals: false, net: false};
   f.tsums = String(q.tsum ?? '').split(',').map(t => t.trim()).filter(Boolean);
   f.devices = String(q.device ?? '').split(',').map(d => d.trim()).filter(Boolean);
   if (q.build === 'global' || q.build === 'jp') f.build = q.build;
@@ -61,13 +74,14 @@ export function parseFilter(q) {
   f.complete = q.incomplete !== '1';
   f.finalCoins = q.coins === 'final';
   f.medals = q.coins === 'medals';
+  f.net = q.net === '1';
   return f;
 }
 
+/** The coin range's column: base or final coins, net when asked, even in Medals mode. */
+const rangeCol = f => (f.net ? (f.finalCoins ? 'netFinalCoins' : 'netBaseCoins') : f.finalCoins ? 'finalCoins' : 'baseCoins');
 /** The primary stat's column: what the figures and the rate use. */
-const coinCol = f => (f.medals ? 'medals' : f.finalCoins ? 'finalCoins' : 'baseCoins');
-/** The coin range's column: base or final coins, even in Medals mode. */
-const rangeCol = f => (f.finalCoins ? 'finalCoins' : 'baseCoins');
+const coinCol = f => (f.medals ? 'medals' : rangeCol(f));
 /** v is within [lo, hi]; a null bound is open, a null v is outside a set one. */
 const within = (v, lo, hi) => (lo === null || (v !== null && v >= lo)) && (hi === null || (v !== null && v <= hi));
 

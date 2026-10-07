@@ -159,24 +159,34 @@ func coinStats(c string) string {
 		AVG(` + c + ` * ` + c + ` * 1.0) - AVG(` + c + ` * 1.0) * AVG(` + c + ` * 1.0) AS var_coins, ` + rateExpr(c) + ` AS coins_per_sec`
 }
 
-// itemBits are the boost items, in the settings' names. The page has the same list.
+// itemBits are the boost items, in the settings' names, with what each costs
+// in coins. The page and the snapshot engine have the same list.
 var itemBits = []struct {
-	key string
-	bit int
+	key  string
+	bit  int
+	cost int
 }{
-	{"bonusCoin", 1}, {"bonus5to4", 2}, {"bonusTime", 4}, {"bonusExp", 8},
-	{"bonusScore", 16}, {"bonusBubble", 32}, {"bonusCombo", 64},
+	{"bonusCoin", 1, 500}, {"bonus5to4", 2, 1800}, {"bonusTime", 4, 1000}, {"bonusExp", 8, 500},
+	{"bonusScore", 16, 500}, {"bonusBubble", 32, 1500}, {"bonusCombo", 64, 1200},
 }
 
+// itemsKnownSQL is true when a round's settings record its items.
+const itemsKnownSQL = "json_valid(settings) AND json_type(settings, '$.bonusCoin') IS NOT NULL"
+
 // itemsSQL is a round's item bitmask, or -1 when its settings predate the items.
-var itemsSQL = func() string {
+var itemsSQL = itemSum(func(bit, _ int) int { return bit }, "-1")
+
+// costSQL is what a round's items cost, or NULL when its settings predate the items.
+var costSQL = "(" + itemSum(func(_, cost int) int { return cost }, "NULL") + ")"
+
+// itemSum adds up v of each item a round used, or is unknown when it predates the items.
+func itemSum(v func(bit, cost int) int, unknown string) string {
 	parts := make([]string, len(itemBits))
 	for i, b := range itemBits {
-		parts[i] = "(CASE WHEN json_extract(settings, '$." + b.key + "') THEN " + strconv.Itoa(b.bit) + " ELSE 0 END)"
+		parts[i] = "(CASE WHEN json_extract(settings, '$." + b.key + "') THEN " + strconv.Itoa(v(b.bit, b.cost)) + " ELSE 0 END)"
 	}
-	return "CASE WHEN json_valid(settings) AND json_type(settings, '$.bonusCoin') IS NOT NULL THEN " +
-		strings.Join(parts, " + ") + " ELSE -1 END"
-}()
+	return "CASE WHEN " + itemsKnownSQL + " THEN " + strings.Join(parts, " + ") + " ELSE " + unknown + " END"
+}
 
 // itemsOf is itemsSQL for one round's settings JSON.
 func itemsOf(settings string) *int {
@@ -355,7 +365,7 @@ func coinHistogram(db dbx.Builder, f Filter, t Totals) (CoinHistogram, error) {
 		hi = min(hi, *t.Q3+3*(*t.Q3-*t.Q1)/2)
 	}
 	h.Width = niceStep(float64(hi-lo) / 24)
-	limit := (hi/h.Width + 1) * h.Width
+	limit := (floorDiv(hi, h.Width) + 1) * h.Width
 	if *t.MaxCoins >= limit {
 		h.Cap = &limit
 	}
@@ -363,9 +373,19 @@ func coinHistogram(db dbx.Builder, f Filter, t Totals) (CoinHistogram, error) {
 	where, p := f.whereAnd(c + " IS NOT NULL")
 	p["w"] = h.Width
 	p["cap"] = limit
-	err := db.NewQuery(`SELECT MIN((` + c + ` / {:w}) * {:w}, {:cap}) AS bucket, tsum, COUNT(*) AS rounds
-		FROM ts_rounds` + where + ` GROUP BY bucket, tsum ORDER BY bucket`).Bind(p).All(&h.Bins)
+	// v minus its floored remainder, so net coins below zero bucket downwards too.
+	err := db.NewQuery(`SELECT MIN(v - ((v % {:w}) + {:w}) % {:w}, {:cap}) AS bucket, tsum, COUNT(*) AS rounds
+		FROM (SELECT ` + c + ` AS v, tsum FROM ts_rounds` + where + `) GROUP BY bucket, tsum ORDER BY bucket`).Bind(p).All(&h.Bins)
 	return h, err
+}
+
+// floorDiv is a / b rounded down, for b > 0.
+func floorDiv(a, b int64) int64 {
+	q := a / b
+	if a%b < 0 {
+		q--
+	}
+	return q
 }
 
 // niceStep rounds up to 1, 2 or 5 times a power of ten, and at least 1.

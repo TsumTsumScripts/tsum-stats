@@ -16,7 +16,7 @@
   import {drawCompare, drawDaily, drawEfficiency, drawHistogram, drawHours, drawItems, drawShare} from '../lib/charts.js';
   import {expand, shared} from '../lib/ui.svelte.js';
   import {
-    api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref, tsumColor, tsumName,
+    api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsCost, itemsLabel, loadPref, pct, savePref, tsumColor, tsumName,
   } from '../lib/util.js';
   import FilterRail from './stats/FilterRail.svelte';
   import FocusBar from './stats/FocusBar.svelte';
@@ -28,12 +28,13 @@
 
   // coins is the primary stat: '' base coins (before the coin bonus), 'final' final
   // coins, 'medals' medals (the server then keeps only rounds that earned medals).
+  // net '1' subtracts what the round's boost items cost from its coins (not from medals).
   // tsum is a comma list: one Tsum focuses on it, several compare them head to head.
   // device is a comma list of device names; empty is every device.
   // days is the time range: '7' or '30' (rolling, up to today), 'all', or '' for the from/to dates.
   // min/max Score, Coins and Medals are the outlier ranges (OUTLIERS); incomplete '1' keeps rounds with an unread figure.
   const blank = () => ({tsum: '', device: '', days: '7', from: '', to: '', ...Object.fromEntries(OUTLIER_KEYS.map(k => [k, ''])),
-    incomplete: '', build: '', coins: '', sort: '-playedAt', page: 1, perPage: 50});
+    incomplete: '', build: '', coins: '', net: '', sort: '-playedAt', page: 1, perPage: 50});
   /** The outlier ranges: a stat, its link keys and the input step. */
   const OUTLIERS = [['score', 'Score', 'minScore', 'maxScore', 1000], ['coins', 'Coins', 'minCoins', 'maxCoins', 100], ['medals', 'Medals', 'minMedals', 'maxMedals', 10]];
   const OUTLIER_KEYS = OUTLIERS.flatMap(([, , lo, hi]) => [lo, hi]);
@@ -48,7 +49,7 @@
   }
   // Ctrl, ⌘ or Shift with a click adds a Tsum to the comparison instead of focusing on it.
   const adds = e => Boolean(e && (e.ctrlKey || e.metaKey || e.shiftKey));
-  const basisName = coins => ({final: 'final coins', medals: 'medals'}[coins] || 'base coins');
+  const basisName = (coins, net) => (coins === 'medals' ? 'medals' : `${net ? 'net ' : ''}${coins === 'final' ? 'final' : 'base'} coins`);
 
   // Local calendar days → UTC instants, so "From Sep 3" means the viewer's Sep 3.
   const localDayStart = day => (day ? new Date(`${day}T00:00:00`).toISOString() : '');
@@ -99,7 +100,9 @@
   const pickedDevices = $derived(listOf(filter.device));
   const unit = $derived(filter.coins === 'medals' ? 'medals' : 'coins');
   const U = $derived(cap(unit));
-  const basis = $derived(basisName(filter.coins));
+  // Item costs come off coins only; in Medals mode the switch waits, unsent.
+  const net = $derived(filter.coins !== 'medals' && filter.net === '1');
+  const basis = $derived(basisName(filter.coins, net));
   const coinMode = () => filter.coins !== 'medals';
   const canBack = $derived.by(() => {
     navTick;
@@ -126,7 +129,7 @@
   });
 
   const filterParams = () => ({
-    tsum: filter.tsum, device: filter.device, build: filter.build, coins: filter.coins, incomplete: filter.incomplete,
+    tsum: filter.tsum, device: filter.device, build: filter.build, coins: filter.coins, net: net ? '1' : '', incomplete: filter.incomplete,
     ...Object.fromEntries(OUTLIER_KEYS.map(k => [k, filter[k]])),
     from: localDayStart(range.from), to: localDayEnd(range.to),
   });
@@ -157,9 +160,10 @@
     else if (filter.days !== 'all' && (filter.from || filter.to)) {
       out.push({label: `${filter.from || '…'} → ${filter.to || 'today'}`, clear: () => set({days: 'all', from: '', to: ''})});
     }
-    if (filter.coins) out.push({label: cap(basis), clear: () => set({coins: ''})});
+    if (filter.coins) out.push({label: cap(basisName(filter.coins)), clear: () => set({coins: ''})});
+    if (net) out.push({label: 'Less item costs', clear: () => set({net: ''})});
     // The coin range is base or final coins, even in Medals mode.
-    const rangeName = {coins: filter.coins === 'final' ? 'final coins' : 'base coins', score: 'score', medals: 'medals'};
+    const rangeName = {coins: basisName(filter.coins === 'final' ? 'final' : '', net), score: 'score', medals: 'medals'};
     for (const [stat, , lo, hi] of OUTLIERS) {
       const a = filter[lo], b = filter[hi];
       if (a === '' && b === '') continue;
@@ -305,14 +309,22 @@
     medal('p90Medals', 'Medals P90', m => m.p90Coins, fmt, {hidden: true}),
   ];
 
+  /** A round's coins in the Primary stat, less its items' cost when net; null when unknown. */
+  function netCoins(r) {
+    const c = filter.coins === 'final' ? r.finalCoins : r.baseCoins;
+    const cost = net ? itemsCost(r.items) : 0;
+    return c === null || cost === null ? null : c - cost;
+  }
+
   const roundColumns = [
     {id: 'playedAt', header: 'When', accessorKey: 'playedAt', cell: r => fmtWhen(r.playedAt), enableHiding: false, sortDescFirst: true},
     {id: 'tsum', header: 'Tsum', accessorKey: 'tsum', snippet: roundTsumCell, sortDescFirst: false},
     {id: 'build', header: 'Game', accessorKey: 'build', snippet: buildCell, enableSorting: false},
     num('baseCoins', 'Base coins', r => r.baseCoins, fmt, {meta: {cls: 'coin'}}),
     num('finalCoins', 'Final coins', r => r.finalCoins, fmt, {meta: {cls: 'coin'}}),
+    num('netCoins', () => cap(basis), r => netCoins(r), fmt, {enableSorting: false, meta: {cls: 'coin', show: () => net}}),
     num('coinsPerSec', () => `${U}/s`, r => {
-      const c = {final: r.finalCoins, medals: r.medals}[filter.coins] ?? (filter.coins ? null : r.baseCoins);
+      const c = filter.coins === 'medals' ? r.medals : netCoins(r);
       return c !== null && r.durationSeconds ? c / r.durationSeconds : null;
     }, fmtRate, {meta: {cls: 'coin', title: 'Per second, of the Primary stat'}}),
     {id: 'items', header: 'Items', accessorKey: 'items', cell: r => itemsLabel(r.items), enableSorting: false, meta: {cls: 'dim'}},
@@ -396,7 +408,7 @@
 
 <section id="stats" class="stats-layout" class:loading {hidden}>
   <FilterRail {filter} {range} {chips} outliers={OUTLIERS} {picked} {played} {playedDevices} {pickedDevices} comparing={picked.length > 1}
-    {set} reset={() => set({...blank(), coins: filter.coins})} {addTsum} {dropTsum} {matchTsum} {nameOf} {colorOf} bind:open={railOpen} />
+    {set} reset={() => set({...blank(), coins: filter.coins, net: filter.net})} {addTsum} {dropTsum} {matchTsum} {nameOf} {colorOf} bind:open={railOpen} />
 
   <div class="stack stats-main">
     {#if picked.length}
