@@ -61,6 +61,7 @@ body.felt-body::after {
   --fill: var(--surface-fill); --edge: var(--surface-edge2); --thread: var(--surface-thread2);
   --chip: var(--surface-chip); --ink: var(--surface-ink);
   --r: 32px; --inset: 9px; --stitch: 3px; --lift: 6px; --tilt: 0deg;
+  --r1: var(--r); --r2: var(--r); --r3: var(--r); --r4: var(--r);
   position: relative;
   border-radius: var(--r);
   color: var(--ink);
@@ -75,7 +76,12 @@ body.felt-body::after {
 .patch::before {
   content: ''; position: absolute; inset: var(--inset);
   border: var(--stitch) dashed var(--thread);
-  border-radius: max(0px, calc(var(--r) - var(--inset)));
+  /* Per corner, so a four-value --r (set as --r1..--r4) still curves the stitch. */
+  border-radius:
+    max(0px, calc(var(--r1, var(--r)) - var(--inset)))
+    max(0px, calc(var(--r2, var(--r)) - var(--inset)))
+    max(0px, calc(var(--r3, var(--r)) - var(--inset)))
+    max(0px, calc(var(--r4, var(--r)) - var(--inset)));
   pointer-events: none;
 }
 .patch > * { position: relative; }
@@ -121,7 +127,7 @@ body.felt-body::after {
 .felt-sticker { position: absolute; pointer-events: none; }
 .felt-pagehead { position: relative; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; padding-right: 130px; }
 .felt-pagehead h1 { font-size: clamp(38px, 5.6vw, 58px); }
-.felt-pagehead__accent { --r: 22px 40px 26px 44px; --inset: 3px; --tilt: -2deg; --lift: 4px; display: inline-block; padding: 2px 16px 8px; }
+.felt-pagehead__accent { --r: 22px 40px 26px 44px; --r1: 22px; --r2: 40px; --r3: 26px; --r4: 44px; --inset: 3px; --tilt: -2deg; --lift: 4px; display: inline-block; padding: 2px 16px 8px; }
 .felt-pagehead__body { font-size: 18px; line-height: 1.6; color: var(--ground-ink-soft); max-width: 780px; }
 
 @media (prefers-reduced-motion: reduce) {
