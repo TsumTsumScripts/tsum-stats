@@ -11,6 +11,7 @@ const state = {
   current: '', // the chosen serial
   busy: false, // an action is running; one at a time, as in the terminal menu
   follow: null, // AbortController of the live service log
+  dots: {}, // serial -> badge colour
 };
 
 // ------------------------------------------------------------------- the API
@@ -83,6 +84,44 @@ function describe(d) {
   }
 }
 
+// How a device is told apart. Emulators left on their defaults all report the
+// same model, so the port (or USB serial) is the name, and a known port range
+// names the emulator family: MuMu 16384 + 32i, Nox 62001 then 62025 + i,
+// MEmu 21503 + 10i. Ambiguous ports (5555, used by several) get no family.
+function identity(d) {
+  const model = d.model && d.model !== '-' ? d.model : '';
+  let m = /^(?:127\.0\.0\.1|localhost):(\d+)$/.exec(d.serial);
+  if (m) {
+    const port = Number(m[1]);
+    let family = 'Emulator';
+    if (port >= 16384 && port < 16384 + 32 * 16 && (port - 16384) % 32 === 0) family = `MuMu #${(port - 16384) / 32 + 1}`;
+    else if (port === 7555) family = 'MuMu';
+    else if (port === 62001) family = 'Nox #1';
+    else if (port >= 62025 && port < 62040) family = `Nox #${port - 62023}`;
+    else if (port >= 21503 && port < 21503 + 10 * 16 && (port - 21503) % 10 === 0) family = `MEmu #${(port - 21503) / 10 + 1}`;
+    return {name: family, badge: `port ${port}`, model};
+  }
+  if ((m = /^emulator-(\d+)$/.exec(d.serial))) return {name: 'Emulator', badge: `port ${Number(m[1]) + 1}`, model};
+  if ((m = /^([\d.]+):(\d+)$/.exec(d.serial))) return {name: 'Wi-Fi device', badge: `${m[1]}:${m[2]}`, model};
+  return {name: model || 'USB phone', badge: `USB ${d.serial.slice(-6)}`, model: model ? 'USB' : ''};
+}
+
+// "MuMu #1 (port 16384)", for log lines and dialogs.
+const label = d => { const id = identity(d); return `${id.name} (${id.badge})`; };
+
+// One colour per device, kept for the session, on every badge for it.
+const BADGE_DOTS = ['#ffb454', '#9db4ff', '#ff8fab', '#5cc9a7', '#c9a3ff', '#7fd6e8'];
+const dotOf = serial => {
+  if (!(serial in state.dots)) state.dots[serial] = BADGE_DOTS[Object.keys(state.dots).length % BADGE_DOTS.length];
+  return state.dots[serial];
+};
+
+function badge(d, big = false) {
+  const b = el('span', {class: 'port-badge' + (big ? ' port-badge--big' : ''), title: d.serial}, identity(d).badge);
+  b.style.setProperty('--badge-dot', dotOf(d.serial));
+  return b;
+}
+
 const svcClass = d => ({running: 'svc--ok', stopped: 'svc--warn', busy: 'svc--busy'})[d.service] || (d.busy ? 'svc--busy' : 'svc--bad');
 const usable = d => d.state === 'device';
 const current = () => state.devices.find(d => d.serial === state.current);
@@ -139,15 +178,21 @@ function renderDevices(scanning = false) {
       el('div', {class: 'row'}, el('button', {class: 'patch patch--paper fbtn fbtn--sm', type: 'button', onclick: restartADB}, 'Restart adb'))));
     return;
   }
-  list.replaceChildren(...state.devices.map(d => el('button', {
-    class: 'patch patch--surface device', type: 'button', 'aria-pressed': String(d.serial === state.current),
-    onclick: () => choose(d.serial),
-  },
-  el('span', {class: 'device__model'}, d.model && d.model !== '-' ? d.model : d.serial),
-  el('span', {class: 'device__serial'}, d.serial),
-  el('span', {class: 'device__meta'},
-    el('span', {class: 'svc ' + svcClass(d)}, d.busy ? 'busy' : d.service),
-    d.abi && d.abi !== '-' ? el('span', {class: 'abi'}, d.abi) : null))));
+  list.replaceChildren(...state.devices.map(d => {
+    const id = identity(d);
+    const picked = d.serial === state.current;
+    return el('button', {
+      class: 'patch patch--surface device', type: 'button', 'aria-pressed': String(picked),
+      'aria-label': `${label(d)}${id.model ? ', ' + id.model : ''}, service ${d.service}${picked ? ', selected' : ''}`,
+      onclick: () => choose(d.serial),
+    },
+    el('span', {class: 'device__top'}, el('span', {class: 'device__model'}, id.name), el('span', {class: 'device__picked'}, '✓ Selected')),
+    el('span', {class: 'device__port'}, badge(d)),
+    el('span', {class: 'device__serial'}, [id.model, d.serial].filter(Boolean).join('  ·  ')),
+    el('span', {class: 'device__meta'},
+      el('span', {class: 'svc ' + svcClass(d)}, d.busy ? 'busy' : d.service),
+      d.abi && d.abi !== '-' ? el('span', {class: 'abi'}, d.abi) : null));
+  }));
 }
 
 async function renderDevice() {
@@ -155,8 +200,12 @@ async function renderDevice() {
   $('#device').hidden = !d;
   if (!d) return;
   const {tone, next} = describe(d);
-  $('#device-title').textContent = d.model && d.model !== '-' ? d.model : d.serial;
-  $('#device-sub').textContent = [d.serial, d.abi !== '-' ? d.abi : ''].filter(Boolean).join('  ·  ');
+  const id = identity(d);
+  $('#device-title').textContent = id.name;
+  $('#device-sub').textContent = [id.model, d.serial, d.abi !== '-' ? d.abi : ''].filter(Boolean).join('  ·  ');
+  $('#device-badge').replaceChildren(badge(d, true));
+  $$('[data-device-badge]').forEach(n => n.replaceChildren(badge(d)));
+  $$('[data-device-name]').forEach(n => { n.textContent = id.name; });
   $('#status-card').dataset.tone = tone;
   $('#status-text').textContent = d.busy ? 'busy' : d.service;
   $('#next-step').textContent = next;
@@ -229,7 +278,7 @@ async function runAction(action, options = {}) {
     $('#service-log').hidden = false;
     $('#service-log').textContent = '';
   } else {
-    startActivity(`${LABELS[action] || action} on ${d.serial}`);
+    startActivity(`${LABELS[action] || action} on ${label(d)}`);
   }
   try {
     const resp = await post('action', {serial: d.serial, action, options});
@@ -293,7 +342,7 @@ async function confirmDelete(kind) {
     showVerdict({ok: false, msg: `No ${what} on this device: nothing matched under ${state.status.storage}.`});
     return;
   }
-  $('#confirm-title').textContent = `Delete ${files.length} file(s) from ${d.model !== '-' ? d.model : d.serial}?`;
+  $('#confirm-title').textContent = `Delete ${files.length} file(s) from ${label(d)}?`;
   $('#confirm-body').textContent = kind === 'script'
     ? 'The service holds script.log open, so it is stopped for the delete and started again afterwards. Anything the script was doing is ended.'
     : 'Round stats not imported into Stats or exported first are gone for good.';

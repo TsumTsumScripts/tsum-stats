@@ -100,3 +100,26 @@
 /* Long paths wrap instead of widening the page on a phone. */
 .felt-wrap > * { min-width: 0; max-width: 100%; }
 .adb-line, #device-sub, .foot, .card code { overflow-wrap: anywhere; }
+
+/* A device's identity: emulators that share a model name differ by port. */
+.port-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 12px;
+  font: 700 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #1c1b2b; color: #f4efe6; white-space: nowrap; }
+.port-badge::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--badge-dot, #ffb454); }
+.port-badge--big { font-size: 20px; padding: 6px 18px; }
+.device__port { font: 700 26px/1.1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.device__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; }
+.device__picked { display: none; font-weight: 800; font-size: 13px; letter-spacing: .06em; text-transform: uppercase;
+  background: #1c1b2b; color: #f4efe6; border-radius: 999px; padding: 3px 10px; }
+.device[aria-pressed="true"] .device__picked { display: inline-block; }
+.device[aria-pressed="true"] { --lift: 7px; outline: 4px solid #ffb454; outline-offset: 4px; }
+.device-grid:has(.device[aria-pressed="true"]) .device[aria-pressed="false"] { opacity: .72; }
+.device-grid:has(.device[aria-pressed="true"]) .device[aria-pressed="false"]:hover { opacity: 1; }
+
+.working-on { --r: 26px; --inset: 7px; --lift: 5px; position: sticky; top: 10px; z-index: 20;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px 20px; padding: 16px 24px; }
+.working-on__who { display: flex; flex-direction: column; gap: 2px; flex: 1 1 220px; min-width: 0; }
+.working-on h2 { font-size: clamp(24px, 3vw, 30px); overflow-wrap: anywhere; }
+.working-on__meta { font-size: 14px; font-weight: 600; opacity: .85; overflow-wrap: anywhere; }
+.for-device { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 700; }
+@media (max-width: 700px) { .working-on { padding: 12px 18px; } .port-badge--big { font-size: 17px; } }
+.device__port .port-badge { font-size: 18px; padding: 4px 14px; }

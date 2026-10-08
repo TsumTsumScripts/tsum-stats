@@ -105,9 +105,16 @@
 
     <!-- The chosen device. Everything here acts on it. -->
     <section id="device" class="stack" hidden aria-labelledby="device-title">
-      <div class="section-head">
-        <h2 id="device-title">Device</h2>
-        <span class="muted" id="device-sub"></span>
+      <!-- Stays on screen while scrolling the panel, so every button below is
+           plainly for this one device. -->
+      <div class="patch patch--paper working-on" id="working-on">
+        <div class="working-on__who">
+          <span class="kicker-sm">Everything below is for</span>
+          <h2 id="device-title">Device</h2>
+          <span class="working-on__meta" id="device-sub"></span>
+        </div>
+        <span id="device-badge"></span>
+        <a class="patch patch--surface fbtn fbtn--sm" href="#devices" id="change-device">Change device</a>
       </div>
 
       <div class="panel-grid">
@@ -157,6 +164,7 @@
           <!-- The export: the thing people are asked for most when something goes wrong. -->
           <div class="patch patch--jade card card--export" id="export" data-needs-device>
             <h3>Export logs &amp; stats</h3>
+            <p class="for-device">From <span data-device-badge></span> <span data-device-name></span></p>
             <p>Zips up everything below from this device and asks where to save it. Send that one file when you
               ask for help.</p>
             <fieldset class="checks">
