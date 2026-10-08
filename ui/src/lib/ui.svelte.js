@@ -35,10 +35,11 @@ export function toast(text, ms = 3500) {
 export const expand = $state({open: null});
 
 // ---- Theme ----
-// A theme is a themes/*.css file of token overrides; '' is the built-in look.
-// index.html applies the saved one before the page draws, so it never flashes.
+// A theme is a themes/*.css file of token overrides; there is always one.
+// index.html applies the saved one (else the default) before the page draws, so it never flashes.
 const THEME_KEY = 'tsum-stats.theme';
-export const theme = $state({list: [], current: loadPref(THEME_KEY, ''), version: 0});
+export const DEFAULT_THEME = 'halloween.css';
+export const theme = $state({list: [], current: loadPref(THEME_KEY, '') || DEFAULT_THEME, version: 0});
 
 const themeLink = () => document.getElementById('theme-css');
 
@@ -49,8 +50,8 @@ export async function loadThemes() {
   } catch {
     theme.list = [];
   }
-  // A saved theme that is gone falls back to the built-in look.
-  if (theme.current && !theme.list.some(t => t.file === theme.current)) setTheme('');
+  // A saved theme that is gone falls back to the default.
+  if (theme.list.length && !theme.list.some(t => t.file === theme.current)) setTheme(DEFAULT_THEME);
 }
 
 export function setTheme(file) {
@@ -59,9 +60,5 @@ export function setTheme(file) {
   const link = themeLink();
   // Charts read colours when they draw, so they redraw once the file has applied.
   link.onload = link.onerror = () => { theme.version++; };
-  if (file) link.href = `themes/${file}`;
-  else {
-    link.removeAttribute('href');
-    theme.version++;
-  }
+  link.href = `themes/${file}`;
 }

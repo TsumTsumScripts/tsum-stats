@@ -11,9 +11,9 @@
   font-display: swap;
 }
 
-/* Theme tokens: the default look ("Tsum Night", from the "Tsum Tsum statistics
-   UI mockups" designs). A theme in themes/*.css overrides some of these on
-   :root and nothing else; docs/STATS-SITE.md lists what each one colours. */
+/* Theme tokens: the base look under every theme (from the "Tsum Tsum statistics
+   UI mockups" designs), and what shows if a theme file fails to load. A theme in
+   themes/*.css overrides some of these on :root and nothing else; docs/STATS-SITE.md lists what each one colours. */
 /* :where() gives these no specificity, so a theme's :root wins wherever it loads. */
 :where(:root) {
   color-scheme: dark;
@@ -250,7 +250,7 @@ section[hidden] { display: none !important; }
   .jump button { padding: 6px 12px; }
 }
 /* Grid items default to their content's width; this lets the table scroll inside its panel instead. */
-.stack > *, .charts > *, .kpis > * { min-width: 0; }
+.stack > *, .charts > * { min-width: 0; }
 
 /* Filters */
 .filters { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: start; }
@@ -280,11 +280,12 @@ section[hidden] { display: none !important; }
 .filter-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
 /* KPI cards */
-.kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-.kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
-.kpi { padding: 14px 16px; }
+/* A wrapping row rather than a grid: a tile grows to fit its figure (a theme's wide font included)
+   instead of letting it spill out, and the row's tiles share what is left. */
+.kpis { display: flex; flex-wrap: wrap; gap: 12px; }
+.kpi { flex: 1 1 170px; max-width: 100%; padding: 14px 16px; }
 .kpi .label { font-size: 13px; color: var(--muted); }
-.kpi .value { font-family: var(--font-display); font-weight: 800; font-size: 26px; line-height: 1.15; margin-top: 2px; }
+.kpi .value { font-family: var(--font-display); font-weight: 800; font-size: 26px; line-height: 1.15; margin-top: 2px; white-space: nowrap; }
 .kpi .note { font-size: 12px; color: var(--faint); margin-top: 2px; }
 .kpi.score .value { color: var(--score); text-shadow: 0 2px 0 var(--score-shadow); }
 .kpi.coin .value { color: var(--coin); text-shadow: 0 2px 0 var(--coin-shadow); }
@@ -296,7 +297,7 @@ section[hidden] { display: none !important; }
 .kpi.medal .value::before { background-image: url(/img/medal.png); }
 .kpi.hero { background: var(--noise), linear-gradient(180deg, var(--hero-top), var(--panel-bottom));
   background-size: 120px 120px, auto; background-blend-mode: soft-light, normal; }
-@media (min-width: 560px) { .kpi.hero { grid-column: span 2; } }
+@media (min-width: 560px) { .kpi.hero { flex-basis: 352px; } }
 
 /* Charts */
 .charts { display: grid; gap: 16px; grid-template-columns: 1fr; }

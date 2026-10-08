@@ -350,8 +350,16 @@ tokens on `:root`, and nothing else.** The top bar's Theme menu lists them.
 The choice is saved in the browser (`localStorage`, `tsum-stats.theme`) and
 applied in `index.html` before the page draws.
 
-- **Built in:** `ui/public/themes/`. *Tsum Night*, the default, is the
-  tokens in `ui/src/styles.css` and has no file. *Ember* is a warm dark theme. Besides tokens it restyles
+- **Built in:** `ui/public/themes/`, listed Halloween, Midnight Felt, Daylight Felt, Ember (`themeOrder` in
+  `internal/stats/site.go`), then a player's own by name. *Halloween* is the
+  default (`DEFAULT_THEME` in `ui/src/lib/ui.svelte.js`, and `ui/index.html`).
+  The tokens in `ui/src/styles.css` sit under every theme and show only if its
+  file fails to load. *Midnight Felt* is the Tsum
+  Tsum website's dark look: indigo felt, dashed stitching and a marigold accent.
+  *Daylight Felt* is the same patches on a cream ground. Both set tokens only,
+  and their fonts (Caprasimo, Figtree) come from Google Fonts, with system fonts
+  offline. Text is 7:1 or better on its panel; keep that if you change a colour.
+- **Ember:** a warm dark theme. Besides tokens it restyles
   classes (panels, toggles, KPI tiles, the logo badge), so it may need a touch-up
   when the page's markup changes. It meets WCAG AA contrast (4.5:1 text, 3:1
   borders and focus rings), checked with the glass cards over the brightest
@@ -371,8 +379,8 @@ applied in `index.html` before the page draws.
 - **A player's own:** `--web-dir DIR`, then `DIR/themes/mine.css` . `/api/stats/themes` lists both; a file
   with a built-in one's name replaces it. A file starting with `_` is left out.
 - **Name:** `/* @name My theme */` near the top, else the file name.
-- **Start from:** `themes/daylight.css`, which sets every token.
-  `deep-sea.css` shows a theme that sets only what it changes.
+- **Start from:** `themes/daylight-felt.css`, which sets every token. A theme
+  may set only what it changes.
 
 A theme's `<link>` loads *before* the page's own styles, so a theme that
 restyles classes (as `ember.css` does) must start each rule with `:root` for the
