@@ -264,7 +264,8 @@ function startActivity(title) {
 
 const LABELS = {
   start: 'Start service', restart: 'Restart service', stop: 'Stop service', log: 'Show service log',
-  install: 'Install APK', update: 'Download & install the latest APK', reconnect: 'Reconnect',
+  install: 'Install APK', update: 'Download & install the latest APK', 'add-source': 'Add the Tsum Tsum library',
+  reconnect: 'Reconnect',
   'copy-script': 'Copy the script log', 'import-stats': 'Import round stats into Stats',
   'delete-script': 'Delete the script log', 'delete-stats': 'Delete round stats',
 };

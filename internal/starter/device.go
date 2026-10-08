@@ -285,6 +285,27 @@ func (s *Starter) deviceLock(serial string) *sync.Mutex {
 	return l
 }
 
+// The catalogue GAP lists Tsum Tsum releases from. GAP ships with no
+// third-party source, so the starter offers this one after an install.
+const sourceURL = "https://tsumtsumscripts.github.io/tsum-tsum-catalogue/catalogue.json"
+
+// offerSource opens GAP's gap://add-source link on the device, where the
+// player taps Add. OK is false only when the offer itself failed.
+func (s *Starter) offerSource(ctx context.Context, serial string, logf func(string)) Result {
+	logf("offering the Tsum Tsum library to GAP on " + serial + " ...")
+	out, _ := s.run(ctx, 20*time.Second, "-s", serial, "shell",
+		"am start -a android.intent.action.VIEW -d 'gap://add-source?url="+sourceURL+"' -p "+appPackage)
+	switch {
+	case strings.Contains(out, "unable to resolve"):
+		// An older GAP, which lists the library by itself.
+		return Result{OK: true, Msg: "This GAP lists the Tsum Tsum library by itself. Nothing to add."}
+	case strings.Contains(out, "Error"), strings.Contains(out, "Exception"):
+		logLines(logf, out)
+		return Result{Msg: "Could not open GAP to add the Tsum Tsum library. See the log."}
+	}
+	return Result{OK: true, Msg: "On the device, tap Add to put the Tsum Tsum library in GAP's Sources."}
+}
+
 // installedVersion is the app's versionName, or "".
 func (s *Starter) installedVersion(ctx context.Context, serial string) string {
 	out, _ := s.run(ctx, 20*time.Second, "-s", serial, "shell", "dumpsys package "+appPackage)

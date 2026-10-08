@@ -76,6 +76,11 @@ func (s *Starter) Run(ctx context.Context, serial, action string, opt Options, l
 		return s.install(ctx, serial, opt.APK, logf)
 	case "update":
 		return s.update(ctx, serial, logf)
+	case "add-source":
+		if s.installedVersion(ctx, serial) == "" {
+			return Result{Msg: "GAP is not installed on " + serial + ". Install it first; that adds the library too."}
+		}
+		return s.offerSource(ctx, serial, logf)
 	case "copy-script":
 		return s.copyFiles(ctx, serial, "script", logf)
 	case "import-stats":
@@ -209,7 +214,7 @@ func (s *Starter) install(ctx context.Context, serial, name string, logf func(st
 	}
 	logf("installing " + name + " on " + serial + " ...")
 	if s.installAPK(ctx, serial, path, logf) {
-		return Result{OK: true, Msg: "Installed " + name + "."}
+		return Result{OK: true, Msg: "Installed " + name + ".\n" + s.offerSource(ctx, serial, logf).Msg}
 	}
 	return Result{Msg: "Install failed. See the log."}
 }
@@ -275,7 +280,7 @@ func (s *Starter) update(ctx context.Context, serial string, logf func(string)) 
 	if have != "" {
 		msg += " (was " + have + ")"
 	}
-	return Result{OK: true, Msg: msg + "."}
+	return Result{OK: true, Msg: msg + ".\n" + s.offerSource(ctx, serial, logf).Msg}
 }
 
 // collectedDir is where files copied off a device land: collected/<serial>/,
