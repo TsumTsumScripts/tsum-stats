@@ -30,6 +30,24 @@ Messages are sent from one goroutine, never from a device's event reader, and
 a page that stops reading is dropped. The page reopens its stream when it
 closes and refetches when a device looks stale.
 
+## The service starter
+
+`internal/starter` is the Tsum Tsum script's service starter as a website,
+mounted with `--starter <bundle>` through `stats.Config.Starter`
+(`StarterHook`). It ports the bundle's shell host: adb chosen and downloaded
+against the bundle's `platform-tools.txt` (`adb.go`), emulator discovery and
+the `device/gap-service.sh` protocol (`device.go`), the actions (`actions.go`),
+APKs and the release channel (`apk.go`) and the zip export (`export.go`). The
+page is plain files in `internal/starter/site/`, embedded as they are, in the
+website's felt design. It shares its adb with the `Puller` (`SetADB`), which
+then skips its own download.
+
+Its `/api/starter` routes run adb, so they answer only on a loopback Host and
+refuse cross-origin writes. Actions stream NDJSON (`{"log"}` lines, then
+`{"done"}`), with the 5-minute write deadline cleared. Every action except the
+live log holds a per-device lock, since a probe would otherwise re-push the
+device script mid-run. `go test ./internal/starter` drives it through a fake adb.
+
 ## Where the data comes from
 
 | Source | Code |

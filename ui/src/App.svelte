@@ -30,6 +30,8 @@
   // A section mounts the first time it is shown, with that link's params, and stays mounted.
   let route = $state('');
   let version = $state('');
+  // Served beside the service starter (--starter): link back to it.
+  let starter = $state(false);
   const initial = $state({});
   let stats = $state(), catalog = $state(), help = $state(), dataDialog = $state(), publishDialog = $state();
   const sectionOf = r => ({stats, catalog, help})[r];
@@ -124,6 +126,7 @@
     // The shell is never unmounted, so these are not cleared.
     setInterval(checkDevices, 15000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) checkDevices(); });
+    fetch('/api/starter/status').then(r => { starter = r.ok; }).catch(() => {});
     api('status').then(s => { version = s.version || ''; if (s.override && !s.override.active && !s.override.unused) toast(overrideText(s), 8000); }).catch(() => {});
   });
 </script>
@@ -149,6 +152,7 @@
       {#if snapshot}<SnapshotNote />{:else}<LivePills />{/if}
       <ThemePicker />
       {#if !snapshot}
+        {#if starter}<a class="btn" id="starter-btn" href="/starter/">Starter</a>{/if}
         <button type="button" class="btn" id="share-btn" onclick={() => publishDialog.open()}>Share</button>
         <button type="button" class="btn" id="data-btn" onclick={() => dataDialog.open()}>Data</button>
       {/if}

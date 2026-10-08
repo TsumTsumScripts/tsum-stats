@@ -26,10 +26,17 @@ type Config struct {
 	EventsToken   string
 	ImportDirs    []string
 	ScanInterval  time.Duration
-	WebDir        string // files here override the embedded site's
-	ADB           string // adb for importing from devices; "" looks for one
-	DeviceStorage string // the app's storage root on the device
-	Version       string // this build's, for WebDir's override.json
+	WebDir        string      // files here override the embedded site's
+	ADB           string      // adb for importing from devices; "" looks for one
+	DeviceStorage string      // the app's storage root on the device
+	Version       string      // this build's, for WebDir's override.json
+	Starter       StarterHook // the service starter's page and routes; nil without --starter
+}
+
+// StarterHook mounts the service starter (internal/starter) beside the stats
+// site. It supplies the adb, so the stats site does not download its own.
+type StarterHook interface {
+	Mount(se *core.ServeEvent, puller *Puller)
 }
 
 // Realtime topics the page subscribes to through PocketBase's /api/realtime.
@@ -94,7 +101,9 @@ func Register(app core.App, cfg *Config, embedded fs.FS) {
 		importer = NewImporter(se.App, dirs, func(r ImportResult) { bc.send(TopicImports, r) })
 		puller := NewPuller(cfg.ADB, cfg.DeviceStorage, pullDest, importer)
 		go importer.Run(cfg.ScanInterval, stop)
-		if puller.ADB() == "" {
+		if cfg.Starter != nil {
+			cfg.Starter.Mount(se, puller)
+		} else if puller.ADB() == "" {
 			go puller.InstallADB(filepath.Join(se.App.DataDir(), "adb"))
 		}
 		se.App.OnTerminate().BindFunc(func(e *core.TerminateEvent) error {

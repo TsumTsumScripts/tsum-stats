@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/TsumTsumScripts/tsum-stats/internal/starter"
 	"github.com/TsumTsumScripts/tsum-stats/internal/stats"
 
 	"github.com/pocketbase/pocketbase"
@@ -65,6 +66,12 @@ func main() {
 	flags.StringVar(&cfg.WebDir, "web-dir", "",
 		"serve files in this folder in place of the built-in site's; created with a README when missing")
 
+	var starterDir string
+	var open bool
+	flags.StringVar(&starterDir, "starter", "",
+		"also serve the service starter for this starter bundle folder at /starter/ (Start-Linux.sh and Start-Windows.cmd pass it)")
+	flags.BoolVar(&open, "open", false, "open the site in the browser once it is up")
+
 	embedded, err := fs.Sub(webFS, "web")
 	if err != nil {
 		log.Fatal(err)
@@ -73,10 +80,43 @@ func main() {
 	app.RootCmd.AddCommand(webCmd(embedded))
 	app.RootCmd.AddCommand(snapshotCmd(app, embedded))
 
+	// Bound before stats.Register's, so the hook is set when the stats site mounts.
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		if starterDir == "" {
+			return se.Next()
+		}
+		base := "http://" + se.Server.Addr
+		home := base + "/starter/"
+		if alreadyRunning(base) {
+			if !starterRunning(base) {
+				return fmt.Errorf("Tsum Tsum Stats is already running at %s without the starter; stop it (Ctrl+C in its window) and run this again", base)
+			}
+			fmt.Println("The starter is already running; opening it:", home)
+			openBrowser(home)
+			os.Exit(0)
+		}
+		st, err := starter.New(starterDir, version)
+		if err != nil {
+			return err
+		}
+		// Copies off a device are imported into Stats.
+		if len(cfg.ImportDirs) == 0 {
+			cfg.ImportDirs = []string{st.Collected()}
+		}
+		if cfg.DeviceStorage == stats.DefaultDeviceStorage {
+			cfg.DeviceStorage = st.Storage()
+		}
+		cfg.Starter = st
+		if open {
+			go openWhenUp(base, home)
+		}
+		fmt.Println("Starter:", home, "  Stats:", base+"/")
+		return se.Next()
+	})
 	stats.Register(app, cfg, embedded)
 	if launched {
 		app.OnServe().BindFunc(func(se *core.ServeEvent) error {
-			go openWhenUp(siteURL)
+			go openWhenUp(siteURL, siteURL)
 			return se.Next()
 		})
 	}

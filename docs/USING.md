@@ -52,6 +52,17 @@ Databases made by 0.6 and earlier are migrated on first start.
 | `--web-dir DIR` | none. Files here replace the built-in site's — see [Changing the site](#changing-the-site) |
 | `--adb PATH` | adb on `PATH`, else the Android SDK's, else Google's platform-tools |
 | `--device-storage DIR` | `/sdcard/Download/GameAutomationPlatform` |
+| `--starter DIR` | none. Also serves the service starter for that starter bundle at `/starter/` — see [The service starter](#the-service-starter) |
+| `--open` | off. Opens the site in the browser once it is up |
+
+### The service starter
+
+The Tsum Tsum script's starter bundle runs this program with `--starter
+<bundle>` (its `Start-Linux.sh` and `Start-Windows.cmd` download it). The
+starter page is then at <http://127.0.0.1:8090/starter/> and this site at `/`,
+each linking to the other. The starter uses the bundle's adb for Import from
+devices too, and imports what it copies into the bundle's `collected/` folder.
+Without `--starter` nothing changes.
 
 ## Getting your data in
 

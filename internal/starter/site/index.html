@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="darkreader-lock">
+  <title>Tsum Tsum Starter</title>
+  <link rel="icon" href="coin.svg" type="image/svg+xml">
+  <!-- The website's fonts; offline, the system fallbacks in felt.css are used. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;600;700;800&display=swap">
+  <link rel="stylesheet" href="felt.css">
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js" defer></script>
+</head>
+<body class="felt-body">
+<!-- One copy of the felt coin; the header and the page head reuse it. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="felt-noise" x="-15%" y="-15%" width="130%" height="130%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" seed="4" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.6" xChannelSelector="R" yChannelSelector="G" result="d"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.55 0 0 0 -0.16" result="sp"/>
+      <feComposite in="sp" in2="d" operator="in" result="spk"/>
+      <feMerge><feMergeNode in="d"/><feMergeNode in="spk"/></feMerge>
+    </filter>
+    <symbol id="coin" viewBox="0 0 100 104">
+      <g filter="url(#felt-noise)">
+        <circle cx="50" cy="54" r="46" fill="#a85f0c"/>
+        <circle cx="50" cy="50" r="46" fill="#e8900c"/>
+        <circle cx="50" cy="50" r="35" fill="#ffbb1a"/>
+        <circle cx="45" cy="45" r="22" fill="#ffd95a" opacity="0.5"/>
+        <g fill="#ffe07a"><circle cx="51" cy="59.5" r="15"/><circle cx="34" cy="38.5" r="9.5"/><circle cx="68" cy="38.5" r="9.5"/></g>
+        <g fill="#e2700a"><circle cx="50" cy="58" r="15"/><circle cx="33" cy="37" r="9.5"/><circle cx="67" cy="37" r="9.5"/></g>
+      </g>
+      <circle cx="50" cy="50" r="40.5" fill="none" stroke="#fff4cc" stroke-width="2.4" stroke-dasharray="4.2 3.2" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="medal" viewBox="0 0 100 104">
+      <g filter="url(#felt-noise)">
+        <polygon points="32.4,11.5 67.6,11.5 92.5,36.4 92.5,71.6 67.6,96.5 32.4,96.5 7.5,71.6 7.5,36.4" fill="#4f86b8"/>
+        <polygon points="32.4,7.5 67.6,7.5 92.5,32.4 92.5,67.6 67.6,92.5 32.4,92.5 7.5,67.6 7.5,32.4" fill="#6fb4e3"/>
+        <polygon points="35.5,15 64.5,15 85,35.5 85,64.5 64.5,85 35.5,85 15,64.5 15,35.5" fill="#bfe0f7"/>
+        <polygon points="50,21 54.6,41.2 70,30 58.8,45.4 79,50 58.8,54.6 70,70 54.6,58.8 50,79 45.4,58.8 30,70 41.2,54.6 21,50 41.2,45.4 30,30 45.4,41.2" fill="#ffffff"/>
+      </g>
+      <polygon points="34.3,12 65.7,12 88,34.3 88,65.7 65.7,88 34.3,88 12,65.7 12,34.3" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-dasharray="4.2 3.2" stroke-linecap="round"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="felt">
+  <header class="felt-wrap felt-header">
+    <a href="#top" class="felt-brand" aria-label="Tsum Tsum Starter, top of the page">
+      <svg class="felt-brand__coin" aria-hidden="true"><use href="#coin"/></svg>
+      <span class="felt-brand__name">Tsum Tsum Starter</span>
+    </a>
+    <nav aria-label="Main" class="felt-nav">
+      <a class="patch patch--marigold felt-pill felt-pill--on" href="#devices" aria-current="page">Devices</a>
+      <a class="patch patch--jade felt-pill" href="#export">Export logs &amp; stats</a>
+      <a class="patch patch--periwinkle felt-pill" href="/" target="_blank" rel="noopener">Stats site ↗</a>
+      <a class="patch patch--rose felt-pill" href="#help">Help</a>
+    </nav>
+  </header>
+
+  <main class="felt-wrap" id="top">
+    <div class="felt-pagehead">
+      <span class="patch patch--jade kicker">Service starter</span>
+      <h1>Start the service <span class="patch patch--jade felt-pagehead__accent">in one click.</span></h1>
+      <p class="felt-pagehead__body">
+        GAP needs a helper service on the phone or emulator. Android only lets a computer start it, and it stops when
+        the device restarts. Pick your device below and press <b>Start service</b>. Rooted devices start it themselves.
+      </p>
+      <p class="adb-line" id="adb-line" hidden></p>
+      <svg class="felt-sticker" style="top:-6px;right:24px;width:74px;height:77px;transform:rotate(14deg)" aria-hidden="true"><use href="#coin"/></svg>
+      <svg class="felt-sticker" style="top:92px;right:110px;width:46px;height:48px;transform:rotate(-12deg)" aria-hidden="true"><use href="#medal"/></svg>
+    </div>
+
+    <!-- adb is missing: the one download this tool makes without being told. -->
+    <section class="patch patch--marigold card" id="adb-card" hidden aria-labelledby="adb-title">
+      <h2 id="adb-title">First, fetch Google's adb</h2>
+      <p>This tool talks to devices through <code>adb</code>, and none is on this computer yet. It downloads
+        platform-tools <span data-adb="revision"></span> (about <span data-adb="size"></span> MB) from dl.google.com
+        into this folder's <code>adb</code> folder, checks it against the checksum in <code>platform-tools.txt</code>,
+        and keeps only adb.</p>
+      <p class="muted" id="adb-older" hidden></p>
+      <div class="row">
+        <button class="patch patch--paper fbtn" id="adb-download" type="button">Download adb</button>
+      </div>
+      <pre class="console console--inline" id="adb-log" hidden></pre>
+    </section>
+
+    <p class="patch patch--grape note" id="adb-warning" hidden role="status"></p>
+
+    <section id="devices" aria-labelledby="devices-title" class="stack">
+      <div class="section-head">
+        <h2 id="devices-title">Your devices</h2>
+        <div class="row">
+          <button class="patch patch--surface fbtn fbtn--sm" id="refresh" type="button">Refresh</button>
+          <button class="patch patch--surface fbtn fbtn--sm" id="adb-restart" type="button"
+            title="Missing a device? Restarts adb (kill-server, then start-server) and looks again.">Restart adb</button>
+        </div>
+      </div>
+      <p class="muted" id="devices-intro">Every phone and emulator adb can see. Choose the one to work on; it stays chosen the next time too.</p>
+      <div class="device-grid" id="device-list" aria-live="polite"></div>
+    </section>
+
+    <!-- The chosen device. Everything here acts on it. -->
+    <section id="device" class="stack" hidden aria-labelledby="device-title">
+      <div class="section-head">
+        <h2 id="device-title">Device</h2>
+        <span class="muted" id="device-sub"></span>
+      </div>
+
+      <div class="panel-grid">
+        <div class="stack">
+          <div class="patch card" id="status-card">
+            <span class="kicker-sm">Service</span>
+            <p class="status-big" id="status-text">-</p>
+            <p class="next" id="next-step"></p>
+            <div class="row" id="service-actions">
+              <button class="patch patch--paper fbtn" type="button" data-action="start">Start service</button>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="restart">Restart</button>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="stop">Stop</button>
+            </div>
+            <div class="row" id="offline-actions" hidden>
+              <button class="patch patch--paper fbtn" type="button" data-action="reconnect">Reconnect</button>
+            </div>
+            <p class="small" id="root-note">Not needed on a rooted device: the app starts the service itself.</p>
+          </div>
+
+          <div class="patch patch--periwinkle card" data-needs-device>
+            <h3>The app</h3>
+            <p id="channel-line" class="small"></p>
+            <div class="row">
+              <button class="patch patch--paper fbtn fbtn--sm" type="button" data-action="update" id="update-btn">Download &amp; install the latest APK</button>
+            </div>
+            <div class="row" id="install-row" hidden>
+              <label class="field">
+                <span>APK in this bundle</span>
+                <select id="apk-select"></select>
+              </label>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="install">Install APK</button>
+            </div>
+          </div>
+
+          <div class="patch card" data-needs-device>
+            <h3>Service log</h3>
+            <p class="small">What the service printed when it started, on the device at <code>/data/local/tmp/gap/service.log</code>.</p>
+            <div class="row">
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="log">Show service log</button>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" id="follow-btn">Follow live</button>
+            </div>
+            <pre class="console console--inline" id="service-log" hidden tabindex="0" aria-label="Service log"></pre>
+          </div>
+        </div>
+
+        <div class="stack">
+          <!-- The export: the thing people are asked for most when something goes wrong. -->
+          <div class="patch patch--jade card card--export" id="export" data-needs-device>
+            <h3>Export logs &amp; stats</h3>
+            <p>Zips up everything below from this device and asks where to save it. Send that one file when you
+              ask for help.</p>
+            <fieldset class="checks">
+              <legend class="visually-hidden">What to include</legend>
+              <label><input type="checkbox" name="part" value="script" checked> Script log <small>script*.log</small></label>
+              <label><input type="checkbox" name="part" value="service" checked> Service log <small>service.log</small></label>
+              <label><input type="checkbox" name="part" value="stats" checked> Round stats <small>stats_*.csv</small></label>
+              <label><input type="checkbox" name="part" value="lists" checked> Tsum lists <small>tsum_list_*.csv</small></label>
+              <label id="all-devices-label" hidden><input type="checkbox" id="all-devices"> Every connected device, not just this one</label>
+            </fieldset>
+            <div class="row">
+              <button class="patch patch--paper fbtn" type="button" id="export-btn">Save as zip…</button>
+            </div>
+            <p class="small" id="export-status" role="status"></p>
+            <hr>
+            <div class="row">
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="import-stats">Import round stats into Stats</button>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="copy-script">Copy script log to folder</button>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" id="open-collected">Open the collected folder</button>
+            </div>
+            <p class="small">Copies land in <code id="collected-path">collected/</code>, one folder per device, laid out as on the device.</p>
+          </div>
+
+          <div class="patch patch--rose card" data-needs-device>
+            <h3>Clear files off the device</h3>
+            <p class="small">Nothing keeps a second copy, so export first if you want to keep them. Each shows the
+              files and asks before deleting.</p>
+            <div class="row">
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-delete="script">Delete script log…</button>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-delete="stats">Delete round stats…</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- What the last action said. -->
+    <section class="patch card card--console" id="activity" aria-labelledby="activity-title" hidden>
+      <div class="section-head">
+        <h3 id="activity-title">Activity</h3>
+        <button class="patch patch--surface fbtn fbtn--sm" type="button" id="clear-log">Clear</button>
+      </div>
+      <div class="verdict" id="verdict" role="status" hidden>
+        <p id="verdict-text"></p>
+        <button class="patch patch--paper fbtn fbtn--sm" type="button" id="verdict-open" hidden>Open the folder</button>
+      </div>
+      <pre class="console" id="console" tabindex="0" aria-label="Activity log"></pre>
+    </section>
+
+    <section class="stack" id="settings" aria-labelledby="settings-title">
+      <h2 id="settings-title">Testing a pre-release</h2>
+      <div class="patch card">
+        <p class="small">A tester is given a folder URL (or its catalogue file's address). With it set, <b>Download &amp;
+          install the latest APK</b> takes that folder's build instead of the published release. Kept in
+          <code>channel.txt</code>.</p>
+        <form class="row" id="channel-form">
+          <label class="field field--grow">
+            <span>Channel URL</span>
+            <input type="url" id="channel-url" placeholder="https://example.com/alpha/alpha.json" autocomplete="off">
+          </label>
+          <button class="patch patch--paper fbtn fbtn--sm" type="submit">Use this channel</button>
+          <button class="patch patch--surface fbtn fbtn--sm" type="button" id="channel-off">Back to releases</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="stack" id="help" aria-labelledby="help-title">
+      <h2 id="help-title">Help</h2>
+      <div class="help-grid">
+        <div class="patch patch--surface card">
+          <h3>Getting a device listed</h3>
+          <ul>
+            <li>Start your emulator, or plug the phone in with USB debugging on: Settings &gt; About phone, tap
+              <b>Build number</b> seven times, then Developer options &gt; USB debugging.</li>
+            <li>The first time, the phone asks <i>Allow USB debugging?</i> Tap Allow, then Refresh.</li>
+            <li>A device you expect is missing, or stuck <b>offline</b>? <b>Restart adb</b> restarts the adb server and
+              looks again.</li>
+            <li>MuMu, LDPlayer, Nox and MEmu are found on their usual ports, four instances each. Another port: set
+              <code>GAP_EXTRA_PORTS="12345"</code> before starting.</li>
+          </ul>
+        </div>
+        <div class="patch patch--surface card">
+          <h3>When something is wrong</h3>
+          <ul>
+            <li><b>wrong ABI</b>: the installed app was built for another processor. Download the latest APK; it fetches
+              the build for this device.</li>
+            <li><b>started by the app itself</b>: a rooted device. The app manages the service; after updating the app,
+              reboot the device.</li>
+            <li><b>Replaced the ADB server</b>: harmless. Android Studio or your emulator manager reconnects.</li>
+            <li>Stuck? Export logs &amp; stats and share the zip.</li>
+          </ul>
+        </div>
+        <div class="patch patch--surface card">
+          <h3>Stats</h3>
+          <p class="small">The <a href="/" target="_blank" rel="noopener">Stats site</a> runs here too, at the same
+            address. <b>Import round stats into Stats</b> copies a device's <code>stats_*.csv</code> and Tsum lists
+            into it; the app can also send rounds live (Settings &gt; Script events).</p>
+          <p class="small">Close this window's terminal (or press Ctrl+C in it) to stop both.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="felt-wrap foot">
+    <p class="small" id="foot"></p>
+  </footer>
+</div>
+
+<dialog id="confirm" class="patch patch--rose dialog" aria-labelledby="confirm-title">
+  <form method="dialog">
+    <h3 id="confirm-title">Delete these files?</h3>
+    <p class="small" id="confirm-body"></p>
+    <ul class="file-list" id="confirm-files"></ul>
+    <div class="row">
+      <button class="patch patch--paper fbtn fbtn--sm" value="yes" type="submit">Delete them</button>
+      <button class="patch patch--surface fbtn fbtn--sm" value="no" type="submit" autofocus>Cancel</button>
+    </div>
+  </form>
+</dialog>
+</body>
+</html>
