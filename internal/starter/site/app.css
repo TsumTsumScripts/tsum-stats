@@ -123,3 +123,6 @@
 .for-device { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 700; }
 @media (max-width: 700px) { .working-on { padding: 12px 18px; } .port-badge--big { font-size: 17px; } }
 .device__port .port-badge { font-size: 18px; padding: 4px 14px; }
+
+.update-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.update-banner p { flex: 1 1 260px; font-weight: 700; }

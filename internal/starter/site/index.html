@@ -90,6 +90,12 @@
 
     <p class="patch patch--grape note" id="adb-warning" hidden role="status"></p>
 
+    <!-- A newer tsum-stats is out: the program serving this page and Stats. -->
+    <div class="patch patch--periwinkle note update-banner" id="update-banner" hidden role="status">
+      <p id="update-banner-text"></p>
+      <button class="patch patch--paper fbtn fbtn--sm" type="button" data-update-apply>Update now</button>
+    </div>
+
     <section id="devices" aria-labelledby="devices-title" class="stack">
       <div class="section-head">
         <h2 id="devices-title">Your devices</h2>
@@ -214,6 +220,22 @@
         <button class="patch patch--paper fbtn fbtn--sm" type="button" id="verdict-open" hidden>Open the folder</button>
       </div>
       <pre class="console" id="console" tabindex="0" aria-label="Activity log"></pre>
+    </section>
+
+    <section class="stack" id="updates" aria-labelledby="updates-title">
+      <h2 id="updates-title">Updates</h2>
+      <div class="patch card">
+        <p id="update-line"></p>
+        <p class="small muted" id="update-checked"></p>
+        <div class="row" id="update-actions">
+          <button class="patch patch--surface fbtn fbtn--sm" type="button" id="update-check">Check for updates</button>
+          <button class="patch patch--paper fbtn fbtn--sm" type="button" data-update-apply hidden>Update now</button>
+        </div>
+        <p class="small">This page and the Stats site are served by tsum-stats. Updating downloads the new version from
+          its GitHub release, checks it against the published checksum and restarts the starter; the page reloads by
+          itself. It also looks every few hours while open.</p>
+        <pre class="console console--inline" id="update-log" hidden></pre>
+      </div>
     </section>
 
     <section class="stack" id="settings" aria-labelledby="settings-title">

@@ -12,6 +12,7 @@ const state = {
   busy: false, // an action is running; one at a time, as in the terminal menu
   follow: null, // AbortController of the live service log
   dots: {}, // serial -> badge colour
+  update: null, // GET /api/starter/update
 };
 
 // ------------------------------------------------------------------- the API
@@ -228,7 +229,7 @@ async function renderDevice() {
 
 function setBusy(busy) {
   state.busy = busy;
-  $$('[data-action], [data-delete], #export-btn, #refresh, #adb-restart').forEach(b => { b.disabled = busy; });
+  $$('[data-action], [data-delete], [data-update-apply], #export-btn, #refresh, #adb-restart').forEach(b => { b.disabled = busy; });
 }
 
 // ------------------------------------------------------------- the activity
@@ -525,6 +526,88 @@ async function setChannel(url) {
   showVerdict({ok: true, msg: j.channel ? `Pre-release channel set: ${j.channel}` : 'Back to the published releases.'});
 }
 
+// ------------------------------------------------------------------ updates
+
+function renderUpdate() {
+  const u = state.update;
+  if (!u) return;
+  const ready = u.available && !u.disabled;
+  $('#update-banner').hidden = !ready;
+  $('#update-banner-text').textContent = ready ? `tsum-stats ${u.latest} is out; this is ${u.current}.` : '';
+  $$('[data-update-apply]').forEach(b => { b.hidden = !ready; });
+  $('#update-check').hidden = u.disabled;
+  $('#update-line').textContent =
+    u.disabled ? `tsum-stats ${u.current}, a local build: it does not update itself.`
+    : u.installed ? `tsum-stats ${u.latest} is installed. Close this window's terminal and start the starter again to use it.`
+    : ready ? `tsum-stats ${u.current}. Version ${u.latest} is available.`
+    : u.latest ? `tsum-stats ${u.current}, the newest version.`
+    : `tsum-stats ${u.current}.`;
+  $('#update-checked').textContent = u.error ? `Could not check: ${u.error}`
+    : u.checked ? `Last checked ${new Date(u.checked).toLocaleString()}.` : '';
+}
+
+async function loadUpdate() {
+  try {
+    state.update = await api('update');
+    renderUpdate();
+  } catch { /* the page still works without it */ }
+}
+
+async function checkUpdate() {
+  const btn = $('#update-check');
+  btn.disabled = true;
+  btn.textContent = 'Checking …';
+  try {
+    const r = await post('update/check', {});
+    if (r.ok) state.update = await r.json();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Check for updates';
+    renderUpdate();
+  }
+}
+
+async function applyUpdate() {
+  const u = state.update;
+  if (state.busy || !u?.available) return;
+  if (!confirm(`Update tsum-stats to ${u.latest}?\n\n${u.canRestart
+    ? 'The starter restarts, and this page and Stats reload in a few seconds.'
+    : 'You restart the starter yourself afterwards.'}`)) return;
+  if (state.follow) state.follow.abort();
+  setBusy(true);
+  const out = $('#update-log');
+  out.hidden = false;
+  out.textContent = '';
+  $('#updates').scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  let v;
+  try {
+    v = await readStream(await post('update/apply', {}), line => out.append(line + '\n'));
+  } catch (e) {
+    v = {ok: false, msg: e.message};
+  }
+  out.append('\n' + v.msg + '\n');
+  if (v.restart) {
+    await waitForRestart(u.current, out);
+    return;
+  }
+  setBusy(false);
+  await loadUpdate();
+}
+
+// Polls until the new version answers, then reloads.
+async function waitForRestart(old, out) {
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    try {
+      if ((await api('status')).version !== old) {
+        location.reload();
+        return;
+      }
+    } catch { /* down between the two */ }
+  }
+  out.append('The starter has not come back. Look at its terminal window for what went wrong.\n');
+}
+
 function wire() {
   $('#refresh').addEventListener('click', loadDevices);
   $('#adb-restart').addEventListener('click', restartADB);
@@ -539,6 +622,8 @@ function wire() {
   $('#verdict-open').addEventListener('click', e => post('reveal', {path: e.currentTarget.dataset.path}));
   $('#channel-form').addEventListener('submit', e => { e.preventDefault(); setChannel($('#channel-url').value.trim()); });
   $('#channel-off').addEventListener('click', () => setChannel('off'));
+  $('#update-check').addEventListener('click', checkUpdate);
+  $$('[data-update-apply]').forEach(b => b.addEventListener('click', applyUpdate));
   for (const b of $$('[data-action]')) {
     b.addEventListener('click', () => {
       const action = b.dataset.action;
@@ -561,6 +646,8 @@ async function init() {
   }
   renderStatus();
   loadDevices();
+  loadUpdate();
+  setInterval(loadUpdate, 10 * 60 * 1000);
 }
 
 init();

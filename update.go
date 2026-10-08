@@ -55,24 +55,44 @@ func newerVersion(a, b string) bool {
 	return false
 }
 
+// fetchPin reads the published pin.
+func fetchPin(pinURL string) (map[string]string, error) {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(pinURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s answered %s", pinURL, resp.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	return parsePin(string(body)), nil
+}
+
+// latestVersion is the version the pin publishes.
+func latestVersion(pinURL string) (string, error) {
+	pin, err := fetchPin(pinURL)
+	if err != nil {
+		return "", err
+	}
+	if pin["version"] == "" {
+		return "", fmt.Errorf("%s names no version", pinURL)
+	}
+	return pin["version"], nil
+}
+
 // selfUpdate replaces this binary with the pinned one when the pin is newer.
 // It returns true when it did, so the caller can start the new one. A failed
 // check or download changes nothing: the running version stays usable.
 func selfUpdate(pinURL string, log func(string, ...any)) (bool, error) {
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(pinURL)
+	pin, err := fetchPin(pinURL)
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("%s answered %s", pinURL, resp.Status)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return false, err
-	}
-	pin := parsePin(string(body))
 	if !newerVersion(pin["version"], version) {
 		return false, nil
 	}
@@ -101,6 +121,7 @@ func selfUpdate(pinURL string, log func(string, ...any)) (bool, error) {
 		os.Remove(tmp)
 		return false, fmt.Errorf("the download did not match its checksum and was deleted")
 	}
+	log("sha256 ok")
 	if err := os.Chmod(tmp, 0o755); err != nil {
 		os.Remove(tmp)
 		return false, err
@@ -117,6 +138,7 @@ func selfUpdate(pinURL string, log func(string, ...any)) (bool, error) {
 		return false, err
 	}
 	os.Remove(old) // fails on Windows while running; the next start clears it
+	log("Installed tsum-stats %s.", pin["version"])
 	return true, nil
 }
 

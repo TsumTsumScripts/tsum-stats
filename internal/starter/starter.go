@@ -41,6 +41,7 @@ type Starter struct {
 	setADB    func(string) // tells the stats importer which adb to use
 	importer  func(ctx context.Context, serial string) importOutcome
 	downloads sync.Mutex
+	upd       updates
 }
 
 type importOutcome struct {
@@ -118,6 +119,7 @@ func (s *Starter) Mount(se *core.ServeEvent, puller *stats.Puller) {
 
 	g := se.Router.Group("/api/starter")
 	g.BindFunc(localOnly)
+	s.mountUpdates(se, g)
 
 	g.GET("/status", func(e *core.RequestEvent) error {
 		s.mu.Lock()
@@ -347,6 +349,6 @@ func stream(e *core.RequestEvent, fn func(logf func(string)) Result) error {
 		_ = rc.Flush()
 	}
 	res := fn(func(line string) { send(map[string]string{"log": line}) })
-	send(map[string]any{"done": true, "ok": res.OK, "msg": res.Msg, "path": res.Path})
+	send(map[string]any{"done": true, "ok": res.OK, "msg": res.Msg, "path": res.Path, "restart": res.Restart})
 	return nil
 }

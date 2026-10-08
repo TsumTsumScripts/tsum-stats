@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/TsumTsumScripts/tsum-stats/internal/starter"
@@ -31,13 +32,13 @@ func main() {
 	// Double-clicked or started with no command: update if a newer one is out,
 	// then serve and open the site.
 	launched := len(os.Args) == 1
+	clearOld()
 	if launched {
 		if alreadyRunning(siteURL) {
 			fmt.Println("Tsum Tsum Stats is already running; opening it:", siteURL)
 			openBrowser(siteURL)
 			return
 		}
-		clearOld()
 		if os.Getenv("TSUM_STATS_NO_UPDATE") == "" && updateURL != "" {
 			if done, err := selfUpdate(updateURL, log.Printf); err != nil {
 				log.Printf("update check skipped: %v", err)
@@ -67,6 +68,7 @@ func main() {
 		"serve files in this folder in place of the built-in site's; created with a README when missing")
 
 	var starterDir string
+	var st *starter.Starter
 	var open bool
 	flags.StringVar(&starterDir, "starter", "",
 		"also serve the service starter for this starter bundle folder at /starter/ (Start-Linux.sh and Start-Windows.cmd pass it)")
@@ -95,9 +97,12 @@ func main() {
 			openBrowser(home)
 			os.Exit(0)
 		}
-		st, err := starter.New(starterDir, version)
-		if err != nil {
+		var err error
+		if st, err = starter.New(starterDir, version); err != nil {
 			return err
+		}
+		if updateURL != "" {
+			st.SetUpdater(starterUpdater())
 		}
 		// Copies off a device are imported into Stats.
 		if len(cfg.ImportDirs) == 0 {
@@ -123,6 +128,25 @@ func main() {
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
+	}
+	// The page installed an update: the launcher starts the new version.
+	if st != nil && st.RestartCode() != 0 {
+		os.Exit(st.RestartCode())
+	}
+}
+
+// starterUpdater lets the starter page update this program. A launcher that
+// starts it again on some exit status names it in TSUM_STATS_RESTART_CODE.
+func starterUpdater() starter.Updater {
+	code, _ := strconv.Atoi(os.Getenv("TSUM_STATS_RESTART_CODE"))
+	return starter.Updater{
+		Latest: func() (string, error) { return latestVersion(updateURL) },
+		Apply: func(logf func(string)) (bool, error) {
+			return selfUpdate(updateURL, func(f string, a ...any) { logf(fmt.Sprintf(f, a...)) })
+		},
+		Newer:       newerVersion,
+		RestartCode: code,
+		NoAutoCheck: os.Getenv("TSUM_STATS_NO_UPDATE") != "",
 	}
 }
 

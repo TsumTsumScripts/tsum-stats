@@ -22,6 +22,8 @@ type Result struct {
 	OK   bool   `json:"ok"`
 	Msg  string `json:"msg"`
 	Path string `json:"path,omitempty"` // a folder on this computer the page can open
+	// The program is about to restart into a new version; the page waits for it.
+	Restart bool `json:"restart,omitempty"`
 }
 
 // What the file actions match. Rotated script logs are script.1.log and on.

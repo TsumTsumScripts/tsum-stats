@@ -64,6 +64,15 @@ each linking to the other. The starter uses the bundle's adb for Import from
 devices too, and imports what it copies into the bundle's `collected/` folder.
 Without `--starter` nothing changes.
 
+The starter keeps this program current. Each launch runs `tsum-stats update`
+first, and while it runs the page looks for a newer version every six hours and
+has a **Check for updates** button. **Update now** downloads the new version,
+checks its sha256 and exits with `TSUM_STATS_RESTART_CODE`; the bundle's
+launcher answers that code by starting the new version, and the page reloads.
+Without that variable (a hand-started `serve --starter`) the update is
+installed and takes effect on the next start. `TSUM_STATS_NO_UPDATE=1` turns
+off the launch update and the background check; the button still works.
+
 ## Getting your data in
 
 | Source | How |

@@ -48,6 +48,12 @@ refuse cross-origin writes. Actions stream NDJSON (`{"log"}` lines, then
 live log holds a per-device lock, since a probe would otherwise re-push the
 device script mid-run. `go test ./internal/starter` drives it through a fake adb.
 
+Updates (`update.go`): main hands the starter an `Updater` built on its own
+`selfUpdate`, since only main knows `updateURL` and its binary. After an apply,
+the route shuts the HTTP server down (closing the stats page's realtime stream
+if it holds on), PocketBase's `Execute` closes the database, and main exits
+with the launcher's `TSUM_STATS_RESTART_CODE`.
+
 ## Where the data comes from
 
 | Source | Code |
