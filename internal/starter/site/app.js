@@ -160,7 +160,7 @@ function renderStatus() {
   $('#channel-url').value = s.channel || '';
   $('#collected-path').textContent = s.collected;
   $('#foot').replaceChildren(
-    `Tsum Tsum Starter ${s.version}  ·  this folder: `, el('code', {}, s.bundle),
+    `Tsum Tsum Starter ${s.starterVersion || ''}  ·  tsum-stats ${s.version}  ·  this folder: `, el('code', {}, s.bundle),
     '  ·  device storage: ', el('code', {}, s.storage), '  ·  ', el('a', {href: '/', target: '_blank', rel: 'noopener'}, 'Stats site'));
 }
 
@@ -528,22 +528,30 @@ async function setChannel(url) {
 
 // ------------------------------------------------------------------ updates
 
+const UPDATE_NAMES = {stats: 'tsum-stats', starter: 'the starter'};
+
+function updateLine(u) {
+  return u.disabled ? `${u.current || 'this copy'}: does not update itself (a local build or the source folder).`
+    : u.installed ? `${u.latest} is installed. Close this window's terminal and start the starter again to use it.`
+    : u.available ? `${u.current || '?'}, and ${u.latest} is available.`
+    : u.error ? `${u.current || '?'}. Could not check: ${u.error}`
+    : u.latest ? `${u.current}, the newest version.`
+    : `${u.current || '?'}.`;
+}
+
 function renderUpdate() {
-  const u = state.update;
-  if (!u) return;
-  const ready = u.available && !u.disabled;
-  $('#update-banner').hidden = !ready;
-  $('#update-banner-text').textContent = ready ? `tsum-stats ${u.latest} is out; this is ${u.current}.` : '';
-  $$('[data-update-apply]').forEach(b => { b.hidden = !ready; });
-  $('#update-check').hidden = u.disabled;
-  $('#update-line').textContent =
-    u.disabled ? `tsum-stats ${u.current}, a local build: it does not update itself.`
-    : u.installed ? `tsum-stats ${u.latest} is installed. Close this window's terminal and start the starter again to use it.`
-    : ready ? `tsum-stats ${u.current}. Version ${u.latest} is available.`
-    : u.latest ? `tsum-stats ${u.current}, the newest version.`
-    : `tsum-stats ${u.current}.`;
-  $('#update-checked').textContent = u.error ? `Could not check: ${u.error}`
-    : u.checked ? `Last checked ${new Date(u.checked).toLocaleString()}.` : '';
+  const all = state.update;
+  if (!all) return;
+  const ready = Object.keys(UPDATE_NAMES).filter(k => all[k].available && !all[k].disabled);
+  $('#update-banner').hidden = !ready.length;
+  $('#update-banner-text').textContent = ready.map(k => `${k === 'stats' ? 'tsum-stats' : 'The starter'} ${all[k].latest} is out.`).join(' ');
+  for (const row of $$('[data-update]')) {
+    const u = all[row.dataset.update];
+    row.querySelector('[data-update-line]').textContent = updateLine(u);
+    row.querySelector('[data-update-apply]').hidden = !(u.available && !u.disabled);
+  }
+  $('#update-check').hidden = all.stats.disabled && all.starter.disabled;
+  $('#update-checked').textContent = all.checked ? `Last checked ${new Date(all.checked).toLocaleString()}.` : '';
 }
 
 async function loadUpdate() {
@@ -567,13 +575,15 @@ async function checkUpdate() {
   }
 }
 
-async function applyUpdate() {
-  const u = state.update;
+
+async function applyUpdate(kind) {
+  const u = state.update?.[kind];
   if (state.busy || !u?.available) return;
-  if (!confirm(`Update tsum-stats to ${u.latest}?\n\n${u.canRestart
+  if (!confirm(`Update ${UPDATE_NAMES[kind]} to ${u.latest}?\n\n${u.canRestart
     ? 'The starter restarts, and this page and Stats reload in a few seconds.'
     : 'You restart the starter yourself afterwards.'}`)) return;
   if (state.follow) state.follow.abort();
+  const before = state.update.boot;
   setBusy(true);
   const out = $('#update-log');
   out.hidden = false;
@@ -581,25 +591,25 @@ async function applyUpdate() {
   $('#updates').scrollIntoView({behavior: 'smooth', block: 'nearest'});
   let v;
   try {
-    v = await readStream(await post('update/apply', {}), line => out.append(line + '\n'));
+    v = await readStream(await post(kind === 'stats' ? 'update/apply' : 'update/starter', {}), line => out.append(line + '\n'));
   } catch (e) {
     v = {ok: false, msg: e.message};
   }
   out.append('\n' + v.msg + '\n');
   if (v.restart) {
-    await waitForRestart(u.current, out);
+    await waitForRestart(before, out);
     return;
   }
   setBusy(false);
   await loadUpdate();
 }
 
-// Polls until the new version answers, then reloads.
-async function waitForRestart(old, out) {
-  for (let i = 0; i < 60; i++) {
+// Polls until a new process answers, then reloads.
+async function waitForRestart(before, out) {
+  for (let i = 0; i < 90; i++) {
     await new Promise(r => setTimeout(r, 1000));
     try {
-      if ((await api('status')).version !== old) {
+      if ((await api('update')).boot !== before) {
         location.reload();
         return;
       }
@@ -623,7 +633,8 @@ function wire() {
   $('#channel-form').addEventListener('submit', e => { e.preventDefault(); setChannel($('#channel-url').value.trim()); });
   $('#channel-off').addEventListener('click', () => setChannel('off'));
   $('#update-check').addEventListener('click', checkUpdate);
-  $$('[data-update-apply]').forEach(b => b.addEventListener('click', applyUpdate));
+  $$('[data-update]').forEach(row => row.querySelector('[data-update-apply]')
+    .addEventListener('click', () => applyUpdate(row.dataset.update)));
   for (const b of $$('[data-action]')) {
     b.addEventListener('click', () => {
       const action = b.dataset.action;

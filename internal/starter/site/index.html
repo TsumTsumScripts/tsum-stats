@@ -90,10 +90,10 @@
 
     <p class="patch patch--grape note" id="adb-warning" hidden role="status"></p>
 
-    <!-- A newer tsum-stats is out: the program serving this page and Stats. -->
+    <!-- A newer tsum-stats or starter is out. -->
     <div class="patch patch--periwinkle note update-banner" id="update-banner" hidden role="status">
       <p id="update-banner-text"></p>
-      <button class="patch patch--paper fbtn fbtn--sm" type="button" data-update-apply>Update now</button>
+      <a class="patch patch--paper fbtn fbtn--sm" href="#updates">See updates</a>
     </div>
 
     <section id="devices" aria-labelledby="devices-title" class="stack">
@@ -225,15 +225,22 @@
     <section class="stack" id="updates" aria-labelledby="updates-title">
       <h2 id="updates-title">Updates</h2>
       <div class="patch card">
-        <p id="update-line"></p>
-        <p class="small muted" id="update-checked"></p>
-        <div class="row" id="update-actions">
-          <button class="patch patch--surface fbtn fbtn--sm" type="button" id="update-check">Check for updates</button>
-          <button class="patch patch--paper fbtn fbtn--sm" type="button" data-update-apply hidden>Update now</button>
+        <div class="update-row" data-update="starter">
+          <p><b>Starter</b> <span data-update-line></span></p>
+          <button class="patch patch--paper fbtn fbtn--sm" type="button" data-update-apply hidden>Update the starter</button>
         </div>
-        <p class="small">This page and the Stats site are served by tsum-stats. Updating downloads the new version from
-          its GitHub release, checks it against the published checksum and restarts the starter; the page reloads by
-          itself. It also looks every few hours while open.</p>
+        <div class="update-row" data-update="stats">
+          <p><b>tsum-stats</b> <span data-update-line></span></p>
+          <button class="patch patch--paper fbtn fbtn--sm" type="button" data-update-apply hidden>Update tsum-stats</button>
+        </div>
+        <div class="row">
+          <button class="patch patch--surface fbtn fbtn--sm" type="button" id="update-check">Check for updates</button>
+          <span class="small muted" id="update-checked"></span>
+        </div>
+        <p class="small">The starter is this folder's scripts; tsum-stats serves this page and the Stats site.
+          Updating downloads the new version from GitHub, checks it against the published checksum and restarts the
+          starter in this window; the page reloads by itself. Your adb, APKs, copied files and settings stay as they
+          are. It also looks every few hours while open.</p>
         <pre class="console console--inline" id="update-log" hidden></pre>
       </div>
     </section>

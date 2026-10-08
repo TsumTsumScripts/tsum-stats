@@ -131,8 +131,9 @@ func (s *Starter) Mount(se *core.ServeEvent, puller *stats.Puller) {
 			channel = base
 		}
 		last, _ := os.ReadFile(filepath.Join(s.bundle, "last-device.txt"))
+		starterVersion, _ := s.bundleVersion()
 		return e.JSON(http.StatusOK, map[string]any{
-			"version": s.version, "bundle": s.bundle, "storage": s.storage, "adb": info,
+			"version": s.version, "starterVersion": starterVersion, "bundle": s.bundle, "storage": s.storage, "adb": info,
 			"channel": channel, "hasApks": len(s.bundledAPKs("")) > 0,
 			"lastDevice": strings.TrimSpace(string(last)), "collected": s.Collected(),
 		})

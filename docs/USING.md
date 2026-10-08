@@ -64,14 +64,24 @@ each linking to the other. The starter uses the bundle's adb for Import from
 devices too, and imports what it copies into the bundle's `collected/` folder.
 Without `--starter` nothing changes.
 
-The starter keeps this program current. Each launch runs `tsum-stats update`
-first, and while it runs the page looks for a newer version every six hours and
-has a **Check for updates** button. **Update now** downloads the new version,
-checks its sha256 and exits with `TSUM_STATS_RESTART_CODE`; the bundle's
-launcher answers that code by starting the new version, and the page reloads.
-Without that variable (a hand-started `serve --starter`) the update is
-installed and takes effect on the next start. `TSUM_STATS_NO_UPDATE=1` turns
-off the launch update and the background check; the button still works.
+The starter keeps this program and its own scripts current. Each launch runs
+`tsum-stats update` first, and while it runs the page looks for newer versions
+every six hours and has a **Check for updates** button.
+
+- **Update tsum-stats** downloads the new version, checks its sha256 and exits
+  with `TSUM_STATS_RESTART_CODE`; the launcher starts the new version.
+- **Update the starter** reads the bundle's `starter-version.txt`
+  (`version=`, `update_url=`), fetches the `starter.txt` it names, downloads
+  that scripts `.tar.gz`, checks its sha256 and moves its files into the
+  bundle (never `adb/`, `apk/`, `collected/`, `server/`, `channel.txt`,
+  `last-device.txt` or `Start-Windows.cmd`). It then exits with
+  `GAP_STARTER_RELOAD_CODE`, and the launcher starts itself again.
+
+The page reloads once the new process answers. Without those variables (a
+hand-started `serve --starter`) an update is installed and takes effect on the
+next start. A bundle with no `update_url`, or the source tree (it still has
+`build-starter.sh`), does not update its scripts. `TSUM_STATS_NO_UPDATE=1`
+turns off the launch update and the background checks; the buttons still work.
 
 ## Getting your data in
 

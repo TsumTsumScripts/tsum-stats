@@ -144,9 +144,7 @@ func starterUpdater() starter.Updater {
 		Apply: func(logf func(string)) (bool, error) {
 			return selfUpdate(updateURL, func(f string, a ...any) { logf(fmt.Sprintf(f, a...)) })
 		},
-		Newer:       newerVersion,
 		RestartCode: code,
-		NoAutoCheck: os.Getenv("TSUM_STATS_NO_UPDATE") != "",
 	}
 }
 

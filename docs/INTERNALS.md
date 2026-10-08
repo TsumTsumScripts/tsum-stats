@@ -48,11 +48,16 @@ refuse cross-origin writes. Actions stream NDJSON (`{"log"}` lines, then
 live log holds a per-device lock, since a probe would otherwise re-push the
 device script mid-run. `go test ./internal/starter` drives it through a fake adb.
 
-Updates (`update.go`): main hands the starter an `Updater` built on its own
-`selfUpdate`, since only main knows `updateURL` and its binary. After an apply,
-the route shuts the HTTP server down (closing the stats page's realtime stream
-if it holds on), PocketBase's `Execute` closes the database, and main exits
-with the launcher's `TSUM_STATS_RESTART_CODE`.
+Updates (`update.go`, `bundle.go`): main hands the starter an `Updater` built
+on its own `selfUpdate`, since only main knows `updateURL` and its binary; the
+bundle's scripts update from the bundle's own `starter-version.txt`. An apply
+stages everything (the archive unpacks into `<bundle>/.update/new`, and must
+carry the required files and the pinned version) before renaming files into
+place, so a shell still reading a script keeps the old file, and a failed
+rename puts back the ones already moved. Then the route shuts the HTTP server
+down (closing the stats page's realtime stream if it holds on), PocketBase's
+`Execute` closes the database, and main exits with the launcher's restart
+code. `boot` in `GET /update` tells the page a new process from the old one.
 
 ## Where the data comes from
 
