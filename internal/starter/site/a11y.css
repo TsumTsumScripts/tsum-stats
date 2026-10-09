@@ -1,0 +1,106 @@
+/*
+ * The starter page's Accessible style, the default (appearance.js turns it off
+ * for Felt). Laid over felt.css and app.css, which keep the layout: the felt
+ * colours, flat. No weave, noise, stitching, tilts or motion; solid 2px edges,
+ * the system font, text at 7:1. Adds a light theme (data-theme) and four sizes
+ * (data-size, the whole page zoomed). Matches the Tsum script's settings page.
+ */
+
+/* --- Size: Small is the felt page's own scale ----------------------------- */
+
+:root { --a-zoom: 1; }
+[data-size="xs"] { --a-zoom: .9; }
+[data-size="m"] { --a-zoom: 1.15; }
+[data-size="l"] { --a-zoom: 1.3; }
+
+body.felt-body { zoom: var(--a-zoom); }
+
+/* --- Colour: felt's dark as it is, plus a light theme ----------------------- */
+
+:root {
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+  --font-display: var(--font-body);
+  /* Headings and the focus ring. */
+  --a-accent: #ffb454;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --ground: #f3ead9;
+  --ground-ink: #1a1424;
+  --ground-ink-soft: #3d3450;
+  --surface: #fffaf0;
+  --surface-thread: #5c5140;
+  --surface-fill: #fffaf0;
+  --surface-edge2: #5c5140;
+  --surface-thread2: #5c5140;
+  --surface-chip: #fffaf0;
+  --surface-ink: #1a1424;
+  --a-accent: #6b3800;
+}
+
+/* --- Flat: no texture, noise, stitching or tilt ----------------------------- */
+
+body.felt-body { background-image: none; }
+body.felt-body::after { display: none; }
+
+/* A patch keeps its fill; its stitch becomes a solid edge in the thread colour. */
+.patch {
+  background-image: none;
+  border: 2px solid var(--thread);
+  box-shadow: none;
+  transform: none !important;
+  transition: none;
+}
+.patch::before { display: none; }
+
+/* Decorative coins sit straight (their tilt is an inline style, hence !important). */
+.felt-brand__coin,
+.felt-sticker { transform: none !important; transition: none; }
+
+/* Nothing lifts or wobbles; hover underlines instead. */
+.fbtn:hover:not(:disabled),
+.fbtn:active:not(:disabled),
+.felt-pill:hover,
+.device:hover { transform: none; }
+.fbtn:hover:not(:disabled),
+.felt-pill:hover { text-decoration: underline; text-underline-offset: 4px; }
+.felt-pill--on { animation: none; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+
+/* Dashes become solid lines. */
+.chip,
+.abi { border-style: solid; }
+.card hr { border-top-style: solid; opacity: 1; }
+.field select,
+.field input { border-style: solid; }
+
+/* --- Type: the system face, bold headings ---------------------------------- */
+
+.felt h1,
+.felt h2,
+.felt h3,
+.felt-brand__name,
+.status-big,
+.device__model { font-family: var(--font-body); font-weight: 800; }
+
+/* --- Focus and selection: never by colour alone ---------------------------- */
+
+.felt :focus-visible { outline: 3px solid var(--a-accent); outline-offset: 3px; }
+.felt .patch :focus-visible { outline-color: var(--ink); }
+
+/* The chosen device keeps its "Chosen" tag and outline; the others stay readable. */
+.device[aria-pressed="true"] { outline-color: var(--a-accent); }
+.device-grid:has(.device[aria-pressed="true"]) .device[aria-pressed="false"] { opacity: 1; }
+
+/* --- Appearance popover ---------------------------------------------------- */
+
+.appearance h3,
+.choice legend { color: var(--a-accent); }
+.choice span { border-style: solid; background: var(--ground); color: var(--ground-ink); border-color: var(--surface-thread); }
+/* Filled and underlined. */
+.choice input:checked + span {
+  background: var(--jade-fill); color: var(--jade-ink); border-color: var(--jade-fill);
+  text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px;
+}
+[data-theme="light"] .choice input:checked + span { background: #1a6b52; color: #ffffff; border-color: #1a6b52; }
+.choice input:focus-visible + span { outline-color: var(--a-accent); }

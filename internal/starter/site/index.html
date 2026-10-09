@@ -11,6 +11,11 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;600;700;800&display=swap">
   <link rel="stylesheet" href="felt.css">
   <link rel="stylesheet" href="app.css">
+  <!-- The Accessible style, the default, over the felt sheets (which keep the
+       layout); appearance.js turns it off for Felt. Not deferred, so the look is
+       set before the page draws. -->
+  <link rel="stylesheet" href="a11y.css" data-style="a11y">
+  <script src="appearance.js"></script>
   <script src="app.js" defer></script>
 </head>
 <body class="felt-body">
@@ -58,8 +63,38 @@
       <a class="patch patch--jade felt-pill" href="#export">Export logs &amp; stats</a>
       <a class="patch patch--periwinkle felt-pill" href="/" target="_blank" rel="noopener">Stats site ↗</a>
       <a class="patch patch--rose felt-pill" href="#help">Help</a>
+      <button class="patch patch--surface felt-pill appearance-btn" type="button" popovertarget="appearance"
+        aria-label="Appearance">Aa</button>
     </nav>
   </header>
+
+  <!-- Appearance: radio groups drawn as rows of buttons; appearance.js keeps
+       them in step. A popover, so a click outside or Escape closes it. -->
+  <div id="appearance" class="patch card appearance" popover aria-labelledby="appearance-title">
+    <h3 id="appearance-title">Appearance</h3>
+    <fieldset class="choice">
+      <legend>Style</legend>
+      <label><input type="radio" name="style" value="a11y"><span>Accessible</span></label>
+      <label><input type="radio" name="style" value="felt"><span>Felt</span></label>
+    </fieldset>
+    <fieldset class="choice" data-a11y-only>
+      <legend>Theme</legend>
+      <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
+      <label><input type="radio" name="theme" value="light"><span>Light</span></label>
+      <label><input type="radio" name="theme" value="device"><span>Device</span></label>
+    </fieldset>
+    <fieldset class="choice" data-a11y-only>
+      <legend>Size</legend>
+      <label><input type="radio" name="size" value="xs" aria-label="Extra small"><span aria-hidden="true">XS</span></label>
+      <label><input type="radio" name="size" value="s" aria-label="Small"><span aria-hidden="true">S</span></label>
+      <label><input type="radio" name="size" value="m" aria-label="Medium"><span aria-hidden="true">M</span></label>
+      <label><input type="radio" name="size" value="l" aria-label="Large"><span aria-hidden="true">L</span></label>
+    </fieldset>
+    <p class="small" id="appearance-felt-note" hidden>Theme and size apply to the Accessible style. Felt is dark only.</p>
+    <div class="row">
+      <button class="patch patch--paper fbtn fbtn--sm" type="button" popovertarget="appearance" popovertargetaction="hide">Close</button>
+    </div>
+  </div>
 
   <main class="felt-wrap" id="top">
     <div class="felt-pagehead">
