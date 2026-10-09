@@ -30,6 +30,35 @@ Messages are sent from one goroutine, never from a device's event reader, and
 a page that stops reading is dropped. The page reopens its stream when it
 closes and refetches when a device looks stale.
 
+## The service starter
+
+`internal/starter` is the Tsum Tsum script's service starter as a website,
+mounted with `--starter <bundle>` through `stats.Config.Starter`
+(`StarterHook`). It ports the bundle's shell host: adb chosen and downloaded
+against the bundle's `platform-tools.txt` (`adb.go`), emulator discovery and
+the `device/gap-service.sh` protocol (`device.go`), the actions (`actions.go`),
+APKs and the release channel (`apk.go`) and the zip export (`export.go`). The
+page is plain files in `internal/starter/site/`, embedded as they are, in the
+website's felt design. It shares its adb with the `Puller` (`SetADB`), which
+then skips its own download.
+
+Its `/api/starter` routes run adb, so they answer only on a loopback Host and
+refuse cross-origin writes. Actions stream NDJSON (`{"log"}` lines, then
+`{"done"}`), with the 5-minute write deadline cleared. Every action except the
+live log holds a per-device lock, since a probe would otherwise re-push the
+device script mid-run. `go test ./internal/starter` drives it through a fake adb.
+
+Updates (`update.go`, `bundle.go`): main hands the starter an `Updater` built
+on its own `selfUpdate`, since only main knows `updateURL` and its binary; the
+bundle's scripts update from the bundle's own `starter-version.txt`. An apply
+stages everything (the archive unpacks into `<bundle>/.update/new`, and must
+carry the required files and the pinned version) before renaming files into
+place, so a shell still reading a script keeps the old file, and a failed
+rename puts back the ones already moved. Then the route shuts the HTTP server
+down (closing the stats page's realtime stream if it holds on), PocketBase's
+`Execute` closes the database, and main exits with the launcher's restart
+code. `boot` in `GET /update` tells the page a new process from the old one.
+
 ## Where the data comes from
 
 | Source | Code |

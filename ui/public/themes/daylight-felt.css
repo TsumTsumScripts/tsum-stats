@@ -1,0 +1,193 @@
+/* @name Daylight Felt
+   The Tsum Tsum website's felt patches on a light, warm-cream ground: white
+   felt panels with a soft bottom edge and indigo stitching, and the same
+   marigold accent. Besides tokens it restyles the page's classes. Caprasimo and Figtree come from Google
+   Fonts; offline, system fonts stand in. Text is 7:1 or better on its panel. */
+@import url('https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;600;700;800&display=swap');
+
+:root {
+  color-scheme: light;
+  --font-body: 'Figtree', system-ui, sans-serif;
+  --font-display: 'Caprasimo', Georgia, serif;
+  --radius: 26px;
+
+  /* Page */
+  --bg: #f4efe6;
+  --bg-top: #fbf7ef;
+  --bg-mid: #f4efe6;
+  --bg-bottom: #e9e2d4;
+  --dots: rgba(28, 27, 43, 0.06);
+  --topbar-bg: rgba(251, 247, 239, 0.93);
+  --hairline: rgba(28, 27, 43, 0.14);
+  --backdrop: rgba(28, 27, 43, 0.5);
+
+  /* Panels, wells and text */
+  --panel: #fffdf8;
+  --panel-hi: #ffffff;
+  --panel-top: rgba(255, 255, 255, 0.97);
+  --panel-bottom: rgba(250, 245, 235, 0.97);
+  --panel-edge: #b8b2d0;
+  --seam: #9d97c0;
+  --well: #ece5d6;
+  --cell: rgba(236, 229, 214, 0.6);
+  --sticky-bg: rgba(251, 247, 239, 0.95);
+  --tip-bg: #ffffff;
+  --ink: #1c1b2b;
+  --muted: #383652;
+  --faint: #46425f;
+
+  /* Shadows */
+  --drop: 0 5px 0 #cfc8dc;
+  --press: 0 2px 0 #cfc8dc;
+  --lift: inset 0 2px 0 rgba(255, 255, 255, 0.9);
+  --inset: inset 0 2px 4px rgba(28, 27, 43, 0.16);
+  --float: 0 12px 30px rgba(28, 27, 43, 0.22);
+
+  /* Buttons and highlights */
+  --accent-a: #ffc874;
+  --accent-b: #ffb454;
+  --accent-edge: #a5651a;
+  --accent-shadow: #7a4a12;
+  --accent-ink: #2e1a03;
+  --badge-a: #ff8fab;
+  --badge-b: #e0668a;
+  --hero-top: rgba(157, 180, 255, 0.55);
+
+  /* Figures: the patches' dark inks, to read on a light page */
+  --score: #1a5c48;
+  --score-shadow: rgba(26, 92, 72, 0.15);
+  --coin: #7a4a12;
+  --coin-shadow: rgba(122, 74, 18, 0.18);
+  --medal: #34458c;
+  --medal-shadow: rgba(52, 69, 140, 0.15);
+  --maxed-a: #f5b800;
+  --fav: #9a6500;
+  --maxed-b: #ffe680;
+  --maxed-glow: rgba(245, 184, 0, 0.4);
+  --maxed-ink: #3a2a00;
+  --good: #1a5c48;
+  --bad: #80293f;
+
+  /* Charts */
+  --axis-line: rgba(28, 27, 43, 0.3);
+  --grid-line: rgba(28, 27, 43, 0.09);
+  --chart-rule: rgba(28, 27, 43, 0.4);
+  --chart-track: rgba(28, 27, 43, 0.07);
+  --chart-other: #8e89b0;
+  --build-intl: #4a5fb3;
+  --build-jp: #a83d5c;
+  --build-none: #b8b2d0;
+  --avatar-a: #d8d2e4;
+  --avatar-b: #b8b2d0;
+  /* Felt */
+  --weave-hi: rgba(255, 255, 255, .55); --weave-lo: rgba(28, 27, 43, .045);
+  --rim: #cfc8dc; --cast: rgba(28, 27, 43, .16);
+}
+
+/* ---- The felt look -------------------------------------------------------
+   Everything below restyles the page's classes (the tokens above cannot make
+   a patch with stitching, a tilt and a hard edge), so a change to the page's
+   markup may need a touch-up here. Each rule starts with ":root" because a
+   theme's <link> loads before the page's own styles. The colours are the
+   website's felt patches: fill, hard bottom edge, stitch thread, dark ink. */
+:root {
+  --m-fill: #ffb454; --m-edge: #a5651a; --m-thread: #7a4a12; --m-ink: #2e1a03;
+  --j-fill: #5cc9a7; --j-edge: #23785f; --j-thread: #1a5c48; --j-ink: #08261d;
+  --r-fill: #ff8fab; --r-edge: #a83d5c; --r-thread: #80293f; --r-ink: #33101b;
+  --p-fill: #9db4ff; --p-edge: #4a5fb3; --p-thread: #34458c; --p-ink: #141d40;
+  --g-fill: #5b3f9e; --g-edge: #36246b; --g-thread: #e3d8ff; --g-ink: #ffffff;
+  --weave: repeating-linear-gradient(31deg, var(--weave-hi) 0 1px, transparent 1px 4px),
+           repeating-linear-gradient(-57deg, var(--weave-lo) 0 1px, transparent 1px 5px);
+  --coin-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 104'%3E%3Ccircle cx='50' cy='57' r='44' fill='%23a85f0c'/%3E%3Ccircle cx='50' cy='52' r='44' fill='%23e8900c'/%3E%3Ccircle cx='50' cy='52' r='38' fill='%23ffbb1a'/%3E%3Ccircle cx='50' cy='55' r='14' fill='%23ffe07a'/%3E%3Ccircle cx='34' cy='39' r='9' fill='%23ffe07a'/%3E%3Ccircle cx='66' cy='39' r='9' fill='%23ffe07a'/%3E%3Ccircle cx='50' cy='53' r='14' fill='%23e2700a'/%3E%3Ccircle cx='34' cy='37' r='9' fill='%23e2700a'/%3E%3Ccircle cx='66' cy='37' r='9' fill='%23e2700a'/%3E%3Ccircle cx='50' cy='52' r='40.5' fill='none' stroke='%23fff4cc' stroke-width='2.4' stroke-dasharray='4.2 3.2'/%3E%3C/svg%3E");
+}
+
+/* The ground: the felt's diagonal weave, no dots. */
+:root body { background-image: var(--weave); background-size: auto; background-blend-mode: normal; }
+
+/* Type: Caprasimo has one weight, so nothing in it is bold; labels use Figtree. */
+:root h1, :root h2, :root h3, :root .kpi .value, :root .card .name, :root .avatar, :root .brand-badge,
+:root .steps li::before, :root .status-tile b, :root .more summary, :root .tip b, :root .drop-hint,
+:root .chart .center-value, :root .chart .ring-label { font-weight: 400; }
+:root .seg button, :root .btn { font-family: var(--font-body); font-weight: 800; }
+:root .brand h1 { font-size: 22px; }
+:root .panel > h2, :root .panel-head h2 { font-size: 24px; }
+:root .kpi .value { font-size: 30px; }
+:root .kpi.hero .value { font-size: 50px; }
+
+/* Panels: a felt patch, uneven corners, hard bottom edge, thick stitching. */
+:root .panel {
+  border: 0; border-radius: 30px 42px 32px 46px;
+  background-color: var(--panel); background-image: var(--weave); background-size: auto; background-blend-mode: normal;
+  box-shadow: 0 6px 0 var(--rim), 0 14px 26px var(--cast);
+}
+:root .panel::before { inset: 9px; border: 2.5px dashed var(--seam); border-radius: 22px 34px 24px 38px; }
+:root .panel { padding: 24px; }
+:root .kpi { padding: 20px 24px; }
+:root .rail-panel { padding: 18px 20px; }
+:root .focus-bar { padding: 12px 18px; }
+:root .card { padding: 20px 16px 16px; }
+:root .rail-body, :root .panel.expanded { background-color: var(--panel); background-image: var(--weave); }
+:root .card { border-top: 0; border-radius: 22px 28px 24px 30px; box-shadow: 0 5px 0 var(--rim), 0 10px 18px var(--cast); transition: transform .2s; }
+:root .card::before { inset: 6px; border-width: 2px; border-radius: 16px 22px 18px 24px; }
+:root .card:nth-child(odd) { transform: rotate(-.7deg); }
+:root .card:nth-child(even) { transform: rotate(.6deg); }
+:root .card:hover { transform: rotate(0) translateY(-4px); }
+:root .card::after { content: ''; position: absolute; left: 22px; right: 22px; top: 0; height: 7px; border-radius: 0 0 8px 8px; background: var(--tsum, var(--seam)); }
+:root .rail-panel, :root .focus-bar { border-radius: 26px 32px 28px 34px; }
+:root #catalog > .panel:first-child { border-radius: 26px 36px 28px 40px; }
+
+/* KPI tiles are the bright patches: a score is jade, coins marigold, medals periwinkle,
+   the rest rose, and the hero tile grape. Ink is the patch's own dark tone throughout. */
+:root .kpi {
+  --k-fill: var(--r-fill); --k-edge: var(--r-edge); --k-thread: var(--r-thread); --k-ink: var(--r-ink);
+  --ink: var(--k-ink); --muted: var(--k-ink); --faint: var(--k-ink); --seam: var(--k-thread); --panel-edge: var(--k-thread);
+  --well: rgba(255, 255, 255, .6); --score: var(--k-ink); --coin: var(--k-ink); --medal: var(--k-ink);
+  --score-shadow: transparent; --coin-shadow: transparent; --medal-shadow: transparent;
+  color: var(--k-ink); background-color: var(--k-fill); border-radius: 26px 36px 28px 40px;
+  box-shadow: 0 6px 0 var(--k-edge), 0 14px 22px var(--cast); transition: transform .2s;
+}
+:root .kpi.score { --k-fill: var(--j-fill); --k-edge: var(--j-edge); --k-thread: var(--j-thread); --k-ink: var(--j-ink); }
+:root .kpi.coin { --k-fill: var(--m-fill); --k-edge: var(--m-edge); --k-thread: var(--m-thread); --k-ink: var(--m-ink); }
+:root .kpi.medal { --k-fill: var(--p-fill); --k-edge: var(--p-edge); --k-thread: var(--p-thread); --k-ink: var(--p-ink); }
+:root .kpi, :root .kpi.hero { background-color: var(--k-fill); background-blend-mode: normal; background-size: auto; background-image: repeating-linear-gradient(31deg, rgba(255,255,255,.15) 0 1px, transparent 1px 4px), repeating-linear-gradient(-57deg, rgba(0,0,0,.045) 0 1px, transparent 1px 5px); }
+:root .kpi:nth-child(odd) { transform: rotate(-1deg); }
+:root .kpi:nth-child(even) { transform: rotate(.8deg); }
+:root .kpi:hover { transform: rotate(0) translateY(-3px); }
+:root .kpi.hero {
+  --k-fill: var(--g-fill); --k-edge: var(--g-edge); --k-thread: var(--g-thread); --k-ink: var(--g-ink);
+  --well: rgba(20, 19, 31, .45); --coin: #ffe3a6; --score: #c8ffee; --medal: #dfe8ff;
+  background-color: var(--k-fill); transform: rotate(-1.2deg);
+}
+/* A felt coin stuck on the hero tile, as on the website. */
+:root .kpi.hero::after { content: ''; position: absolute; top: -20px; right: -14px; width: 58px; height: 60px; z-index: 2;
+  background: var(--coin-svg) center / contain no-repeat; transform: rotate(14deg); pointer-events: none; }
+
+/* Buttons and toggles: pills with dashed stitching and a hard edge. */
+:root .btn, :root .sort-btn, :root .chip, :root .pill, :root .tag { border: 2px dashed var(--seam); }
+:root .btn { background: var(--panel-hi); background-image: none; color: var(--ink); box-shadow: 0 4px 0 var(--rim); transition: transform .15s; }
+:root .btn:hover { filter: none; transform: translateY(-2px) rotate(-2deg); }
+:root .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--rim); }
+:root .btn.primary, :root .seg button[aria-pressed="true"], :root .jump button[aria-current="true"] {
+  --pf: var(--m-fill); --pe: var(--m-edge); --pt: var(--m-thread); --pi: var(--m-ink);
+  background: var(--pf); background-image: none; color: var(--pi); border: 2px dashed var(--pt); box-shadow: 0 4px 0 var(--pe);
+}
+:root .seg { background: var(--well); }
+:root .seg button { border: 2px dashed transparent; }
+:root .seg button:hover { transform: rotate(-2deg); }
+:root .topbar > .seg button:nth-child(2)[aria-pressed="true"] { --pf: var(--j-fill); --pe: var(--j-edge); --pt: var(--j-thread); --pi: var(--j-ink); }
+:root .topbar > .seg button:nth-child(3)[aria-pressed="true"] { --pf: var(--r-fill); --pe: var(--r-edge); --pt: var(--r-thread); --pi: var(--r-ink); }
+:root .filters .seg:nth-of-type(2) button[aria-pressed="true"] { --pf: var(--p-fill); --pe: var(--p-edge); --pt: var(--p-thread); --pi: var(--p-ink); }
+:root #starter-btn, :root #share-btn, :root #data-btn { border: 2px dashed var(--pt); color: var(--pi); }
+:root #starter-btn { --pf: var(--j-fill); --pe: var(--j-edge); --pt: var(--j-thread); --pi: var(--j-ink); background: var(--pf); box-shadow: 0 4px 0 var(--pe); }
+:root #share-btn { --pf: var(--r-fill); --pe: var(--r-edge); --pt: var(--r-thread); --pi: var(--r-ink); background: var(--pf); box-shadow: 0 4px 0 var(--pe); }
+:root #data-btn { --pf: var(--p-fill); --pe: var(--p-edge); --pt: var(--p-thread); --pi: var(--p-ink); background: var(--pf); box-shadow: 0 4px 0 var(--pe); }
+:root .sort-btn.asc { background: var(--j-fill); color: var(--j-ink); border-color: var(--j-thread); }
+:root .sort-btn.desc { background: var(--m-fill); color: var(--m-ink); border-color: var(--m-thread); }
+:root .brand { border: 2px dashed var(--seam); box-shadow: 0 4px 0 var(--rim); background: var(--panel-hi); }
+:root .brand-badge { background: var(--r-fill); border: 2px dashed var(--r-thread); color: var(--r-ink); transform: rotate(-8deg); }
+:root .progress > div { background: var(--m-fill); }
+:root .field input, :root .field select, :root .search, :root .devices summary { border: 2px dashed var(--seam); }
+:root .steps li::before { background: var(--j-fill); border: 2px dashed var(--j-thread); color: var(--j-ink); }
+:root .callout, :root .addr-box { border: 2.5px dashed var(--m-fill); }
+:root .tip { border: 2px dashed var(--seam); }
+:root .tsum-list th, :root .tsum-list td { border-color: var(--hairline); }

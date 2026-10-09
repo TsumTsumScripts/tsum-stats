@@ -8,8 +8,10 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
+	"github.com/TsumTsumScripts/tsum-stats/internal/starter"
 	"github.com/TsumTsumScripts/tsum-stats/internal/stats"
 
 	"github.com/pocketbase/pocketbase"
@@ -30,13 +32,13 @@ func main() {
 	// Double-clicked or started with no command: update if a newer one is out,
 	// then serve and open the site.
 	launched := len(os.Args) == 1
+	clearOld()
 	if launched {
 		if alreadyRunning(siteURL) {
 			fmt.Println("Tsum Tsum Stats is already running; opening it:", siteURL)
 			openBrowser(siteURL)
 			return
 		}
-		clearOld()
 		if os.Getenv("TSUM_STATS_NO_UPDATE") == "" && updateURL != "" {
 			if done, err := selfUpdate(updateURL, log.Printf); err != nil {
 				log.Printf("update check skipped: %v", err)
@@ -65,6 +67,13 @@ func main() {
 	flags.StringVar(&cfg.WebDir, "web-dir", "",
 		"serve files in this folder in place of the built-in site's; created with a README when missing")
 
+	var starterDir string
+	var st *starter.Starter
+	var open bool
+	flags.StringVar(&starterDir, "starter", "",
+		"also serve the service starter for this starter bundle folder at /starter/ (Start-Linux.sh and Start-Windows.cmd pass it)")
+	flags.BoolVar(&open, "open", false, "open the site in the browser once it is up")
+
 	embedded, err := fs.Sub(webFS, "web")
 	if err != nil {
 		log.Fatal(err)
@@ -73,16 +82,69 @@ func main() {
 	app.RootCmd.AddCommand(webCmd(embedded))
 	app.RootCmd.AddCommand(snapshotCmd(app, embedded))
 
+	// Bound before stats.Register's, so the hook is set when the stats site mounts.
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		if starterDir == "" {
+			return se.Next()
+		}
+		base := "http://" + se.Server.Addr
+		home := base + "/starter/"
+		if alreadyRunning(base) {
+			if !starterRunning(base) {
+				return fmt.Errorf("Tsum Tsum Stats is already running at %s without the starter; stop it (Ctrl+C in its window) and run this again", base)
+			}
+			fmt.Println("The starter is already running; opening it:", home)
+			openBrowser(home)
+			os.Exit(0)
+		}
+		var err error
+		if st, err = starter.New(starterDir, version); err != nil {
+			return err
+		}
+		if updateURL != "" {
+			st.SetUpdater(starterUpdater())
+		}
+		// Copies off a device are imported into Stats.
+		if len(cfg.ImportDirs) == 0 {
+			cfg.ImportDirs = []string{st.Collected()}
+		}
+		if cfg.DeviceStorage == stats.DefaultDeviceStorage {
+			cfg.DeviceStorage = st.Storage()
+		}
+		cfg.Starter = st
+		if open {
+			go openWhenUp(base, home)
+		}
+		fmt.Println("Starter:", home, "  Stats:", base+"/")
+		return se.Next()
+	})
 	stats.Register(app, cfg, embedded)
 	if launched {
 		app.OnServe().BindFunc(func(se *core.ServeEvent) error {
-			go openWhenUp(siteURL)
+			go openWhenUp(siteURL, siteURL)
 			return se.Next()
 		})
 	}
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
+	}
+	// The page installed an update: the launcher starts the new version.
+	if st != nil && st.RestartCode() != 0 {
+		os.Exit(st.RestartCode())
+	}
+}
+
+// starterUpdater lets the starter page update this program. A launcher that
+// starts it again on some exit status names it in TSUM_STATS_RESTART_CODE.
+func starterUpdater() starter.Updater {
+	code, _ := strconv.Atoi(os.Getenv("TSUM_STATS_RESTART_CODE"))
+	return starter.Updater{
+		Latest: func() (string, error) { return latestVersion(updateURL) },
+		Apply: func(logf func(string)) (bool, error) {
+			return selfUpdate(updateURL, func(f string, a ...any) { logf(fmt.Sprintf(f, a...)) })
+		},
+		RestartCode: code,
 	}
 }
 

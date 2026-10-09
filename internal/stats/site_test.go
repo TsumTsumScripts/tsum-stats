@@ -84,6 +84,22 @@ func TestExportSiteKeepsEdits(t *testing.T) {
 	}
 }
 
+func TestThemesBuiltInOrderFirst(t *testing.T) {
+	fsys := fstest.MapFS{
+		"themes/aurora.css":        {Data: []byte(":root {}")},
+		"themes/ember.css":         {Data: []byte("/* @name Ember */")},
+		"themes/daylight-felt.css": {Data: []byte("/* @name Daylight Felt */")},
+		"themes/halloween.css":     {Data: []byte("/* @name Halloween */")},
+		"themes/midnight-felt.css": {Data: []byte("/* @name Midnight Felt */")},
+	}
+	got := Themes(fsys)
+	want := []Theme{{"halloween.css", "Halloween"}, {"midnight-felt.css", "Midnight Felt"},
+		{"daylight-felt.css", "Daylight Felt"}, {"ember.css", "Ember"}, {"aurora.css", "Aurora"}}
+	if !slices.Equal(got, want) {
+		t.Errorf("Themes() = %v, want %v", got, want)
+	}
+}
+
 func TestThemesMergeAndServeWithoutAManifest(t *testing.T) {
 	embedded := fstest.MapFS{
 		"themes/daylight.css":  {Data: []byte("/* @name Daylight */\n:root { color-scheme: light; }")},

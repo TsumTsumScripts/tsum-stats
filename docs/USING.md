@@ -52,6 +52,36 @@ Databases made by 0.6 and earlier are migrated on first start.
 | `--web-dir DIR` | none. Files here replace the built-in site's — see [Changing the site](#changing-the-site) |
 | `--adb PATH` | adb on `PATH`, else the Android SDK's, else Google's platform-tools |
 | `--device-storage DIR` | `/sdcard/Download/GameAutomationPlatform` |
+| `--starter DIR` | none. Also serves the service starter for that starter bundle at `/starter/` — see [The service starter](#the-service-starter) |
+| `--open` | off. Opens the site in the browser once it is up |
+
+### The service starter
+
+The Tsum Tsum script's starter bundle runs this program with `--starter
+<bundle>` (its `Start-Linux.sh` and `Start-Windows.cmd` download it). The
+starter page is then at <http://127.0.0.1:8090/starter/> and this site at `/`,
+each linking to the other. The starter uses the bundle's adb for Import from
+devices too, and imports what it copies into the bundle's `collected/` folder.
+Without `--starter` nothing changes.
+
+The starter keeps this program and its own scripts current. Each launch runs
+`tsum-stats update` first, and while it runs the page looks for newer versions
+every six hours and has a **Check for updates** button.
+
+- **Update tsum-stats** downloads the new version, checks its sha256 and exits
+  with `TSUM_STATS_RESTART_CODE`; the launcher starts the new version.
+- **Update the starter** reads the bundle's `starter-version.txt`
+  (`version=`, `update_url=`), fetches the `starter.txt` it names, downloads
+  that scripts `.tar.gz`, checks its sha256 and moves its files into the
+  bundle (never `adb/`, `apk/`, `collected/`, `server/`, `channel.txt`,
+  `last-device.txt` or `Start-Windows.cmd`). It then exits with
+  `GAP_STARTER_RELOAD_CODE`, and the launcher starts itself again.
+
+The page reloads once the new process answers. Without those variables (a
+hand-started `serve --starter`) an update is installed and takes effect on the
+next start. A bundle with no `update_url`, or the source tree (it still has
+`build-starter.sh`), does not update its scripts. `TSUM_STATS_NO_UPDATE=1`
+turns off the launch update and the background checks; the buttons still work.
 
 ## Getting your data in
 
@@ -339,8 +369,16 @@ tokens on `:root`, and nothing else.** The top bar's Theme menu lists them.
 The choice is saved in the browser (`localStorage`, `tsum-stats.theme`) and
 applied in `index.html` before the page draws.
 
-- **Built in:** `ui/public/themes/`. *Tsum Night*, the default, is the
-  tokens in `ui/src/styles.css` and has no file. *Ember* is a warm dark theme. Besides tokens it restyles
+- **Built in:** `ui/public/themes/`, listed Halloween, Midnight Felt, Daylight Felt, Ember (`themeOrder` in
+  `internal/stats/site.go`), then a player's own by name. *Halloween* is the
+  default (`DEFAULT_THEME` in `ui/src/lib/ui.svelte.js`, and `ui/index.html`).
+  The tokens in `ui/src/styles.css` sit under every theme and show only if its
+  file fails to load. *Midnight Felt* is the Tsum
+  Tsum website's dark look: indigo felt, dashed stitching and a marigold accent.
+  *Daylight Felt* is the same patches on a cream ground. Both set tokens only,
+  and their fonts (Caprasimo, Figtree) come from Google Fonts, with system fonts
+  offline. Text is 7:1 or better on its panel; keep that if you change a colour.
+- **Ember:** a warm dark theme. Besides tokens it restyles
   classes (panels, toggles, KPI tiles, the logo badge), so it may need a touch-up
   when the page's markup changes. It meets WCAG AA contrast (4.5:1 text, 3:1
   borders and focus rings), checked with the glass cards over the brightest
@@ -360,8 +398,8 @@ applied in `index.html` before the page draws.
 - **A player's own:** `--web-dir DIR`, then `DIR/themes/mine.css` . `/api/stats/themes` lists both; a file
   with a built-in one's name replaces it. A file starting with `_` is left out.
 - **Name:** `/* @name My theme */` near the top, else the file name.
-- **Start from:** `themes/daylight.css`, which sets every token.
-  `deep-sea.css` shows a theme that sets only what it changes.
+- **Start from:** `themes/daylight-felt.css`, which sets every token. A theme
+  may set only what it changes.
 
 A theme's `<link>` loads *before* the page's own styles, so a theme that
 restyles classes (as `ember.css` does) must start each rule with `:root` for the

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"os/exec"
@@ -20,9 +21,9 @@ func dataDir() string {
 	return filepath.Join(base, "TsumTsumStats", "data")
 }
 
-// openWhenUp opens the site in the default browser once it answers.
-func openWhenUp(url string) {
-	for i := 0; i < 60 && !alreadyRunning(url); i++ {
+// openWhenUp opens url in the default browser once the site at base answers.
+func openWhenUp(base, url string) {
+	for i := 0; i < 60 && !alreadyRunning(base); i++ {
 		time.Sleep(500 * time.Millisecond)
 	}
 	openBrowser(url)
@@ -51,4 +52,17 @@ func alreadyRunning(url string) bool {
 	}
 	resp.Body.Close()
 	return resp.StatusCode == http.StatusOK
+}
+
+// starterRunning reports whether the site at url also serves the starter.
+func starterRunning(url string) bool {
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(url + "/api/starter/status")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	// An older tsum-stats answers any path with its page, so read the reply.
+	var st struct{ Bundle string }
+	return resp.StatusCode == http.StatusOK && json.NewDecoder(resp.Body).Decode(&st) == nil && st.Bundle != ""
 }

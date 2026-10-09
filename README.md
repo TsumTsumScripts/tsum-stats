@@ -11,6 +11,9 @@ browser at <http://127.0.0.1:8090>.
 - **Help:** how to get data in (live script events, `stats_*.csv` files, or
   Import from devices over adb).
 
+- **Starter:** with `--starter <bundle>`, it also serves the Tsum Tsum
+  script's service starter at `/starter/`, which the starter bundle does for you.
+
 Everything stays on your computer. Sharing a read-only copy (Share) is opt-in.
 
 ## Run it

@@ -1,0 +1,145 @@
+/*
+ * The "Midnight felt" design, as the tsum-tsum-website uses it (src/css/felt.css
+ * there), without the Docusaurus parts. Keep the two in step when one changes.
+ */
+
+:root {
+  --ground: #1c1b2b;
+  --ground-ink: #f4efe6;
+  --ground-ink-soft: #d8d2e4;
+  --surface: #2e2d45;
+  --surface-edge: #14131f;
+  --surface-thread: #8e89b0;
+  --surface-thread-dim: #6c6890;
+  --surface-rule: #4a4766;
+  --font-display: 'Caprasimo', Georgia, serif;
+  --font-body: 'Figtree', system-ui, sans-serif;
+
+  --marigold-fill: #ffb454; --marigold-edge: #a5651a; --marigold-thread: #7a4a12; --marigold-chip: #fff3e0; --marigold-ink: #2e1a03;
+  --jade-fill: #5cc9a7; --jade-edge: #23785f; --jade-thread: #1a5c48; --jade-chip: #d9fff2; --jade-ink: #08261d;
+  --rose-fill: #ff8fab; --rose-edge: #a83d5c; --rose-thread: #80293f; --rose-chip: #ffe8ee; --rose-ink: #33101b;
+  --periwinkle-fill: #9db4ff; --periwinkle-edge: #4a5fb3; --periwinkle-thread: #34458c; --periwinkle-chip: #eef1ff; --periwinkle-ink: #141d40;
+  --grape-fill: #5b3f9e; --grape-edge: #36246b; --grape-thread: #e3d8ff; --grape-chip: #e3d8ff; --grape-ink: #ffffff;
+  --surface-fill: #2e2d45; --surface-edge2: #14131f; --surface-thread2: #8e89b0; --surface-chip: #2e2d45; --surface-ink: #f4efe6;
+  color-scheme: dark;
+}
+
+html { background-color: var(--ground); }
+body.felt-body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ground-ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  background-color: var(--ground);
+  background-image:
+    repeating-linear-gradient(31deg, rgba(255,255,255,.12) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(-57deg, rgba(0,0,0,.05) 0 1px, transparent 1px 5px);
+}
+/* Fine noise over the whole page. */
+body.felt-body::after {
+  content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px; mix-blend-mode: soft-light; opacity: .18;
+}
+
+.felt { position: relative; z-index: 2; color: var(--ground-ink); overflow-x: clip; }
+.felt h1, .felt h2, .felt h3 { font-family: var(--font-display); font-weight: 400; margin: 0; text-wrap: balance; color: inherit; line-height: 1.1; }
+.felt p { margin: 0; text-wrap: pretty; }
+.felt a { color: inherit; }
+/* Links styled as patches keep the patch's own ink. */
+.felt a.patch, .felt a.patch:hover { color: var(--ink); }
+.felt :focus-visible { outline: 3px solid #ffb454; outline-offset: 3px; }
+.felt .patch :focus-visible { outline-color: var(--ink); }
+.felt code { background: rgba(0,0,0,.28); color: inherit; padding: 1px 6px; border-radius: 6px; font-size: .92em; overflow-wrap: anywhere; }
+
+.felt-wrap { max-width: 1220px; margin: 0 auto; padding: 24px 24px 96px; display: flex; flex-direction: column; gap: 44px; }
+
+/* A felt patch: fill, hard bottom edge, stitched border. */
+.patch {
+  --fill: var(--surface-fill); --edge: var(--surface-edge2); --thread: var(--surface-thread2);
+  --chip: var(--surface-chip); --ink: var(--surface-ink);
+  --r: 32px; --inset: 9px; --stitch: 3px; --lift: 6px; --tilt: 0deg;
+  --r1: var(--r); --r2: var(--r); --r3: var(--r); --r4: var(--r);
+  position: relative;
+  border-radius: var(--r);
+  color: var(--ink);
+  background-color: var(--fill);
+  background-image:
+    repeating-linear-gradient(31deg, rgba(255,255,255,.15) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(-57deg, rgba(0,0,0,.045) 0 1px, transparent 1px 5px);
+  box-shadow: 0 var(--lift) 0 var(--edge), 0 12px 28px rgba(0,0,0,.3);
+  transform: rotate(var(--tilt));
+  transition: transform .2s;
+}
+.patch::before {
+  content: ''; position: absolute; inset: var(--inset);
+  border: var(--stitch) dashed var(--thread);
+  /* Per corner, so a four-value --r (set as --r1..--r4) still curves the stitch. */
+  border-radius:
+    max(0px, calc(var(--r1, var(--r)) - var(--inset)))
+    max(0px, calc(var(--r2, var(--r)) - var(--inset)))
+    max(0px, calc(var(--r3, var(--r)) - var(--inset)))
+    max(0px, calc(var(--r4, var(--r)) - var(--inset)));
+  pointer-events: none;
+}
+.patch > * { position: relative; }
+.patch--marigold { --fill: var(--marigold-fill); --edge: var(--marigold-edge); --thread: var(--marigold-thread); --chip: var(--marigold-chip); --ink: var(--marigold-ink); }
+.patch--jade { --fill: var(--jade-fill); --edge: var(--jade-edge); --thread: var(--jade-thread); --chip: var(--jade-chip); --ink: var(--jade-ink); }
+.patch--rose { --fill: var(--rose-fill); --edge: var(--rose-edge); --thread: var(--rose-thread); --chip: var(--rose-chip); --ink: var(--rose-ink); }
+.patch--periwinkle { --fill: var(--periwinkle-fill); --edge: var(--periwinkle-edge); --thread: var(--periwinkle-thread); --chip: var(--periwinkle-chip); --ink: var(--periwinkle-ink); }
+.patch--grape { --fill: var(--grape-fill); --edge: var(--grape-edge); --thread: var(--grape-thread); --chip: var(--grape-chip); --ink: var(--grape-ink); }
+.patch--paper { --fill: #f4efe6; --edge: #9a9486; --thread: #1c1b2b; --chip: #fff; --ink: #1c1b2b; }
+
+.kicker {
+  --r: 999px; --inset: 4px; --lift: 3px; --tilt: -2deg;
+  display: inline-block; font-weight: 700; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; padding: 8px 18px;
+}
+.chip { display: inline-block; border-radius: 999px; padding: 3px 12px; font-weight: 700; font-size: 14px; background: var(--chip); color: var(--ink); border: 2px dashed var(--thread); }
+
+/* Buttons: a patch pill with a hard edge that presses in. */
+.fbtn {
+  --r: 999px; --inset: 5px; --stitch: 2.5px; --lift: 5px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 30px;
+  font: 800 19px var(--font-body); text-decoration: none; cursor: pointer; border: 0;
+  transition: transform .15s, box-shadow .15s;
+}
+.fbtn:hover:not(:disabled) { transform: translateY(-2px) rotate(-2deg); }
+.fbtn:active:not(:disabled) { transform: translateY(3px); --lift: 2px; }
+.fbtn--sm { font-size: 15px; padding: 9px 18px; --lift: 4px; }
+.fbtn:disabled { cursor: not-allowed; opacity: .55; }
+
+/* Header: coin logo, display title and coloured pill links. */
+.felt-header { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 18px; padding-bottom: 8px; }
+.felt-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--ground-ink); }
+.felt-brand__coin { display: block; width: 54px; height: 56px; transform: rotate(-8deg); transition: transform .4s cubic-bezier(.34, 1.56, .64, 1); }
+.felt-brand:hover .felt-brand__coin { transform: rotate(14deg) scale(1.08); }
+.felt-brand__name { font: 400 clamp(20px, 3vw, 26px) var(--font-display); }
+.felt-nav { display: flex; flex-wrap: wrap; gap: 12px; margin-left: auto; }
+.felt-pill { --r: 999px; --inset: 4px; --stitch: 2px; --lift: 4px; padding: 9px 18px; font: 700 15px var(--font-body); text-decoration: none; color: var(--ink); transition: transform .25s cubic-bezier(.34, 1.56, .64, 1), box-shadow .15s; }
+.felt-pill:nth-child(odd) { --tilt: -1.5deg; }
+.felt-pill:nth-child(even) { --tilt: 1.5deg; }
+.felt-pill:hover { transform: translateY(-3px) rotate(calc(var(--tilt) * -2.4)); }
+.felt-pill--on { --fill: #f4efe6; --edge: #9a9486; --thread: #1c1b2b; --ink: #1c1b2b; --tilt: 0deg; animation: felt-bob 3.2s ease-in-out infinite; }
+@keyframes felt-bob { 50% { transform: translateY(-3px) rotate(1.5deg); } }
+
+.felt-sticker { position: absolute; pointer-events: none; }
+.felt-pagehead { position: relative; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; padding-right: 130px; }
+.felt-pagehead h1 { font-size: clamp(38px, 5.6vw, 58px); }
+.felt-pagehead__accent { --r: 22px 40px 26px 44px; --r1: 22px; --r2: 40px; --r3: 26px; --r4: 44px; --inset: 3px; --tilt: -2deg; --lift: 4px; display: inline-block; padding: 2px 16px 8px; }
+.felt-pagehead__body { font-size: 18px; line-height: 1.6; color: var(--ground-ink-soft); max-width: 780px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .felt *, .felt *::before { transition: none !important; animation: none !important; }
+  .patch, .fbtn, .felt-pill, .felt-brand__coin { transform: none !important; }
+}
+@media (max-width: 700px) {
+  .felt-wrap { padding: 16px 16px 72px; gap: 36px; }
+  .felt-nav { margin-left: 0; gap: 10px; }
+  .felt-pill { padding: 7px 14px; font-size: 14px; }
+  .felt-pagehead { padding-right: 0; padding-top: 40px; }
+  .felt-pagehead .felt-sticker { top: -10px !important; right: 4px !important; width: 52px !important; }
+  .felt-pagehead .felt-sticker + .felt-sticker { display: none; }
+  .fbtn { font-size: 17px; padding: 12px 22px; }
+}

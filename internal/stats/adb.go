@@ -66,6 +66,13 @@ func (p *Puller) ADB() string {
 	return p.adb
 }
 
+// SetADB switches the adb used from now on: the starter's, once it has one.
+func (p *Puller) SetADB(adb string) {
+	p.adbMu.Lock()
+	p.adb = adb
+	p.adbMu.Unlock()
+}
+
 // FindADB returns explicit when given, else the first adb on PATH or in the
 // usual Android SDK folders, else "".
 func FindADB(explicit string) string {

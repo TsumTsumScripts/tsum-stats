@@ -29,7 +29,7 @@ const WebDirReadme = `Files here replace the stats website's built-in files of t
 Themes: put a CSS file in themes/ (themes/mine.css) and pick it from the
 Theme menu at the top of the page. A theme sets the colour and font tokens
 on :root; copy a built-in one to start (tsum-stats web export, then
-themes/daylight.css). A first line of "/* @name My theme */" names it.
+themes/daylight-felt.css). A first line of "/* @name My theme */" names it.
 Themes are always used, whatever override.json says.
 
 Other files: assets/app.js here is served instead of the built-in one.
@@ -165,7 +165,12 @@ type Theme struct {
 // themeName is a theme's "@name Daylight" line, near the top of the file.
 var themeName = regexp.MustCompile(`@name[ \t]+([^\r\n*]+)`)
 
-// Themes lists themes/*.css across fsyses, sorted by name. A later fs's file
+// themeOrder puts the built-in themes first, in this order; the first is the
+// page's default (DEFAULT_THEME in ui/src/lib/ui.svelte.js).
+var themeOrder = []string{"halloween.css", "midnight-felt.css", "daylight-felt.css", "ember.css"}
+
+// Themes lists themes/*.css across fsyses: those in themeOrder first, in that
+// order, then the rest sorted by name. A later fs's file
 // replaces an earlier one's of the same name; a file starting with _ is left
 // out, so a template can sit beside the themes.
 func Themes(fsyses ...fs.FS) []Theme {
@@ -194,7 +199,18 @@ func Themes(fsyses ...fs.FS) []Theme {
 	for _, t := range byFile {
 		themes = append(themes, t)
 	}
-	slices.SortFunc(themes, func(a, b Theme) int { return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
+	rank := func(t Theme) int {
+		if i := slices.Index(themeOrder, t.File); i >= 0 {
+			return i
+		}
+		return len(themeOrder)
+	}
+	slices.SortFunc(themes, func(a, b Theme) int {
+		if c := rank(a) - rank(b); c != 0 {
+			return c
+		}
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
 	return themes
 }
 
