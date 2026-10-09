@@ -18,13 +18,13 @@ import (
 // The device side. The launch algorithm is device/gap-service.sh and is never
 // duplicated here; this pushes it and reads its key=value reply (device/PROTOCOL.md).
 const (
-	appPackage   = "com.gameautomation.platform"
+	appPackage   = "com.generalautomation.platform"
 	stageDir     = "/data/local/tmp/gap"
 	deviceScript = "/data/local/tmp/gap-service.sh"
 	protoWant    = "1"
 	// Config.Storage.PARENT + FOLDER in the app; build-starter.sh gates the
 	// shell hosts' copy of it against Config.kt.
-	defaultStorage = "/sdcard/Download/GameAutomationPlatform"
+	defaultStorage = "/sdcard/Download/GeneralAutomationPlatform"
 )
 
 // Emulator adb ports, four instances per family: MuMu (16384 + 32i, 7555),

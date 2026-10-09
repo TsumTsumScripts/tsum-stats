@@ -18,7 +18,11 @@ import (
 
 // DefaultDeviceStorage is where the app keeps a script's files on the device;
 // --device-storage overrides it.
-const DefaultDeviceStorage = "/sdcard/Download/GameAutomationPlatform"
+const DefaultDeviceStorage = "/sdcard/Download/GeneralAutomationPlatform"
+
+// LegacyDeviceStorage is the folder before the app's rename; the app moves it to
+// DefaultDeviceStorage when it next starts, so a device not yet updated still has it.
+const LegacyDeviceStorage = "/sdcard/Download/GameAutomationPlatform"
 
 // emuPorts are the adb ports emulators listen on, the usual ones. BlueStacks' 5555 and the AVD emulator's
 // own ports show up without a connect.
@@ -187,7 +191,7 @@ func (p *Puller) Pull(ctx context.Context, serials []string) ([]DevicePull, erro
 
 func (p *Puller) pullOne(ctx context.Context, serial string) DevicePull {
 	res := DevicePull{Serial: serial}
-	files, err := p.deviceFiles(ctx, serial)
+	root, files, err := p.deviceFiles(ctx, serial)
 	if err != nil {
 		res.Error = err.Error()
 		return res
@@ -199,7 +203,7 @@ func (p *Puller) pullOne(ctx context.Context, serial string) DevicePull {
 	}
 	var local []string
 	for _, remote := range files {
-		rel := filepath.FromSlash(strings.TrimPrefix(remote, p.storage+"/"))
+		rel := filepath.FromSlash(strings.TrimPrefix(remote, root+"/"))
 		if !filepath.IsLocal(rel) {
 			continue
 		}
@@ -225,10 +229,21 @@ func (p *Puller) pullOne(ctx context.Context, serial string) DevicePull {
 	return res
 }
 
-// deviceFiles lists the stats files under storage. toybox `find` is on every
-// Android the app runs on; the ls fallback covers storage and one level down.
-func (p *Puller) deviceFiles(ctx context.Context, serial string) ([]string, error) {
-	root := p.storage
+// deviceFiles lists the stats files under storage, and the root they are under:
+// LegacyDeviceStorage when the default storage has none and the old folder does.
+func (p *Puller) deviceFiles(ctx context.Context, serial string) (string, []string, error) {
+	files, err := p.filesUnder(ctx, serial, p.storage)
+	if err == nil && len(files) == 0 && p.storage == DefaultDeviceStorage {
+		if old, oerr := p.filesUnder(ctx, serial, LegacyDeviceStorage); oerr == nil && len(old) > 0 {
+			return LegacyDeviceStorage, old, nil
+		}
+	}
+	return p.storage, files, err
+}
+
+// filesUnder lists the stats files under root. toybox `find` is on every
+// Android the app runs on; the ls fallback covers root and one level down.
+func (p *Puller) filesUnder(ctx context.Context, serial, root string) ([]string, error) {
 	if strings.Contains(root, "'") {
 		return nil, fmt.Errorf("device storage %q cannot be quoted", root)
 	}

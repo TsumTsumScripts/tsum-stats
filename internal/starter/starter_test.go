@@ -58,7 +58,7 @@ case "$1" in
       *boot_id*) echo same-boot ;;
       *probe*) printf 'proto=1\r\ndevice_abi=x86_64\r\ninstalled=1\r\nrunning=1\r\nrc=0\r\n' ;;
       *" log"*) printf 'proto=1\n---BEGIN service.log---\nready\n---END service.log---\nrc=0\n' ;;
-      find*script*) printf '/sdcard/Download/GameAutomationPlatform/logs/script.log\n/sdcard/Download/GameAutomationPlatform/logs/script.1.log\nfind: denied\n' ;;
+      find*script*) printf '/sdcard/Download/GeneralAutomationPlatform/logs/script.log\n/sdcard/Download/GeneralAutomationPlatform/logs/script.1.log\nfind: denied\n' ;;
       dumpsys*) echo '    versionName=3.1' ;;
     esac ;;
 esac

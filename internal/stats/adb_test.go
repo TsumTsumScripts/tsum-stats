@@ -12,7 +12,7 @@ import (
 // copies $FAKE_CSV, keeping its mtime as -a does.
 const fakeADB = `#!/bin/sh
 case "$3" in
-  shell) printf '/sdcard/Download/GameAutomationPlatform/tsum/tsum_record/stats_20260904.csv\r\n/sdcard/other/stats_20260905.csv\r\nfind: denied\r\n' ;;
+  shell) printf '/sdcard/Download/GeneralAutomationPlatform/tsum/tsum_record/stats_20260904.csv\r\n/sdcard/other/stats_20260905.csv\r\nfind: denied\r\n' ;;
   pull)  cp -p "$FAKE_CSV" "$6" ;;
 esac
 `

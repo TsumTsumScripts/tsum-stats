@@ -205,7 +205,7 @@
             <img class="inline-shot" src="img/help/overlay-bar.png" alt="The floating bar; the gear is the second button from the right" width="310" height="50" loading="lazy"></li>
           <li>Open the <b>General</b> tab and check that <b>Record round stats</b> is on.</li>
         </ol>
-        <p>The files are on the device in <code>Download/GameAutomationPlatform/tsum_record/</code>, one per day: <code>stats_20260929.csv</code>. Days and times in the file names are UTC.</p>
+        <p>The files are on the device in <code>Download/GeneralAutomationPlatform/tsum_record/</code>, one per day: <code>stats_20260929.csv</code>. Days and times in the file names are UTC.</p>
         <h3>Get them into Tsum Tsum Stats</h3>
         <div class="addr-box pull-box">
           <div class="addr"><b>Import from devices</b><button type="button" class="btn" disabled={refreshing} onclick={loadPullDevices}>Refresh</button></div>

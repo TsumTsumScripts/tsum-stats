@@ -51,7 +51,7 @@ Databases made by 0.6 and earlier are migrated on first start.
 | `--scan-interval` | `10s` |
 | `--web-dir DIR` | none. Files here replace the built-in site's — see [Changing the site](#changing-the-site) |
 | `--adb PATH` | adb on `PATH`, else the Android SDK's, else Google's platform-tools |
-| `--device-storage DIR` | `/sdcard/Download/GameAutomationPlatform` |
+| `--device-storage DIR` | `/sdcard/Download/GeneralAutomationPlatform` |
 | `--starter DIR` | none. Also serves the service starter for that starter bundle at `/starter/` — see [The service starter](#the-service-starter) |
 | `--open` | off. Opens the site in the browser once it is up |
 
