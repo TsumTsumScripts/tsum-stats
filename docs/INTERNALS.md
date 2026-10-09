@@ -38,8 +38,11 @@ mounted with `--starter <bundle>` through `stats.Config.Starter`
 against the bundle's `platform-tools.txt` (`adb.go`), emulator discovery and
 the `device/gap-service.sh` protocol (`device.go`), the actions (`actions.go`),
 APKs and the release channel (`apk.go`) and the zip export (`export.go`). The
-page is plain files in `internal/starter/site/`, embedded as they are, in the
-website's felt design. It shares its adb with the `Puller` (`SetADB`), which
+page is plain files in `internal/starter/site/`, embedded as they are. Its
+default look is `a11y.css` (flat, high contrast, light or dark, four sizes)
+over the website's felt design (`felt.css`, `app.css`); the header's Aa
+popover (`appearance.js`) switches style, theme and size, kept in
+localStorage under `starter*` keys. It shares its adb with the `Puller` (`SetADB`), which
 then skips its own download.
 
 Its `/api/starter` routes run adb, so they answer only on a loopback Host and
