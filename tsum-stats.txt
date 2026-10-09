@@ -4,17 +4,17 @@
 # the running one. Written by tools/build.sh.
 version=0.15
 url_darwin_arm64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.15/tsum-stats-darwin-arm64
-sha256_darwin_arm64=229a6607bca363bc7669ed1800519c396c722f6f7b2e885c56210fdb41c5e4ea
+sha256_darwin_arm64=d540c912544db40ccf332d012294de5fdf89f74f0d03add42fdfb51fff76d3aa
 size_darwin_arm64=25525170
 url_darwin_amd64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.15/tsum-stats-darwin-amd64
-sha256_darwin_amd64=91dc4b75ea999beef3e5d943178d382b32023d595f340f543556784bfe28f49e
+sha256_darwin_amd64=05848d93eb42fef11c9a13c9c94993f2ad7a5f9018b79b011c61d55abcdc548a
 size_darwin_amd64=26675728
 url_linux_amd64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.15/tsum-stats-linux-amd64
-sha256_linux_amd64=134e92683133de43be0e9922352bced9b2438d96021a95d6d3fd43566b58c2ac
+sha256_linux_amd64=19309c39683159cd95b04be2efa9d4f1f29af40ec8060b5bcf31734601d0c0e4
 size_linux_amd64=26218656
 url_linux_arm64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.15/tsum-stats-linux-arm64
-sha256_linux_arm64=e9840a0b006928ce5b8668cfdaa9faf787dafce0dd41dceba619755158f44c85
+sha256_linux_arm64=47c9ca11b517f464b31708f29253cf1e74f276e3de6747fd80a71799beac3f97
 size_linux_arm64=24903840
 url_windows_amd64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.15/tsum-stats-windows-amd64.exe
-sha256_windows_amd64=09cdda4e9f7705bc50ac7a723d43f414c09cf344526f37890eb3e0f0663ea565
+sha256_windows_amd64=ab2411c012ae76d951481e0f4fe7d64c871a666af84548a861f78f14899f1ade
 size_windows_amd64=26832896
