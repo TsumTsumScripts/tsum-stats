@@ -54,8 +54,8 @@ func main() {
 	app.RootCmd.Version = version
 	cfg := &stats.Config{Version: version}
 	flags := app.RootCmd.PersistentFlags()
-	flags.StringVar(&cfg.EventsAddr, "events-addr", "127.0.0.1:21025",
-		"listen here for devices dialling in with script events (\"\" disables); the emulator reaches 127.0.0.1 as 10.0.2.2")
+	flags.StringVar(&cfg.EventsAddr, "events-addr", "0.0.0.0:21025",
+		"listen here for devices dialling in with script events, from this computer and the network (\"\" disables, 127.0.0.1:21025 keeps it to this computer); the emulator reaches this computer as 10.0.2.2")
 	flags.StringArrayVar(&cfg.EventsConnect, "events-connect", nil,
 		"also dial a device's event listener at HOST:PORT, e.g. through adb forward (repeatable)")
 	flags.StringVar(&cfg.EventsToken, "events-token", "", "refuse devices whose hello does not carry this token")

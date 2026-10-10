@@ -162,8 +162,7 @@
     </div>
     <details class="more">
       <summary>A phone, or an emulator on another computer</summary>
-      <!-- Phones and other computers need the listener opened to the network, which
-           Tsum Tsum Stats does not do by default; say what this server is doing now. -->
+      <!-- The listener is open to the network by default; say what this server is doing now. -->
       {#if status && !status.eventsAddr}
         <p>Tsum Tsum Stats was started with its script-event listener off (--events-addr "").</p>
       {:else if status}
@@ -174,12 +173,14 @@
           <p class="sub">None found. Is this computer on a network?</p>
         {/if}
         {#if status.eventsLoopback}
-          <p>Right now Tsum Tsum Stats only accepts devices on this computer (<code>{status.eventsAddr}</code>). To accept others, close it and start it from a terminal with the listener open to the network and a shared word:</p>
-          <pre>tsum-stats serve --events-addr 0.0.0.0:{port} --events-token WORD</pre>
-          <p class="sub">Then put the same word in the app's Shared word box. The events are sent as plain text, so only do this on a network you trust.</p>
+          <p>Right now Tsum Tsum Stats only accepts devices on this computer (<code>{status.eventsAddr}</code>), because it was started with that --events-addr. Start it without one to accept devices on the network too.</p>
         {:else}
-          <p>Tsum Tsum Stats is accepting devices from the network on {status.eventsAddr}.
+          <p>Tsum Tsum Stats accepts devices from the network on {status.eventsAddr}.
             {status.token ? "It asks for a shared word: put it in the app's Shared word box." : 'It does not ask for a shared word, so any device on the network can send to it.'}</p>
+          {#if !status.token}
+            <p class="sub">The events are sent as plain text. On a network you do not trust, start it from a terminal with a shared word, and put the same word in the app's Shared word box:</p>
+            <pre>tsum-stats serve --events-token WORD</pre>
+          {/if}
         {/if}
       {/if}
     </details>
@@ -188,6 +189,7 @@
       <ul>
         <li>Tsum Tsum Stats has to be running on the same computer as the emulator. </li>
         <li><code>10.0.2.2</code> is how an emulator reaches the computer it runs on. It does not work from a phone. See the section above.</li>
+        <li>From a phone or another computer: this computer's firewall has to let Tsum Tsum Stats in. Windows and macOS ask the first time it starts; allow it on private networks.</li>
         <li>The app's engine service has to be running. The Library shows <b>Online</b> when it is.</li>
         <li>A device that has not been heard from for 45 seconds shows as <b>Offline</b> here. It comes back once the app reconnects.</li>
       </ul>

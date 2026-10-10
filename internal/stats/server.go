@@ -79,7 +79,7 @@ func Register(app core.App, cfg *Config, embedded fs.FS) {
 			}
 			se.App.Logger().Info("Listening for script events", "addr", l.Addr().String())
 			if !IsLoopback(cfg.EventsAddr) && cfg.EventsToken == "" {
-				log.Printf("warning: script events are accepted from the network at %s with no --events-token", cfg.EventsAddr)
+				log.Printf("Script events are accepted from any device on the network at %s; --events-token asks them for a shared word", cfg.EventsAddr)
 			}
 			se.App.OnTerminate().BindFunc(func(e *core.TerminateEvent) error {
 				l.Close()

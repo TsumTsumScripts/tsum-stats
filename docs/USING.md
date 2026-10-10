@@ -44,8 +44,8 @@ Databases made by 0.6 and earlier are migrated on first start.
 |:--|:--|
 | `--dir DIR` | the data folder, under your user config folder |
 | `--http` | `127.0.0.1:8090` |
-| `--events-addr` | `127.0.0.1:21025`; `""` turns the live listener off |
-| `--events-token` | none. Refuses any device whose `hello` does not carry it. **Set one before binding the listener to anything other than loopback** |
+| `--events-addr` | `0.0.0.0:21025`: devices on this computer and on the network. `127.0.0.1:21025` keeps it to this computer; `""` turns the live listener off |
+| `--events-token` | none. Refuses any device whose `hello` does not carry it. Events are plain text, so **set one on a network you do not trust** |
 | `--events-connect HOST:PORT` | none. Repeatable |
 | `--import-dir DIR` | none. Repeatable |
 | `--scan-interval` | `10s` |
@@ -87,7 +87,7 @@ turns off the launch update and the background checks; the buttons still work.
 
 | Source | How |
 |:--|:--|
-| Live rounds | A device dials `127.0.0.1:21025` (`--events-addr`). An emulator on the same PC reaches that as `10.0.2.2:21025`. Each finished round becomes a row. `--events-connect` dials a device's own listener through `adb forward` instead |
+| Live rounds | A device dials port `21025` (`--events-addr`): an emulator on the same PC as `10.0.2.2:21025`, a phone or another PC at this computer's network address, such as `192.168.1.50:21025`. Each finished round becomes a row. `--events-connect` dials a device's own listener through `adb forward` instead |
 | `stats_*.csv` | Found under your `--import-dir` folders, and under `~/Documents/MuMuSharedFolder` when it exists. Rescanned every few seconds, skipping files that have not changed |
 | `tsum_list_*.csv` | Found the same way. The script rewrites the file after every page, so a re-import replaces the list; the newest export per device and build is the one shown |
 | Dropped or picked files | Drag them onto the page, or use the file picker |
