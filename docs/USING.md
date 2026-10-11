@@ -221,7 +221,7 @@ scripts, not here) and committed, so building the site needs nothing else.
 A blank name means that build does not have the Tsum. The INTL/JP toggle
 filters on this. 36 rows have neither name and are hidden.
 
-Tsum art comes from `https://tsum-assets.gapapp.app/tsums/block_<id>_l.png`,
+Tsum art comes from `https://tsum-assets.gapscripts.app/tsums/block_<id>_l.png`,
 where `<id>` is the catalog id (the CSVs' `tsum` column). While an image is
 missing, its initials show instead. The CDN refuses non-browser user agents,
 so `curl` without `-A` gets a 404 for a URL that works in the page.

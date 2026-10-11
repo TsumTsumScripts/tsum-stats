@@ -2,7 +2,7 @@
 // the Tsum catalog and each Tsum's colour.
 import {isSnapshot, snapshotApi} from './snapshot/client.js';
 
-export const IMAGE_URL = id => `https://tsum-assets.gapapp.app/tsums/block_${encodeURIComponent(id)}_l.png`;
+export const IMAGE_URL = id => `https://tsum-assets.gapscripts.app/tsums/block_${encodeURIComponent(id)}_l.png`;
 
 const nf = new Intl.NumberFormat();
 const nf1 = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1});
