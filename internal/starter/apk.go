@@ -16,7 +16,7 @@ import (
 // Where `update` finds the published APKs: a stable-name redirect to the newest
 // release, the same base the app's own updater uses (gated in build-starter.sh).
 const (
-	defaultReleaseBase = "https://github.com/game-automation-platform/game-automation-catalogue/releases/latest/download"
+	defaultReleaseBase = "https://github.com/game-automation-platform/general-automation-catalogue/releases/latest/download"
 	manifestName       = "gap-latest.txt"
 	channelFile        = "channel.txt"
 )
