@@ -135,21 +135,45 @@ func (s *Starter) probeEmulators(ctx context.Context) {
 		time.Sleep(300 * time.Millisecond)
 	}
 	ports := append(append([]string{}, emuPorts...), strings.Fields(os.Getenv("GAP_EXTRA_PORTS"))...)
+	hosts := append([]string{"127.0.0.1"}, remoteHosts()...)
 	var wg sync.WaitGroup
-	for _, p := range ports {
-		wg.Add(1)
-		go func(addr string) {
-			defer wg.Done()
-			// Dialled first: a non-adb listener can stall `adb connect`.
-			c, err := net.DialTimeout("tcp", addr, 300*time.Millisecond)
-			if err != nil {
-				return
-			}
-			c.Close()
-			_, _ = s.run(ctx, 5*time.Second, "connect", addr)
-		}("127.0.0.1:" + p)
+	for _, h := range hosts {
+		for _, p := range ports {
+			wg.Add(1)
+			go func(addr string) {
+				defer wg.Done()
+				// Dialled first: a non-adb listener can stall `adb connect`.
+				c, err := net.DialTimeout("tcp", addr, 300*time.Millisecond)
+				if err != nil {
+					return
+				}
+				c.Close()
+				_, _ = s.run(ctx, 5*time.Second, "connect", addr)
+			}(net.JoinHostPort(h, p))
+		}
 	}
 	wg.Wait()
+	// A port-forwarded LAN port accepts the dial even with no emulator behind
+	// it, which leaves an offline row that never comes up. Drop those.
+	remote := remoteHosts()
+	for _, d := range s.listDevices(ctx) {
+		if host, _, err := net.SplitHostPort(d.serial); err == nil && d.state == "offline" && contains(remote, host) {
+			_, _ = s.run(ctx, 5*time.Second, "disconnect", d.serial)
+		}
+	}
+}
+
+// port5xxx reports whether serial is host:5xxx.
+func port5xxx(serial string) bool {
+	_, p, err := net.SplitHostPort(serial)
+	return err == nil && len(p) == 4 && p[0] == '5'
+}
+
+// remoteHosts is GAP_REMOTE_HOSTS ("192.168.1.50 pc2", commas allowed): other
+// computers whose emulators are probed on the same ports. Each must forward
+// its emulator ports onto the LAN first (starter README.txt).
+func remoteHosts() []string {
+	return strings.Fields(strings.ReplaceAll(os.Getenv("GAP_REMOTE_HOSTS"), ",", " "))
 }
 
 func contains(list []string, v string) bool {
@@ -210,10 +234,14 @@ func orDash(v string) string {
 }
 
 // Devices scans for emulators and probes every device adb lists, in parallel.
-// One emulator reached on two ports has one boot_id, so it is listed once.
+// One emulator reached on two ports has one boot_id, so it is listed once,
+// under its 5xxx port when it has one (easier to read than 16xxx). A remote
+// emulator's other connections are dropped so adb holds just that one.
 func (s *Starter) Devices(ctx context.Context) []Device {
 	s.probeEmulators(ctx)
 	raw := s.listDevices(ctx)
+	sort.SliceStable(raw, func(i, j int) bool { return port5xxx(raw[i].serial) && !port5xxx(raw[j].serial) })
+	remote := remoteHosts()
 	seen := map[string]bool{}
 	var unique []rawDevice
 	for _, d := range raw {
@@ -223,6 +251,9 @@ func (s *Starter) Devices(ctx context.Context) []Device {
 				id = d.serial
 			}
 			if seen[id] {
+				if host, _, err := net.SplitHostPort(d.serial); err == nil && contains(remote, host) {
+					_, _ = s.run(ctx, 5*time.Second, "disconnect", d.serial)
+				}
 				continue
 			}
 			seen[id] = true

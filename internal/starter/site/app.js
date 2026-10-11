@@ -174,7 +174,7 @@ function renderDevices(scanning = false) {
     list.replaceChildren(el('div', {class: 'patch patch--surface empty'},
       el('h3', {}, 'No device found'),
       el('p', {class: 'small'}, 'Start your emulator, or plug the phone in with USB debugging turned on, then press Refresh.'),
-      el('p', {class: 'small'}, 'Emulators are looked for on 127.0.0.1, the usual ports of MuMu, LDPlayer, Nox and MEmu. Another port: set GAP_EXTRA_PORTS before starting.'),
+      el('p', {class: 'small'}, 'Emulators are looked for on 127.0.0.1, the usual ports of MuMu, LDPlayer, Nox and MEmu. Another port: set GAP_EXTRA_PORTS before starting. Emulators on another computer: set GAP_REMOTE_HOSTS to its address.'),
       el('p', {class: 'small'}, 'Still missing one that is on and connected? Restart adb.'),
       el('div', {class: 'row'}, el('button', {class: 'patch patch--paper fbtn fbtn--sm', type: 'button', onclick: restartADB}, 'Restart adb'))));
     return;
