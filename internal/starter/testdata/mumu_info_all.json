@@ -1,0 +1,5 @@
+{
+  "0": {"adb_host_ip": "127.0.0.1", "adb_port": 16384, "created_timestamp": 1715000000000000, "error_code": 0, "hyperv_enabled": false, "index": "0", "is_android_started": true, "is_main": true, "is_process_started": true, "launch_err_code": 0, "launch_err_msg": "", "main_wnd": "00A1", "name": "MuMu Player 12", "pid": 1234, "player_state": "start_finished", "render_wnd": "00B2", "vt_enabled": true},
+  "1": {"created_timestamp": 1715000000000000, "error_code": 0, "index": "1", "is_android_started": false, "is_main": false, "is_process_started": false, "name": "MuMu Player 12-1"},
+  "2": {"adb_host_ip": "127.0.0.1", "adb_port": 16448, "error_code": 0, "index": "2", "is_android_started": true, "is_main": false, "is_process_started": true, "name": "Farm 3", "pid": 5678, "player_state": "start_finished"}
+}

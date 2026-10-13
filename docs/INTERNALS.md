@@ -51,6 +51,21 @@ refuse cross-origin writes. Actions stream NDJSON (`{"log"}` lines, then
 live log holds a per-device lock, since a probe would otherwise re-push the
 device script mid-run. `go test ./internal/starter` drives it through a fake adb.
 
+Watch mode (`watch.go`): a 15 s loop over the serials turned on in
+`<bundle>/watch.json`, one goroutine per device, each skipping the device
+while an action holds its lock. It runs `gap-service.sh watch` (pushing the
+script only when the bundle's copy changed or the device's copy is missing or
+another version). Only adb failing (a timeout, or adb's own `error:`) counts as
+unreachable; any other unusable reply is a status line, never a restart. It folds the
+reply into the device's state with `observe()` and acts on `decide()`
+(`watchpolicy.go`, pure and table-tested; keep it free of starter specifics so
+it can run for cloud hosts later). Emulator back ends sit behind the
+`Emulator` interface (`emulators.go`, which also holds the parsers and the
+port mapping; `Find` returns a new value, never changed afterwards, so a
+restart can run while the next look-up does), one file per family built only on its OS
+(`emu_*_windows.go`, `emu_bluestacks_darwin.go`, `emu_other.go`). Their
+command lines are marked "Verify on device" until tried on a real install.
+
 Updates (`update.go`, `bundle.go`): main hands the starter an `Updater` built
 on its own `selfUpdate`, since only main knows `updateURL` and its binary; the
 bundle's scripts update from the bundle's own `starter-version.txt`. An apply

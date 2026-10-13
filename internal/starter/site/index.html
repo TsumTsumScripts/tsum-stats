@@ -137,6 +137,7 @@
       <div class="section-head">
         <h2 id="devices-title">Your devices</h2>
         <div class="row">
+          <span class="watch-pill" id="watch-pill" hidden></span>
           <button class="patch patch--surface fbtn fbtn--sm" id="refresh" type="button">Refresh</button>
           <button class="patch patch--surface fbtn fbtn--sm" id="adb-restart" type="button"
             title="Missing a device? Restarts adb (kill-server, then start-server) and looks again.">Restart adb</button>
@@ -175,6 +176,33 @@
               <button class="patch patch--paper fbtn" type="button" data-action="reconnect">Reconnect</button>
             </div>
             <p class="small" id="root-note">Not needed on a rooted device: the app starts the service itself.</p>
+          </div>
+
+          <!-- Watch mode (watch.go): this program keeps GAP running on the device. -->
+          <div class="patch patch--grape card" id="watch-card" aria-labelledby="watch-title">
+            <div class="watch-head">
+              <h3 id="watch-title">Keep GAP running (watch mode)</h3>
+              <label class="switch">
+                <input type="checkbox" role="switch" id="watch-on" aria-describedby="watch-what">
+                <span class="switch__track" aria-hidden="true"></span>
+                <span class="visually-hidden">Watch this device</span>
+                <span class="switch__label" id="watch-on-label" aria-hidden="true">Off</span>
+              </label>
+            </div>
+            <p class="small" id="watch-what">Checks this device every 15 seconds. It starts GAP after the device
+              restarts, restarts GAP when it stops answering, and restarts a frozen emulator. GAP can also restart the
+              device and carry on afterwards.</p>
+            <p class="small" id="watch-mapping"></p>
+            <p class="watch-status" id="watch-status" role="status"></p>
+            <ul class="watch-events" id="watch-events" aria-label="Last actions" hidden></ul>
+            <div class="row">
+              <button class="patch patch--paper fbtn fbtn--sm" type="button" id="watch-restart-emu">Restart emulator now…</button>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" id="watch-reboot">Restart Android…</button>
+            </div>
+            <p class="small watch-error" id="watch-error" role="alert" hidden></p>
+            <p class="small">Watch mode runs inside this program: keep this window and its terminal open, or it stops.
+              Its limits are in <code id="watch-file">watch.json</code> in this folder, and what it did in
+              <code>watch.log</code>.</p>
           </div>
 
           <div class="patch patch--periwinkle card" data-needs-device>
@@ -322,6 +350,8 @@
             <li><b>started by the app itself</b>: a rooted device. The app manages the service; after updating the app,
               reboot the device.</li>
             <li><b>Replaced the ADB server</b>: harmless. Android Studio or your emulator manager reconnects.</li>
+            <li><b>Watch mode</b> keeps GAP running while this program runs. It restarts MuMu Player 12, LDPlayer 9
+              and BlueStacks 5 on Windows, and BlueStacks Air on a Mac; elsewhere it uses adb only.</li>
             <li>Stuck? Export logs &amp; stats and share the zip.</li>
           </ul>
         </div>
@@ -347,7 +377,7 @@
     <p class="small" id="confirm-body"></p>
     <ul class="file-list" id="confirm-files"></ul>
     <div class="row">
-      <button class="patch patch--paper fbtn fbtn--sm" value="yes" type="submit">Delete them</button>
+      <button class="patch patch--paper fbtn fbtn--sm" value="yes" type="submit" id="confirm-yes">Delete them</button>
       <button class="patch patch--surface fbtn fbtn--sm" value="no" type="submit" autofocus>Cancel</button>
     </div>
   </form>

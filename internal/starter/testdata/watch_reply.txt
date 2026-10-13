@@ -1,0 +1,11 @@
+proto=1
+now=1760000000
+boot_id=8c1f2d6e-0b3a-4a7e-9d61-5d0f6a1b2c3d
+booted=1
+uptime=345
+running=1
+uid=2000
+alive=1759999990
+alive_active=1
+request=1759999995 command
+rc=0

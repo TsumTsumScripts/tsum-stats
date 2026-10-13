@@ -42,6 +42,7 @@ type Starter struct {
 	importer  func(ctx context.Context, serial string) importOutcome
 	downloads sync.Mutex
 	upd       updates
+	watch     *Watcher
 }
 
 type importOutcome struct {
@@ -63,8 +64,10 @@ func New(dir, version string) (*Starter, error) {
 	if storage == "" {
 		storage = defaultStorage
 	}
-	return &Starter{bundle: abs, storage: storage, version: version,
-		locks: map[string]*sync.Mutex{}, rows: map[string]Device{}}, nil
+	s := &Starter{bundle: abs, storage: storage, version: version,
+		locks: map[string]*sync.Mutex{}, rows: map[string]Device{}}
+	s.watch = newWatcher(s)
+	return s, nil
 }
 
 // Collected is where copies off a device land, which the stats importer also scans.
@@ -229,6 +232,26 @@ func (s *Starter) Mount(se *core.ServeEvent, puller *stats.Puller) {
 		return stream(e, func(logf func(string)) Result {
 			return s.Run(e.Request.Context(), body.Serial, body.Action, body.Opts, logf)
 		})
+	})
+
+	// Watch mode: GET is its state (and ?serial= one device's); POST turns it
+	// on or off for a serial.
+	s.watch.start()
+	g.GET("/watch", func(e *core.RequestEvent) error {
+		return e.JSON(http.StatusOK, s.watch.view(e.Request.URL.Query().Get("serial")))
+	})
+	g.POST("/watch", func(e *core.RequestEvent) error {
+		var body struct {
+			Serial string `json:"serial"`
+			On     *bool  `json:"on"`
+		}
+		if err := e.BindBody(&body); err != nil || body.Serial == "" || body.On == nil {
+			return e.BadRequestError("Expected a serial and on.", err)
+		}
+		if err := s.watch.setOn(body.Serial, *body.On); err != nil {
+			return e.BadRequestError(err.Error(), err)
+		}
+		return e.JSON(http.StatusOK, s.watch.view(body.Serial))
 	})
 
 	g.POST("/channel", func(e *core.RequestEvent) error {

@@ -13,6 +13,7 @@ const state = {
   follow: null, // AbortController of the live service log
   dots: {}, // serial -> badge colour
   update: null, // GET /api/starter/update
+  watch: null, // GET /api/starter/watch
 };
 
 // ------------------------------------------------------------------- the API
@@ -230,6 +231,7 @@ async function renderDevice() {
 function setBusy(busy) {
   state.busy = busy;
   $$('[data-action], [data-delete], [data-update-apply], #export-btn, #refresh, #adb-restart').forEach(b => { b.disabled = busy; });
+  renderWatch();
 }
 
 // ------------------------------------------------------------- the activity
@@ -266,7 +268,7 @@ function startActivity(title) {
 const LABELS = {
   start: 'Start service', restart: 'Restart service', stop: 'Stop service', log: 'Show service log',
   install: 'Install APK', update: 'Download & install the latest APK', 'add-source': 'Add the Tsum Tsum library',
-  reconnect: 'Reconnect',
+  reconnect: 'Reconnect', reboot: 'Restart Android', 'restart-emulator': 'Restart the emulator',
   'copy-script': 'Copy the script log', 'import-stats': 'Import round stats into Stats',
   'delete-script': 'Delete the script log', 'delete-stats': 'Delete round stats',
 };
@@ -344,17 +346,143 @@ async function confirmDelete(kind) {
     showVerdict({ok: false, msg: `No ${what} on this device: nothing matched under ${state.status.storage}.`});
     return;
   }
-  $('#confirm-title').textContent = `Delete ${files.length} file(s) from ${label(d)}?`;
-  $('#confirm-body').textContent = kind === 'script'
-    ? 'The service holds script.log open, so it is stopped for the delete and started again afterwards. Anything the script was doing is ended.'
-    : 'Round stats not imported into Stats or exported first are gone for good.';
+  ask({
+    title: `Delete ${files.length} file(s) from ${label(d)}?`,
+    body: kind === 'script'
+      ? 'The service holds script.log open, so it is stopped for the delete and started again afterwards. Anything the script was doing is ended.'
+      : 'Round stats not imported into Stats or exported first are gone for good.',
+    files, yes: 'Delete them',
+  }, () => runAction('delete-' + kind, {confirm: true}));
+}
+
+// The confirm dialog: onYes runs only when its yes button closed it.
+function ask({title, body, files = [], yes}, onYes) {
+  $('#confirm-title').textContent = title;
+  $('#confirm-body').textContent = body;
   $('#confirm-files').replaceChildren(...files.map(f => el('li', {}, f)));
+  $('#confirm-files').hidden = !files.length;
+  $('#confirm-yes').textContent = yes;
   const dlg = $('#confirm');
   dlg.returnValue = '';
   dlg.showModal();
   dlg.addEventListener('close', () => {
-    if (dlg.returnValue === 'yes') runAction('delete-' + kind, {confirm: true});
+    if (dlg.returnValue === 'yes') onYes();
   }, {once: true});
+}
+
+// ------------------------------------------------------------ watch mode
+
+let watchSeq = 0; // the newest loadWatch; an older reply that lands later is dropped
+
+async function loadWatch() {
+  const d = current();
+  const seq = ++watchSeq;
+  let w;
+  try {
+    w = await api('watch' + (d ? '?serial=' + encodeURIComponent(d.serial) : ''));
+  } catch { return; /* the page still works without it */ }
+  if (seq !== watchSeq || (w.device && w.device.serial !== current()?.serial)) return;
+  state.watch = w;
+  renderWatch();
+}
+
+// "12 s ago", "4 min ago", for the status line.
+function since(iso) {
+  const s = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
+  return s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : new Date(iso).toLocaleString();
+}
+
+function renderWatch() {
+  const w = state.watch;
+  if (!w) return;
+  const n = w.on.length;
+  const pill = $('#watch-pill');
+  pill.hidden = !n;
+  pill.textContent = `Watch mode on · ${n} device${n === 1 ? '' : 's'}`;
+  pill.title = 'Watched: ' + w.on.map(s => { const d = state.devices.find(x => x.serial === s); return d ? label(d) : s; }).join(', ');
+
+  const d = current();
+  const v = w.device;
+  // Another device's card until this one's view arrives: blank and inert.
+  const mine = !!(d && v && v.serial === d.serial);
+  $('#watch-on').disabled = !mine;
+  if (!mine) {
+    $('#watch-status').textContent = 'Checking …';
+    $('#watch-mapping').textContent = '';
+    $('#watch-events').hidden = true;
+    $('#watch-restart-emu').disabled = true;
+    $('#watch-reboot').disabled = true;
+    return;
+  }
+  $('#watch-on').checked = v.on;
+  $('#watch-on-label').textContent = v.on ? 'On' : 'Off';
+  const m = v.mapping.match;
+  $('#watch-mapping').textContent = m
+    ? `Emulator: ${m.label}, instance ${m.id}${m.name && m.name !== m.id ? ` “${m.name}”` : ''} (adb port ${m.port}).`
+    : `Emulator: ${v.mapping.why || 'none'}`;
+  $('#watch-status').textContent = !v.on
+    ? 'Off. Turn it on to keep GAP running on this device while this program runs.'
+    : (v.status || 'Checking …') + (v.checked ? ` Checked ${since(v.checked)}.` : '');
+  const events = $('#watch-events');
+  events.hidden = !v.events.length;
+  events.replaceChildren(...v.events.map(e => el('li', {'data-ok': String(e.ok)},
+    el('time', {datetime: e.at}, new Date(e.at).toLocaleTimeString()), el('span', {}, e.msg))));
+  $('#watch-restart-emu').disabled = state.busy || !m;
+  $('#watch-restart-emu').title = m ? '' : v.mapping.why || '';
+  $('#watch-reboot').hidden = !usable(d);
+  $('#watch-reboot').disabled = state.busy;
+  $('#watch-file').title = w.file;
+  $('#watch-error').hidden = !w.error;
+  $('#watch-error').textContent = w.error || '';
+}
+
+async function toggleWatch(e) {
+  const box = e.currentTarget; // null once the event is over, so kept here
+  const d = current();
+  const on = box.checked;
+  if (!d) return;
+  const refuse = msg => {
+    box.checked = !on;
+    $('#watch-on-label').textContent = !on ? 'On' : 'Off';
+    $('#watch-error').hidden = false;
+    $('#watch-error').textContent = msg;
+  };
+  let r, j;
+  try {
+    r = await post('watch', {serial: d.serial, on});
+    j = await r.json().catch(() => ({}));
+  } catch (err) {
+    return refuse('Could not save watch mode: ' + err.message);
+  }
+  if (!r.ok) return refuse(j.message || r.statusText);
+  ++watchSeq; // this reply is newer than any loadWatch in flight
+  if (j.device?.serial !== current()?.serial) return loadWatch();
+  state.watch = j;
+  renderWatch();
+}
+
+function confirmRestartEmulator() {
+  const d = current();
+  const v = state.watch?.device;
+  const m = v?.mapping.match;
+  if (!d || !m || state.busy) return;
+  ask({
+    title: `Restart the emulator for ${label(d)}?`,
+    body: `${m.label} instance ${m.id}${m.name && m.name !== m.id ? ` “${m.name}”` : ''} is closed and opened again on this computer. Whatever runs on it stops. ` +
+      (v.on ? 'Watch mode starts GAP again once Android is up.' : 'Press Start service once it is back, or turn on watch mode.'),
+    yes: 'Restart the emulator',
+  }, () => runAction('restart-emulator', {confirm: true}).then(loadWatch));
+}
+
+function confirmReboot() {
+  const d = current();
+  if (!d || state.busy) return;
+  ask({
+    title: `Restart Android on ${label(d)}?`,
+    body: 'Runs adb reboot. GAP stops, and the device is offline for a minute or two. ' +
+      (state.watch?.device?.on ? 'Watch mode starts GAP again once Android is up.' : 'Press Start service once it is back, or turn on watch mode.'),
+    yes: 'Restart Android',
+  }, () => runAction('reboot', {confirm: true}).then(loadWatch));
 }
 
 // Stops the program; the launcher then exits and its window closes.
@@ -471,6 +599,7 @@ async function loadDevices() {
   }
   renderDevices();
   renderDevice();
+  loadWatch();
 }
 
 async function refreshCurrent() {
@@ -496,6 +625,7 @@ function choose(serial) {
   post('remember', {serial}).catch(() => {});
   renderDevices();
   renderDevice().then(() => $('#device').scrollIntoView({behavior: 'smooth', block: 'start'}));
+  loadWatch();
 }
 
 // ------------------------------------------------------------------- start
@@ -662,6 +792,9 @@ function wire() {
     });
   }
   for (const b of $$('[data-delete]')) b.addEventListener('click', () => confirmDelete(b.dataset.delete));
+  $('#watch-on').addEventListener('change', toggleWatch);
+  $('#watch-restart-emu').addEventListener('click', confirmRestartEmulator);
+  $('#watch-reboot').addEventListener('click', confirmReboot);
   $('#quit').addEventListener('click', confirmQuit);
 }
 
@@ -680,6 +813,8 @@ async function init() {
   loadDevices();
   loadUpdate();
   setInterval(loadUpdate, 10 * 60 * 1000);
+  // Watch mode works in the background; its state is re-read while the page is open.
+  setInterval(() => { if (!document.hidden) loadWatch(); }, 10 * 1000);
 }
 
 init();

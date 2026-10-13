@@ -29,6 +29,7 @@ const bundleVersionFile = "starter-version.txt"
 var bundleKeep = map[string]bool{
 	"adb": true, "apk": true, "collected": true, "server": true, ".update": true,
 	"channel.txt": true, "last-device.txt": true, "Start-Windows.cmd": true,
+	"watch.json": true, "watch.log": true, "watch.1.log": true,
 }
 
 // What a scripts archive must carry to be installed at all.

@@ -75,7 +75,7 @@ every six hours and has a **Check for updates** button.
   (`version=`, `update_url=`), fetches the `starter.txt` it names, downloads
   that scripts `.tar.gz`, checks its sha256 and moves its files into the
   bundle (never `adb/`, `apk/`, `collected/`, `server/`, `channel.txt`,
-  `last-device.txt` or `Start-Windows.cmd`). It then exits with
+  `last-device.txt`, `watch.json`, `watch.log`, `watch.1.log` or `Start-Windows.cmd`). It then exits with
   `GAP_STARTER_RELOAD_CODE`, and the launcher starts itself again.
 
 The page reloads once the new process answers. Without those variables (a
@@ -83,6 +83,46 @@ hand-started `serve --starter`) an update is installed and takes effect on the
 next start. A bundle with no `update_url`, or the source tree (it still has
 `build-starter.sh`), does not update its scripts. `TSUM_STATS_NO_UPDATE=1`
 turns off the launch update and the background checks; the buttons still work.
+
+#### Watch mode
+
+The device panel's **Keep GAP running (watch mode)** card turns it on per
+device (off by default). While this program runs it checks each watched
+device every 15 s through the device script's `watch` verb and, in this order:
+
+1. takes GAP's request to restart the device (GAP writes it when it wants a
+   restart and a watcher is present, and waits 60 s for it to be taken), then
+   restarts the emulator from this computer, or runs `adb reboot` when it
+   cannot or the emulator restart fails. A request older than
+   `requestMaxAgeSec` (50 s) is left to GAP, which then restarts by itself, and
+   one that cannot be deleted is never acted on, so the device is not
+   restarted twice;
+2. starts GAP once Android is up and GAP is not running (not on a rooted
+   device, whose app does it, and not after **Stop** until the next boot);
+3. restarts GAP (`start --force`) when its alive stamp is over 3 minutes old;
+4. when adb loses the device for 90 s: `adb connect`, then `adb reboot`, then
+   the emulator restarted from this computer. A device that answers but whose
+   reply cannot be used (the device script could not be copied, say) is only
+   reported, never restarted;
+5. when Android is still starting after `bootStuckSec` (5 minutes): the
+   emulator restarted, else `adb reboot`, at most once an hour.
+
+Emulators it can restart: MuMu Player 12 (`MuMuManager.exe`), LDPlayer 9
+(`ldconsole.exe`) and BlueStacks 5 on Windows, BlueStacks Air on a Mac. The
+device is matched to an instance by its adb port, and an instance is never
+restarted when two share the port. Emulators on another computer (and USB
+phones) get adb actions only. If a tool is not found, point
+`GAP_MUMU_MANAGER`, `GAP_LDCONSOLE`, `GAP_BLUESTACKS_CONF`,
+`GAP_BLUESTACKS_PLAYER` or `GAP_BLUESTACKS_APP` at it.
+
+Settings are in the bundle's `watch.json` (written with the defaults on first
+start, re-read when it changes; a broken file is left alone and the page says
+so). Its `limits` bound every action: starts per hour, restarts of a frozen GAP
+per hour, at most 3 emulator restarts in 6 hours at least 10 minutes apart
+(doubled after each failure), giving up after 3 that did not bring the device
+back until **Restart emulator now**. Each key is explained in the file's
+`help`. What it did goes to `watch.log` (rotated to `watch.1.log` at 1 MB). The card also has confirmed **Restart emulator now** and
+**Restart Android** buttons. Watch mode stops when this program does.
 
 ## Getting your data in
 

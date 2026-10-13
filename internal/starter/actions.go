@@ -14,7 +14,7 @@ import (
 // Options are the answers the terminal menu used to ask for.
 type Options struct {
 	APK     string `json:"apk"`     // install: a file in apk/; "" takes the one built for the device
-	Confirm bool   `json:"confirm"` // delete-*: the page showed the list and the user agreed
+	Confirm bool   `json:"confirm"` // delete-*, reboot, restart-emulator: the page asked and the user agreed
 }
 
 // Result is an action's verdict, shown under its log.
@@ -50,7 +50,31 @@ func (s *Starter) Run(ctx context.Context, serial, action string, opt Options, l
 		logLines(logf, out)
 		return Result{OK: true, Msg: "Reconnect attempted. Refresh to see the result."}
 	case "start", "restart":
+		s.watch.setUserStopped(serial, false)
 		return s.start(ctx, serial, action == "restart", logf)
+	case "reboot":
+		if !opt.Confirm {
+			return Result{Msg: "Nothing was done: the restart was not confirmed."}
+		}
+		logf("restarting Android on " + serial + " (adb reboot) ...")
+		out, err := s.run(ctx, 30*time.Second, "-s", serial, "reboot")
+		logLines(logf, out)
+		if err != nil {
+			return Result{Msg: "adb reboot failed. See the log."}
+		}
+		s.watch.rebooted(serial)
+		msg := "Android is restarting."
+		if s.watch.isOn(serial) {
+			msg += "\nWatch mode starts GAP again once it is up."
+		} else {
+			msg += "\nPress Start service once it is back, or turn on watch mode."
+		}
+		return Result{OK: true, Msg: msg}
+	case "restart-emulator":
+		if !opt.Confirm {
+			return Result{Msg: "Nothing was done: the restart was not confirmed."}
+		}
+		return s.watch.restartNow(ctx, serial, logf)
 	case "stop":
 		logf("stopping the service on " + serial + " ...")
 		out := s.invokeVerb(ctx, serial, "stop")
@@ -64,6 +88,10 @@ func (s *Starter) Run(ctx context.Context, serial, action string, opt Options, l
 				msg = "The service is still running."
 			}
 			return Result{Msg: msg}
+		}
+		s.watch.setUserStopped(serial, true)
+		if s.watch.isOn(serial) {
+			return Result{OK: true, Msg: "Service stopped.\nWatch mode leaves it stopped until you start it again or the device restarts."}
 		}
 		return Result{OK: true, Msg: "Service stopped."}
 	case "log":
