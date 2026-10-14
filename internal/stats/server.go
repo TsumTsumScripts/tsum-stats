@@ -155,6 +155,20 @@ func registerRoutes(se *core.ServeEvent, events *Events, importer *Importer, pul
 		return e.JSON(http.StatusOK, s)
 	})
 
+	g.GET("/tsum", func(e *core.RequestEvent) error {
+		q := e.Request.URL.Query()
+		tsum := strings.TrimSpace(q.Get("id"))
+		if tsum == "" {
+			return e.BadRequestError("id is required", nil)
+		}
+		tz, _ := strconv.Atoi(q.Get("tz"))
+		d, err := DescribeTsum(e.App.DB(), ParseFilter(q), tsum, tz, intCell(q.Get("target")))
+		if err != nil {
+			return e.InternalServerError("", err)
+		}
+		return e.JSON(http.StatusOK, d)
+	})
+
 	g.GET("/tsums", func(e *core.RequestEvent) error {
 		t, err := PlayedTsums(e.App.DB())
 		if err != nil {

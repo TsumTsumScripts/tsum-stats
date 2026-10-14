@@ -16,10 +16,11 @@
   import Catalog from './sections/Catalog.svelte';
   import Help from './sections/Help.svelte';
   import Stats from './sections/Stats.svelte';
+  import Tsum from './sections/Tsum.svelte';
 
   // A published snapshot is read-only: nothing to set up, so no Help, Data or live devices.
   const snapshot = isSnapshot();
-  const ROUTES = [['stats', 'Stats'], ['catalog', 'Catalog'], ['help', 'Help']].filter(([r]) => !(snapshot && r === 'help'));
+  const ROUTES = [['stats', 'Stats'], ['tsum', 'Tsum'], ['catalog', 'Catalog'], ['help', 'Help']].filter(([r]) => !(snapshot && r === 'help'));
 
   // "#/stats?tsum=mickey" → {route: 'stats', params: {tsum: 'mickey'}}
   function readHash() {
@@ -33,8 +34,8 @@
   // Served beside the service starter (--starter): link back to it.
   let starter = $state(false);
   const initial = $state({});
-  let stats = $state(), catalog = $state(), help = $state(), dataDialog = $state(), publishDialog = $state();
-  const sectionOf = r => ({stats, catalog, help})[r];
+  let stats = $state(), tsum = $state(), catalog = $state(), help = $state(), dataDialog = $state(), publishDialog = $state();
+  const sectionOf = r => ({stats, tsum, catalog, help})[r];
 
   // Each section's latest link, so the top buttons return to it rather than to defaults.
   const lastHash = {};
@@ -94,9 +95,9 @@
 
   subscribe('ts/devices', d => { shared.devices = d; });
   subscribe('ts/publish', s => publishDialog?.update(s));
-  subscribe('ts/rounds', r => stats?.roundArrived(r));
+  subscribe('ts/rounds', r => { stats?.roundArrived(r); tsum?.refresh(); });
   subscribe('ts/imports', res => {
-    if (res.rounds) stats?.refresh();
+    if (res.rounds) { stats?.refresh(); tsum?.refresh(); catalog?.roundsChanged(); }
     if (res.lists) catalog?.listsChanged();
     help?.refresh();
     toast(`Imported ${fmt(res.files)} file(s): ${fmt(res.rounds)} rounds, ${fmt(res.lists)} Tsum list(s)`);
@@ -104,6 +105,7 @@
   onReconnect(async () => {
     shared.devices = await api('devices');
     stats?.refresh();
+    tsum?.refresh();
     publishDialog?.update(await api('publish'));
   });
 
@@ -160,6 +162,9 @@
 
     {#if initial.stats}
       <Stats bind:this={stats} hidden={route !== 'stats'} initial={initial.stats} onStateChange={(s, o) => writeHash('stats', s, o)} />
+    {/if}
+    {#if initial.tsum}
+      <Tsum bind:this={tsum} hidden={route !== 'tsum'} initial={initial.tsum} onStateChange={(s, o) => writeHash('tsum', s, o)} />
     {/if}
     {#if initial.catalog}
       <Catalog bind:this={catalog} hidden={route !== 'catalog'} initial={initial.catalog} onStateChange={s => writeHash('catalog', s)} />

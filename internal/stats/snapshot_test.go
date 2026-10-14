@@ -60,12 +60,25 @@ func fillRounds(t *testing.T, add func(Round)) int {
 			r.Duration = &d
 		}
 		if next(5) != 0 {
-			settings := map[string]bool{}
+			settings := map[string]any{}
 			for _, b := range itemBits {
 				settings[b.key] = next(2) == 0
 			}
+			// Script settings for the Tsum page: numbers, strings, a null and a nested value.
+			settings["skillLevel"] = 1 + i%6
+			settings["bubbleStrategy"] = []string{"all_mid_chain", "one_mid_chain"}[i%2]
+			settings["linkReach"] = []float64{1.5, 2, 190}[i%3]
+			settings["fan"] = nil
+			settings["nested"] = map[string]int{"a": i % 2}
 			data, _ := json.Marshal(settings)
 			r.Settings = string(data)
+		}
+		// A whole number written as a real, and settings that are not an object.
+		switch i % 50 {
+		case 0:
+			r.Settings = `{"skillLevel": 3.0, "bubbleStrategy": "save_one"}`
+		case 25:
+			r.Settings = `[1, 2]`
 		}
 		add(r)
 	}
@@ -131,7 +144,7 @@ func TestSnapshotFiles(t *testing.T) {
 			t.Errorf("device %q leaked into the snapshot", d)
 		}
 	}
-	if m.N != len(m.At) || m.N != len(m.Score) || m.N != len(m.Items) {
+	if m.N != len(m.At) || m.N != len(m.Score) || m.N != len(m.Items) || m.N != len(m.Settings) {
 		t.Errorf("columns disagree about the row count: %+v", m.N)
 	}
 	// So are the manifest's devices and each device's Tsum list.
@@ -254,6 +267,26 @@ func TestSnapshotParity(t *testing.T) {
 		cases = append(cases, c)
 	}
 
+	tsumCase := func(name string, p map[string]string) {
+		tz := 0
+		fmt.Sscan(p["tz"], &tz)
+		d, err := DescribeTsum(app.DB(), ParseFilter(values(p)), p["id"], tz, intCell(p["target"]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The figures the engine has to match are really there for a played Tsum.
+		if d.Summary.Totals.Rounds > 2*FormRounds && (len(d.Form) != 2 || len(d.SkillBins) == 0 || len(d.Settings) == 0 || d.Earn.CoinsPerSec == nil ||
+			(p["target"] == "4000" && (d.Target == nil || d.Target.Under == 0))) {
+			t.Fatalf("tsum %s: missing figures: form %d, skill bins %d, settings %d, earn %v, target %+v",
+				name, len(d.Form), len(d.SkillBins), len(d.Settings), d.Earn.CoinsPerSec, d.Target)
+		}
+		params := map[string]any{}
+		for k, v := range p {
+			params[k] = v
+		}
+		cases = append(cases, testCase{Name: "tsum " + name, Route: "tsum", Params: params, Expected: roundtrip(d)})
+	}
+
 	summary("everything", map[string]string{})
 	summary("east of UTC", map[string]string{"tz": "540"})
 	summary("west of UTC", map[string]string{"tz": "-300"})
@@ -309,6 +342,16 @@ func TestSnapshotParity(t *testing.T) {
 	roundsCase("incomplete kept", map[string]string{"incomplete": "1", "sort": "-score", "perPage": "40"}, true)
 	roundsCase("ranges", map[string]string{"maxCoins": "6000", "minMedals": "10", "sort": "-playedAt"}, false)
 	roundsCase("filtered", map[string]string{"tsum": "mickey", "build": "jp", "minScore": "500000", "sort": "-playedAt", "perPage": "20", "from": "2026-09-01T00:00:00Z"}, false)
+
+	tsumCase("mickey", map[string]string{"id": "mickey", "target": "4000"})
+	tsumCase("abu, net, target below zero", map[string]string{"id": "abu", "net": "1", "target": "-200"})
+	tsumCase("elsa, junk target", map[string]string{"id": "elsa", "target": "lots"})
+	tsumCase("elsa, medals", map[string]string{"id": "elsa", "coins": "medals", "tz": "540"})
+	tsumCase("abu, net final coins, jp", map[string]string{"id": "abu", "coins": "final", "net": "1", "build": "jp"})
+	tsumCase("stitch, incomplete kept, one device", map[string]string{"id": "stitch", "incomplete": "1", "device": "pixel-7"})
+	tsumCase("mickey, ranges", map[string]string{"id": "mickey", "from": "2026-09-01T00:00:00Z", "to": "2026-09-20T00:00:00Z", "minCoins": "1000", "tz": "-300"})
+	tsumCase("tsum param ignored", map[string]string{"id": "elsa", "tsum": "mickey"})
+	tsumCase("unknown", map[string]string{"id": "nope"})
 
 	tsums, _ := PlayedTsums(app.DB())
 	devices, _ := PlayedDevices(app.DB())

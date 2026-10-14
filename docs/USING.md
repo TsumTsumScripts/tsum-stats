@@ -253,6 +253,49 @@ With hundreds of Tsums some colours are close. So a colour never stands alone:
 charts show the portrait where the mark has room, and a named legend or
 tooltip everywhere else.
 
+## The Tsum page
+
+**Tsum** in the top bar (`#/tsum?id=<tsum>`) is everything about one Tsum. Open
+it from there, or with **Tsum page →** in the Stats focus bar, which carries the
+range, primary stat, game and a single device across. It has its own time range
+(7, 30 or 90 days, or all time, the default), the same primary stat and *Less
+item costs* switches, and game and device pickers when there is more than one.
+Incomplete rounds are left out, as on Stats.
+
+- **Header:** where the Tsum ranks by rate among the Tsums in the same filter,
+  its rate against all of them together, its share of your rounds, and, from the
+  newest Tsum list for the build, its level, skill and boxes to max.
+- **Recent form:** the newest 50 rounds' rate against all the rounds in the
+  filter and against the 50 before them.
+- **To the next skill:** boxes and their cost to the next skill level and to full
+  skill, from the catalog's box counts and the Tsum list's progress, as play
+  time at what all your Tsums earned a second in the filter: final coins (less
+  item costs with *Less item costs*), or medals for a medal Tsum.
+- **Consistency:** half the rounds land within ± this share of the median (half
+  the middle half's width over the median, so a misread round does not stretch
+  it). Type a target to see what share of rounds fell under it; the target is
+  kept per Tsum and primary stat in this browser (`target=` in the API).
+- **By skill level:** the figures per `skillLevel` the script was set to, each
+  against the level below. The level the Tsum list says it is at is marked
+  *now*. Below it, each level with 20 rounds or more is a line of its share of
+  rounds per coin bucket (the histogram's buckets).
+- **Do the items pay?** Each boost item against the same other items without
+  it: only item sets that differ by that item alone are compared, weighted by
+  the smaller side. *Gain a round* is the extra coins less the item's cost
+  (already taken off with *Less item costs*). Rounds without an item are often
+  older, at a lower skill level, so check the rounds with · without column.
+  Hidden in Medals mode.
+- **By script setting:** every other setting that took more than one value
+  for this Tsum (the boost items have their own chart), against the most played
+  value. Settings often changed together, so a difference is not proof of cause.
+- **By script version** and **By device**, when there is more than one.
+- The KPI tiles, per-day, histogram, items and hour charts, as on Stats, for
+  this Tsum alone, and its ten best rounds by coins, rate or score.
+
+A row with fewer than 20 rounds is dimmed and never marked best. Catalog cards
+of Tsums you have played link to their page. The page reads
+`/api/stats/tsum?id=…` with the Stats filter parameters (`tsum.go`).
+
 ## The catalog
 
 `ui/public/data/catalog.json` lists every Tsum with its global and its JP name. It is

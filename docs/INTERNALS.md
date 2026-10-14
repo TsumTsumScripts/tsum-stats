@@ -105,6 +105,11 @@ pages and aggregates:
   per Tsum, per day × Tsum, per game × Tsum × item set, and the coin
   histogram. The charts draw only these, so a large history is still a few
   thousand numbers.
+- `/api/stats/tsum` is the Tsum page: one Tsum's summary, its figures grouped
+  by each script setting (`json_each` over `settings`), script version and
+  device, recent form, per-skill histogram buckets, what all Tsums earn a
+  second for box times, and every Tsum's rate in the same filter for its rank
+  (`tsum.go`). Item payback is worked out in the page from the summary's `mix`.
 
 The queries are in `queries.go` and `summary.go`, with their indexes declared
 in `schema.go`. Both are sized against a large synthetic history; if you add a
