@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/router"
 	"github.com/pocketbase/pocketbase/tools/subscriptions"
 )
 
@@ -31,6 +32,7 @@ type Config struct {
 	DeviceStorage string      // the app's storage root on the device
 	Version       string      // this build's, for WebDir's override.json
 	Starter       StarterHook // the service starter's page and routes; nil without --starter
+	GlobalURL     string      // the global stats site Contribute sends to; "" turns it off
 }
 
 // StarterHook mounts the service starter (internal/starter) beside the stats
@@ -44,7 +46,7 @@ const (
 	TopicDevices = "ts/devices"
 	TopicRounds  = "ts/rounds"
 	TopicImports = "ts/imports"
-	// TopicPublish is in publish.go.
+	// TopicPublish is in publish.go, TopicGlobal in global.go.
 )
 
 // Register wires the tables, the listener, the importer, the routes and the
@@ -117,13 +119,16 @@ func Register(app core.App, cfg *Config, embedded fs.FS) {
 		}
 		publisher := NewPublisher(se.App.DataDir(), site, se.App.DB, cfg.Version,
 			func(st PublishState) { bc.send(TopicPublish, st) })
-		registerRoutes(se, events, importer, puller, publisher, overlay, embedded, cfg)
+		contributor := NewContributor(se.App.DataDir(), cfg.GlobalURL, se.App.DB, cfg.Version,
+			func(st GlobalState) { bc.send(TopicGlobal, st) })
+		go contributor.Run(stop)
+		registerRoutes(se, events, importer, puller, publisher, contributor, overlay, embedded, cfg)
 		se.Router.GET("/{path...}", serveSite(site))
 		return se.Next()
 	})
 }
 
-func registerRoutes(se *core.ServeEvent, events *Events, importer *Importer, puller *Puller, publisher *Publisher, overlay *Overlay, embedded fs.FS, cfg *Config) {
+func registerRoutes(se *core.ServeEvent, events *Events, importer *Importer, puller *Puller, publisher *Publisher, contributor *Contributor, overlay *Overlay, embedded fs.FS, cfg *Config) {
 	g := se.Router.Group("/api/stats")
 
 	// The Theme menu: built-in themes, plus the player's in --web-dir/themes.
@@ -290,6 +295,8 @@ func registerRoutes(se *core.ServeEvent, events *Events, importer *Importer, pul
 		return e.JSON(http.StatusOK, publisher.State())
 	}).BindFunc(sameOrigin)
 
+	registerGlobalRoutes(g, contributor)
+
 	g.POST("/import", func(e *core.RequestEvent) error {
 		if err := e.Request.ParseMultipartForm(32 << 20); err != nil {
 			return e.BadRequestError("Expected a multipart upload.", err)
@@ -312,6 +319,38 @@ func registerRoutes(se *core.ServeEvent, events *Events, importer *Importer, pul
 			total.Lists += res.Lists
 		}
 		return e.JSON(http.StatusOK, total)
+	}).BindFunc(sameOrigin)
+}
+
+// registerGlobalRoutes is Contribute: sending rounds to the global stats site (global.go).
+func registerGlobalRoutes(g *router.RouterGroup[*core.RequestEvent], contributor *Contributor) {
+	// Opening the dialog counts the waiting rounds afresh.
+	g.GET("/global", func(e *core.RequestEvent) error {
+		return e.JSON(http.StatusOK, contributor.Refresh())
+	})
+	g.POST("/global/join", func(e *core.RequestEvent) error {
+		if err := contributor.Join(); err != nil {
+			return e.BadRequestError(err.Error(), err)
+		}
+		return e.JSON(http.StatusOK, contributor.State())
+	}).BindFunc(sameOrigin)
+	g.POST("/global/run", func(e *core.RequestEvent) error {
+		if err := contributor.UploadNow(); err != nil {
+			return e.BadRequestError(err.Error(), err)
+		}
+		return e.JSON(http.StatusOK, contributor.State())
+	}).BindFunc(sameOrigin)
+	g.POST("/global/leave", func(e *core.RequestEvent) error {
+		var body struct {
+			Unlink bool `json:"unlink"`
+		}
+		if err := e.BindBody(&body); err != nil {
+			return e.BadRequestError("Expected {\"unlink\": true or false}.", err)
+		}
+		if err := contributor.Leave(body.Unlink); err != nil {
+			return e.BadRequestError(err.Error(), err)
+		}
+		return e.JSON(http.StatusOK, contributor.State())
 	}).BindFunc(sameOrigin)
 }
 

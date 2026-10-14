@@ -63,6 +63,13 @@ var schema = []string{
 		size  INTEGER NOT NULL,
 		mtime INTEGER NOT NULL
 	)`,
+	// What the global stats site has taken (global.go), so a round is sent
+	// again only when its record changes. hash is the record's fingerprint.
+	`CREATE TABLE IF NOT EXISTS ts_global_sent (
+		round_id TEXT PRIMARY KEY,
+		hash     INTEGER NOT NULL,
+		sent_at  TEXT NOT NULL
+	)`,
 }
 
 // legacyTables are the names databases from 0.6 and earlier use, which the
