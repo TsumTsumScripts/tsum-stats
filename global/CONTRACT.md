@@ -54,10 +54,13 @@ digits in 8-4-4-4-12 groups, version nibble `7`. Bytes 0–5 are the round's
   `HMAC-SHA256(DEVICE_KEY, the 6 tag bytes)`. 16 bytes, stored as **32
   lowercase hex characters** (TEXT). The hardware tag is never stored.
 - **device hash** = the key's last 12 hex characters.
-- Keys sort by start time, so a day is a key range: from
-  `hex48(dayStartMs − 15 min)` + `"00000000000000000000"` to
-  `hex48(dayEndMs + 15 min)` + `"ffffffffffffffffffff"`, filtered by
-  `played_at` within the day.
+- **A round's day is the UTC day it started**, from the id's time, not its
+  end (`played_at`). Rounds of some Tsums last hours, so the end can fall on
+  a later day. Keys sort by start time, so a day is exactly the key range
+  `hex48(dayStartMs) + "00000000000000000000"` ≤ key <
+  `hex48(dayEndMs) + "00000000000000000000"`, with no margin and no
+  `played_at` filter. This is the one place the global figures differ from
+  the local site's, which files a round under the day it ended.
 
 ### 1.2 What is accepted
 
@@ -66,16 +69,16 @@ checked in this order:
 
 | reason | rule |
 |:--|:--|
-| `id` | not a UUIDv7 as above, or `datetime` unreadable, or `played_at` more than 1 day from the id's start time |
-| `old` | `played_at` or the id's start time is more than **60 days** (`ACCEPT_DAYS`) before now |
-| `future` | `played_at` is more than 10 minutes after now |
+| `id` | not a UUIDv7 as above, or `datetime` unreadable, or `played_at` more than 10 minutes **before** the id's start time (clock skew). There is no limit on how long after the start a round may end |
+| `old` | the id's start time is more than **60 days** (`ACCEPT_DAYS`) before now, or its start day is on or before a day already archived (§3.4; such a day is final even if `ACCEPT_DAYS` grows) |
+| `future` | the id's start time or `played_at` is more than 10 minutes after now |
 | `tsum` | `tsum` is not an `id` in `ui/public/data/catalog.json` |
 | `build` | `build` is not `global`/`jp`, and the settings have no boolean `jpVersion` (true → `jp`, false → `global`) |
 | `incomplete` | `score`, `base_coins`, `final_coins` or `duration_seconds` is null, or `medals` is null for a catalog `medal: true` Tsum |
-| `duration` | `duration_seconds` outside 30–900 |
+| `duration` | `duration_seconds` is 0 or less (no rate can be made of it). There is **no upper limit**: rounds of some Tsums last hours |
 | `range` | `score` outside 0–200,000,000, `base_coins` 0–50,000, `final_coins` 0–1,500,000, `medals` 0–2,000 |
+| `repeat` | the same key twice in one batch (the first, in batch order, is kept) |
 | `pace` | within the batch, a round from the same device starting less than 40 s after the device's previous kept round (sorted by key) |
-| `repeat` | the same key twice in one batch (the first is kept) |
 
 Derived from an accepted record:
 
@@ -125,7 +128,8 @@ admin key is the `ADMIN_KEY` secret, compared in constant time.
 | 405 | `method` | Wrong method |
 | 413 | `too-large` | Body over 1 MiB |
 | 429 | `quota` | The contributor's daily quota (`QUOTA_PER_CONTRIBUTOR`, 5,000 rounds) would be passed; `Retry-After` = seconds to the next 00:00 UTC |
-| 429 | `join-limit` | More than 5 joins today from this address |
+| 429 | `join-limit` | More than 5 joins today from this address; `Retry-After` as for quota |
+| 500 | `internal` | A fault, or the `DEVICE_KEY` secret is not set (no key or device hash is ever made without it) |
 | 503 | `budget` | Today's write budget (`BUDGET_ROWS_PER_DAY`, 80,000) would be passed; `Retry-After` as for quota |
 
 A 429/503 refuses the **whole batch**; nothing is stored.
@@ -156,12 +160,16 @@ Reply **200**:
 it), even when rows were rejected. A **banned** contributor gets the same
 answers; their rounds are stored but left out of the public figures.
 
-Writes, in one D1 batch: the rounds (insert, or update figures for this
-contributor's changed rows), the settings, `devices` (per device in the batch:
-insert or add `rounds`, widen first/last seen), `contributors` (last seen,
-day rounds, `rounds_total`, `dup_rounds`), `budget` (rows written today), and
-`dirty_days` (the UTC days of accepted rows). The quota counts accepted rows;
-the budget counts rounds rows written.
+The rows D1 already has are read first, so a refusal stores nothing and an
+unchanged re-send writes no rounds. Then, in one D1 batch: the rounds (insert,
+or update figures for this contributor's changed rows), the settings,
+`devices` (per device with a round that passed the checks, duplicates and
+unchanged rows included, so a player's second install shows up: insert or
+widen first/last seen; `rounds` adds newly inserted rows), `contributors`
+(last seen; `day_rounds` adds accepted rows, `rounds_total` inserted rows,
+`dup_rounds` duplicates), `budget` (rows written today), and `dirty_days`
+(the start days of accepted rows, §1.1; a start day never moves, since it
+comes from the key). The quota counts accepted rows; the budget counts rounds rows written.
 
 ### 2.3 `GET /api/v1/me`
 
@@ -173,8 +181,9 @@ the budget counts rounds rows written.
 
 `rounds` is `rounds_total`; `devices` counts the contributor's `devices`
 rows; `first`/`last` are the days of its earliest and latest `contrib_cells`
-row (null before the first rollup). A banned contributor sees
-`"status": "active"`.
+row (null before the first rollup), kept as `state` `span:<id>`, which each
+rollup only widens (reading `contrib_cells` by contributor would scan the
+whole table). A banned contributor sees `"status": "active"`.
 
 ### 2.4 `POST /api/v1/me/unlink`
 
@@ -192,14 +201,24 @@ hash (de-duplication needs it).
 All `POST` with a JSON body, reply `{"ok": true, ...}`:
 
 - `ban {id}` / `unban {id}`: status `banned` ↔ `active`; marks every day the
-  contributor has rounds in D1 dirty.
+  contributor has rounds in D1 dirty. Reply `{id, status, days}`.
 - `merge {from, into}`: moves `from`'s rounds, devices, contrib_cells and
-  counters to `into`, deletes `from`; marks their days dirty.
+  counters to `into`, deletes `from`; marks their days dirty. `contrib_cells`
+  of days already archived are added up (`devices` = the larger); archive
+  files are not renamed: `state` `merged:<from>` makes a restore file
+  `c<from>.json`'s rounds under `into`. Refuses `from = into` (400).
+- ban, unban and merge refuse a contributor being unlinked or id 0 (400) and
+  an unknown id (404).
 - `rebuild {from?, to?}`: marks the days (default: every day with rounds in
-  D1) dirty.
-- `restore {day}`: reads that day's archive files back into `rounds` (§3.4)
-  and marks it dirty, so the next rollup recomputes it.
-- `rollup {}`: runs the hourly job now (also how tests trigger it).
+  D1) dirty, at most 400. Reply `{from, to, days}`.
+- `restore {day}`: reads that day's archive files back into `rounds` (§3.4),
+  for a day on or before `archived_through` only (else 400). It works within
+  one invocation's budget, so a big day takes several calls: reply
+  `{day, done, files, left, rounds}`, progress kept in `state`
+  `restore:<day>`. After the last file the day is marked dirty; once
+  recomputed its rounds leave D1 again, with no files rewritten.
+- `rollup {}`: runs the hourly job now (also how tests trigger it); the reply
+  is the run's report.
 
 `GET /api/v1/admin/contributors` → `{"ok": true, "contributors": [{id,
 status, createdAt, lastSeen, client, rounds, duplicates, devices}]}`.
@@ -289,6 +308,13 @@ CREATE TABLE contrib_cells (
 ) WITHOUT ROWID;
 ```
 
+A cell's figures are over its rounds: `secs` their durations; `score_*`,
+`base_*`, `final_*` every round's (`*_sq` is the exact integer sum of squares,
+kept as REAL). The `medals_*` columns are over the rounds whose medals were
+read (not null): `medals_n` counts them, `medals_secs` adds their durations.
+A `bins` object's keys are bin numbers (§5) as text; `medals` is `{}` when no
+round earned any.
+
 `rounds` has no secondary index on purpose: one row written per round. Every
 scan of `rounds` is a key range (§1.1) or a `contributor` scan run in chunks
 by the hourly job.
@@ -307,23 +333,29 @@ In order, each step bounded so a run fits Workers Free:
 The steps:
 
 1. **Recompute dirty days**, oldest first, at most `ROLLUP_DAYS_PER_RUN` (8).
-   For each day, over its key range filtered to the day: `cells` from rounds
+   For each day, over its key range (§1.1, the rounds that started that day): `cells` from rounds
    whose contributor's status is not `banned`/`unlinking-banned`; `bins` the
-   same way; `contrib_cells` from every round **except contributor 0's**, with
+   same way; `contrib_cells` from every round **except contributor 0's and
+   those of contributors being unlinked** (§2.4 deleted theirs), with
    `devices` = distinct device hashes. Upsert only changed rows; delete rows
    the day no longer has. Remove the day from `dirty_days`.
-2. **Render** each recomputed day's **part file** (§4.2) to R2.
+2. **Render** each recomputed day's **part file** (§4.2) to R2. A replaced
+   part goes to `state` `trash` and is deleted by a run at least 15 minutes
+   later (never while a pointer names it again), since a manifest a viewer or
+   the edge still holds (max-age 300) may name it.
 3. **Unlink**: per `unlinking` contributor, re-file up to `UNLINK_CHUNK`
    rounds to contributor 0 (marking their days dirty); per
    `unlinking-banned`, delete them instead. Rename its archive files
-   (`c<id>.json` → `u<random hex>.json`, R2 copy then delete). Delete the
+   (`c<id>.json` → `u<hex>.json`, R2 copy then delete). Delete the
    contributor row when nothing is left.
 4. **Archive and drop** (§3.4) each day older than `ACCEPT_DAYS + 1` days that
    still has rounds in D1.
 5. **Compact**: a calendar month whose days are all older than
    `ACCEPT_DAYS + 1` and whose parts are all days gets one month part (§4.2)
    when its JSON is under 1.9 MB; its day parts are deleted.
-6. **Manifest** (§4.1), when anything above changed or it is missing.
+6. **Manifest** (§4.1), when a part changed, a day was recomputed or an
+   unlink finished (its counts of contributors and devices move with those),
+   or it is missing.
 
 ### 3.3 R2 layout (bucket `tsum-global`)
 
@@ -333,7 +365,7 @@ The steps:
 | `data/global/day-YYYY-MM-DD.<sha8>.json` | yes | One day's part |
 | `data/global/month-YYYY-MM.<sha8>.json` | yes | One compacted month's part |
 | `archive/YYYY-MM/YYYY-MM-DD/c<id>.json` | no | One contributor's rounds for one day |
-| `archive/YYYY-MM/YYYY-MM-DD/u<hex>.json` | no | Unlinked rounds for one day |
+| `archive/YYYY-MM/YYYY-MM-DD/u<hex>.json` | no | Unlinked rounds for one day, 5,000 a file |
 | `archive/settings/<firstId>-<lastId>.json` | no | Settings rows, written once per new range |
 
 `<sha8>` is the first 8 hex digits of the file's SHA-256. Only
@@ -350,7 +382,10 @@ manifest with `public, max-age=300`, both `application/json`.
  "base": [3000], "final": [4500], "medals": [null]}
 ```
 
-`contributor` is null in a `u<hex>.json` file. Every settings id an archived
+`contributor` is null in a `u<hex>.json` file. `<hex>` is the first 16 hex
+digits of an HMAC (`DEVICE_KEY`) of what the file holds, so it names no one and
+a re-run writes the same file. A contributor being unlinked when its day is
+archived goes straight to a `u` file. Every settings id an archived
 round names is in some `archive/settings/*.json`
 (`{"kind": "tsum-global-settings", "format": 1, "settings": [{"id", "hash", "json"}]}`).
 A day is deleted from D1 only after each of its files is written and its row
@@ -425,7 +460,10 @@ bins at ingest (JavaScript `Math.log`), so the page only ever uses `low`/`mid`.
 Built with `vite build --mode global` into `global/site/`; `index.html`
 carries `<meta name="tsum-global" content="1">`. `api()` then sends every
 route to `ui/src/lib/global/engine.js` in a Web Worker, reading
-`data/global/` relative to the page.
+`data/global/` relative to the page. The engine reads files through a
+loader, `json(name, {fresh}) → Promise`: `fresh` asks past any cache (for the
+manifest's reload), and a missing file rejects with an error whose `status`
+is 404.
 
 ### 6.1 Routes
 
@@ -448,8 +486,9 @@ Parameters as `queries.go: ParseFilter`, plus two:
 - New: `skill` (comma list of integers; `-1` = unknown) and `items` (comma
   list of item masks; `-1` = unknown).
 - Ignored: `device`, the outlier bounds, `incomplete`, `tz` (days are UTC).
-- **Days**: a cell counts when its day's 00:00 UTC is ≥ `from` (rounded down
-  to a UTC day) and < `to`.
+- **Days**: a cell's day is the UTC day its rounds **started** (§1.1). A cell
+  counts when its day's 00:00 UTC is ≥ `from` (rounded down to a UTC day) and
+  < `to`.
 
 The figures follow `summary.go` and the snapshot engine exactly, from the
 cells' sums (per-cell `n` = `rounds` for base and final; net coins are base or
@@ -467,12 +506,15 @@ over `medalsSecs`). Medals mode (`coins=medals`) and the `medals` set use only
   clamped to the group's exact min and max, is the answer. That is within 2 %
   of the exact value, or exact under 100.
 - **Histogram**: `histBounds` from the exact min/max and the approximate
-  q1/q3, each bin's rounds put in the bucket holding `mid(b)`.
-- **Not available** (null spreads, an empty histogram): with `net=1` or an
-  `items` filter, since bins are kept per skill but not per item set.
+  q1/q3, each bin's rounds put in the bucket holding `mid(b)`, clamped to its
+  Tsum's exact min and max.
+- **Not available** (null spreads, an empty histogram), since bins are kept
+  per skill but not per item set: the primary stat's when it is net coins
+  (`net=1`, not in medals mode); every stat's under an `items` filter. Medals
+  are never net, so the `medals` set keeps its spreads under `net=1`.
 - `hours` is always `[]`.
 - An extra top-level `global: {approx: true, spreads: <bool>}` says whether
-  spreads were computed.
+  the primary stat's spreads were computed.
 
 A part that 404s (replaced since the manifest was read) makes the engine
 reload the manifest once and retry.
@@ -483,6 +525,9 @@ reload the manifest once and retry.
 
 `{"url": "https://tsum-stats.gapscripts.app", "id": 17, "key": "…", "enabled": true, "joinedAt": "…", "sent": 12345, "lastUpload": "…", "lastError": "", "retryAt": ""}`
 
+`url` is the site the key came from: a key is used only while `--global-url`
+names that site, and is never sent anywhere else.
+
 ### 7.2 The forwarder
 
 - It runs while `enabled`: first 2 minutes after start or a join, then every
@@ -491,27 +536,38 @@ reload the manifest once and retry.
   `build` `global`/`jp` or a `jpVersion` setting, `played_at` within the last
   60 days and at least 20 minutes ago. The fingerprint is the record's
   FNV-1a 64 over its canonical JSON. It sends rows with no `ts_global_sent`
-  row or a different fingerprint, oldest first, 250 at a time, and stops at
-  the first refusal.
+  row or a different fingerprint, oldest first, 250 at a time (fewer when
+  their JSON passes 768 KiB, to stay under the 1 MiB body limit), and stops
+  at the first refusal.
 - **Never sent**: `device`, `source`, the Tsum lists, paths.
 - **After `ok: true`**: every row in the batch goes into
   `ts_global_sent(round_id TEXT PRIMARY KEY, hash INTEGER NOT NULL, sent_at TEXT NOT NULL)`
   (including rejected rows, which a change of figures sends again).
-- **On refusals.** 429/503: `retryAt` = now + `Retry-After`, and the pass
-  stops. 401: the key is forgotten, `enabled` is off and `lastError` says to
-  join again. Anything else: `lastError`, and the next hourly pass.
+- **On refusals.** 429/503: `retryAt` = now + `Retry-After` (an hour when
+  it has none), and the pass stops; until then a pass only fetches
+  `/api/v1/me`, and Upload now is refused. 401 (from any route but unlink):
+  the key is forgotten, `enabled` is off and `lastError` says to join again.
+  Anything else: `lastError`, and the next hourly pass.
+- A new join starts `sent` at 0 but keeps `ts_global_sent`: rounds sent under
+  an earlier id are in the global figures already.
 
 ### 7.3 Local routes (`server.go`)
 
 `POST` routes are guarded by `sameOrigin`.
 
 - `GET /api/stats/global`:
-  `{enabled, joined, url, id, sent, pending, lastUpload, lastError, retryAt, me}`.
-  `pending` counts rows waiting; `me` is the last `/api/v1/me` answer or null.
-- `POST /api/stats/global/join`: joins (or re-enables a saved key), then runs a
-  pass.
+  `{enabled, joined, url, id, sent, pending, lastUpload, lastError, retryAt, me, running}`.
+  `pending` counts rows waiting; `me` is the last `/api/v1/me` answer or null;
+  `running` is true while a pass uploads.
+- `POST /api/stats/global/join`: joins (or re-enables a saved key) and fetches
+  `me`; the first pass follows 2 minutes later (§7.2), so a player can still
+  back out before anything is sent.
 - `POST /api/stats/global/run`: a pass now.
-- `POST /api/stats/global/leave` `{unlink: bool}`: stops; with `unlink`, calls
-  `/api/v1/me/unlink` and forgets the key.
+- `POST /api/stats/global/leave` `{unlink: bool}`: stops, keeping the key so a
+  join resumes the same id; with `unlink`, calls `/api/v1/me/unlink` and then
+  forgets the key (a 401 there counts as unlinked already; an unreachable site
+  keeps the key, so unlinking can be tried again).
 - Realtime topic `ts/global`: the `GET` state after every change.
-- Flag `--global-url` (default `https://tsum-stats.gapscripts.app`).
+- Flag `--global-url` (default `https://tsum-stats.gapscripts.app`): `https`,
+  or `http` to this computer (a local `wrangler dev`); empty turns contributing
+  off.

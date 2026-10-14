@@ -1,0 +1,5 @@
+# Throwaway secrets for `npm run dev` (copied to .dev.vars when it is missing).
+# The real ones live in ~/.config/tsum-global/secrets.env and go up with the
+# first deploy (CLOUDFLARE-SETUP.md, step 4).
+DEVICE_KEY=local-device-key-not-a-secret
+ADMIN_KEY=local-admin-key-not-a-secret
