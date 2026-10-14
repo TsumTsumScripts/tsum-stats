@@ -62,7 +62,8 @@ The Tsum Tsum script's starter bundle runs this program with `--starter
 starter page is then at <http://127.0.0.1:8090/starter/> and this site at `/`,
 each linking to the other. The starter uses the bundle's adb for Import from
 devices too, and imports what it copies into the bundle's `collected/` folder.
-Without `--starter` nothing changes.
+Without `--starter` nothing changes. The page's **Stop** button ends the
+program (exit 0), which also ends the launcher and closes its window.
 
 The starter keeps this program and its own scripts current. Each launch runs
 `tsum-stats update` first, and while it runs the page looks for newer versions

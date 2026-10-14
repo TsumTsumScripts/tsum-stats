@@ -163,6 +163,12 @@ func (s *Starter) Mount(se *core.ServeEvent, puller *stats.Puller) {
 		})
 	})
 
+	// The page's Stop button: ends the program, and with it the launcher's window.
+	g.POST("/quit", func(e *core.RequestEvent) error {
+		go stopServing(se.Server)
+		return e.JSON(http.StatusOK, map[string]any{"ok": true})
+	})
+
 	g.GET("/devices", func(e *core.RequestEvent) error {
 		if s.adb() == "" {
 			return e.JSON(http.StatusOK, map[string]any{"devices": []Device{}, "noAdb": true})

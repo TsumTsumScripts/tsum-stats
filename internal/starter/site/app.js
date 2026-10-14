@@ -357,6 +357,26 @@ async function confirmDelete(kind) {
   }, {once: true});
 }
 
+// Stops the program; the launcher then exits and its window closes.
+function confirmQuit() {
+  ask({
+    title: 'Stop the starter?',
+    body: 'The starter and the Stats site stop, and the starter\'s terminal window closes. ' +
+      (state.watch?.device?.on ? 'Watch mode stops with it. ' : '') +
+      'The service on your devices keeps running. Run Start-Windows or Start-Linux to open it again.',
+    yes: 'Stop the starter',
+  }, async () => {
+    if (state.follow) state.follow.abort();
+    try {
+      await post('quit', {});
+    } catch { /* already gone */ }
+    document.querySelector('.felt').replaceChildren(el('main', {class: 'felt-wrap'},
+      el('div', {class: 'patch patch--surface card'},
+        el('h3', {}, 'The starter has stopped'),
+        el('p', {class: 'small'}, 'You can close this tab. Run Start-Windows or Start-Linux to open it again.'))));
+  });
+}
+
 // -------------------------------------------------------------- the export
 
 function exportName(serials) {
@@ -642,6 +662,7 @@ function wire() {
     });
   }
   for (const b of $$('[data-delete]')) b.addEventListener('click', () => confirmDelete(b.dataset.delete));
+  $('#quit').addEventListener('click', confirmQuit);
 }
 
 // The bundle path's own separator, so a Windows path stays one.

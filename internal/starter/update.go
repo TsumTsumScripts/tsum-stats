@@ -218,7 +218,7 @@ func (s *Starter) mountUpdates(se *core.ServeEvent, g *router.RouterGroup[*core.
 }
 
 // stopServing ends the HTTP server once the reply has gone out, so main can
-// exit with the restart code.
+// exit: with the restart code after an update, else 0.
 func stopServing(server *http.Server) {
 	time.Sleep(300 * time.Millisecond)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
