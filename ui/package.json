@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "check": "svelte-check"
+    "build:global": "vite build --mode global",
+    "check": "svelte-check",
+    "test:global": "node --test tests/global-engine.test.mjs"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",

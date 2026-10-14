@@ -445,7 +445,7 @@ func TestPageSubscribesToEveryTopic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, topic := range []string{TopicDevices, TopicRounds, TopicImports, TopicPublish} {
+	for _, topic := range []string{TopicDevices, TopicRounds, TopicImports, TopicPublish, TopicGlobal} {
 		if !strings.Contains(string(src), "subscribe('"+topic+"'") {
 			t.Errorf("App.svelte does not subscribe to %q", topic)
 		}

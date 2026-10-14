@@ -153,7 +153,7 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
   .topbar > .seg button { padding: 5px 10px; font-size: 14px; }
   .topbar .spacer { flex: 0 0 100%; height: 0; order: 4; }
   .topbar .live { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto; order: 5; scrollbar-width: none; }
-  .topbar #data-btn, .topbar #share-btn, .topbar #starter-btn { order: 7; padding: 3px 12px; font-size: 14px; }
+  .topbar #data-btn, .topbar #share-btn, .topbar #contribute-btn, .topbar #starter-btn, .topbar #site-btn { order: 7; padding: 3px 12px; font-size: 14px; }
   .theme-pick { order: 6; }
   .theme-pick .sub { display: none; }
 }
@@ -648,7 +648,7 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 .callout b { color: var(--ink); }
 
 /* The Starter link is an <a> dressed as a button. */
-#starter-btn { text-decoration: none; }
+#starter-btn, #site-btn { text-decoration: none; }
 
 /* ---- The Tsum page ---- */
 .tsum-head { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; border-top: 4px solid var(--tsum, var(--panel-edge)); }
@@ -677,6 +677,9 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 .breakdown .bd-label { font-weight: 800; }
 .breakdown .tag, .breakdown td .sub { margin-left: 8px; }
 .breakdown tr.few td { opacity: 0.6; }
+/* The global site's Tsums with too few contributors, flagged like the breakdowns' few rounds. */
+.dt tr.few td { opacity: 0.6; }
+.few-flag { margin-left: 8px; white-space: nowrap; }
 .breakdown tr.mark td { box-shadow: inset 0 2px 0 color-mix(in srgb, var(--accent-a) 50%, transparent), inset 0 -2px 0 color-mix(in srgb, var(--accent-a) 50%, transparent); }
 .bd-rate { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .bd-bar { display: block; width: 90px; height: 8px; border-radius: 999px; background: var(--well); overflow: hidden; }

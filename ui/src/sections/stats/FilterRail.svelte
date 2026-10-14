@@ -1,18 +1,24 @@
 <!-- The Stats rail: filters and the jump menu. Narrow, it is a bar under the
-     top bar whose filters drop down; wide, a sticky side column. -->
+     top bar whose filters drop down; wide, a sticky side column. On the global
+     site, skill levels and item sets take the place of devices and outliers. -->
 <script>
   import Seg from '../../components/Seg.svelte';
   import TsumChip from '../../components/TsumChip.svelte';
-  import {debounce, fmt} from '../../lib/util.js';
+  import {isGlobal} from '../../lib/global/client.js';
+  import {debounce, fmt, itemsLabel} from '../../lib/util.js';
 
+  // skills: the global site's skill levels; itemChoices: its item sets, [{items, rounds}].
   let {
     filter, range, outliers, chips, picked, played, playedDevices, pickedDevices, comparing,
+    skills = [], pickedSkills = [], itemChoices = [], pickedItems = [],
     set, reset, addTsum, dropTsum, matchTsum, nameOf, colorOf, open = $bindable(false),
   } = $props();
+  const globalSite = isGlobal();
 
   const JUMPS = [
     ['s-overview', 'Overview'], ['s-compare', 'Head to head'], ['s-efficiency', 'Efficiency'], ['s-time', 'Over time'],
-    ['s-share', 'Share'], ['s-when', 'Hours & items'], ['s-spread', 'Spread'], ['s-tsums', 'Tsum table'], ['s-rounds', 'Rounds'],
+    ['s-share', 'Share'], ['s-when', globalSite ? 'Items' : 'Hours & items'], ['s-spread', 'Spread'], ['s-tsums', 'Tsum table'],
+    ...(globalSite ? [] : [['s-rounds', 'Rounds']]),
   ];
   const jumps = $derived(JUMPS.filter(([id]) => id !== 's-compare' || comparing));
 
@@ -32,8 +38,11 @@
   function dates(from, to) {
     set(from || to ? {days: '', from, to} : {days: 'all', from: '', to: ''});
   }
-  // Ticking devices narrows the stats to them; none ticked is every device.
-  const toggleDevice = (d, on) => set({device: (on ? [...pickedDevices, d] : pickedDevices.filter(x => x !== d)).join(',')});
+  // Ticking devices narrows the stats to them; none ticked is every device. Skill levels and item sets likewise.
+  const toggleIn = (key, list, v, on) => set({[key]: (on ? [...list, v] : list.filter(x => x !== v)).join(',')});
+  const toggleDevice = (d, on) => toggleIn('device', pickedDevices, d, on);
+  const skillName = s => (s < 0 ? 'Not recorded' : `Level ${s}`);
+  const itemsSummary = $derived(pickedItems.length > 1 ? `${pickedItems.length} item sets` : pickedItems.length ? itemsLabel(Number(pickedItems[0])) : 'Any items');
   // One debounced setter per outlier bound, so typing in two boxes keeps both.
   const setters = {};
   const setBound = k => (setters[k] ??= debounce(v => set({[k]: v}), 350));
@@ -110,7 +119,34 @@
             </div>
           {/if}
         </div>
-        {#if playedDevices.length}
+        {#if globalSite}
+          {#if skills.length}
+            <div class="field devices-field" title="Tick one or more skill levels to count only rounds played at them">Skill level
+              <details class="devices">
+                <summary>{pickedSkills.length ? `Level ${pickedSkills.map(s => (Number(s) < 0 ? '?' : s)).join(', ')}` : 'All levels'}</summary>
+                <div class="device-list">
+                  {#each [...skills, -1] as s (s)}
+                    <label><input type="checkbox" checked={pickedSkills.includes(String(s))}
+                      onchange={e => toggleIn('skill', pickedSkills, String(s), e.target.checked)}><span class="device-name">{skillName(s)}</span></label>
+                  {/each}
+                </div>
+              </details>
+            </div>
+          {/if}
+          {#if itemChoices.length}
+            <div class="field devices-field" title="Tick one or more item sets to count only rounds played with them">Items used
+              <details class="devices">
+                <summary>{itemsSummary}</summary>
+                <div class="device-list">
+                  {#each itemChoices as c (c.items)}
+                    <label title={itemsLabel(c.items)}><input type="checkbox" checked={pickedItems.includes(String(c.items))}
+                      onchange={e => toggleIn('items', pickedItems, String(c.items), e.target.checked)}><span class="device-name">{itemsLabel(c.items)}</span><span class="sub">{c.rounds === null ? '' : fmt(c.rounds)}</span></label>
+                  {/each}
+                </div>
+              </details>
+            </div>
+          {/if}
+        {:else if playedDevices.length}
           <div class="field devices-field" title="Tick one or more devices to count only their rounds">Devices
             <details class="devices">
               <summary>{pickedDevices.length ? `${pickedDevices.length} selected` : 'All devices'}</summary>
@@ -123,29 +159,33 @@
             </details>
           </div>
         {/if}
-        <label class="field">From <input type="date" value={range.from} onchange={e => dates(e.target.value, range.to)}></label>
-        <label class="field">To <input type="date" value={range.to} onchange={e => dates(range.from, e.target.value)}></label>
-        <div class="field outliers" title="Leave out rounds whose score, coins or medals fall outside these ranges">Outliers
-          <details class="devices">
-            <summary>{boundsSet ? `${boundsSet} ${boundsSet > 1 ? 'ranges' : 'range'} set` : 'None omitted'}{filter.incomplete ? ' · incomplete kept' : ''}</summary>
-            <div class="outlier-grid">
-              <span></span><span class="sub">Lowest</span><span class="sub">Highest</span>
-              {#each outliers as [stat, label, lo, hi, step] (stat)}
-                <span>{label}</span>
-                {#each [lo, hi] as k (k)}
-                  <input type="number" min="0" {step} inputmode="numeric" placeholder="Any" aria-label="{k.startsWith('min') ? 'Lowest' : 'Highest'} {stat}"
-                    value={filter[k]} oninput={e => setBound(k)(e.target.value)}>
+        <!-- On the global site a round counts on the UTC day it began, however long it lasted. -->
+        <label class="field" title={globalSite ? 'A round counts on the UTC day it began' : undefined}>From{globalSite ? ' (UTC)' : ''} <input type="date" value={range.from} onchange={e => dates(e.target.value, range.to)}></label>
+        <label class="field" title={globalSite ? 'A round counts on the UTC day it began' : undefined}>To{globalSite ? ' (UTC)' : ''} <input type="date" value={range.to} onchange={e => dates(range.from, e.target.value)}></label>
+        <!-- Every global round is complete, and its figures are summed per day: there are no rounds to leave out. -->
+        {#if !globalSite}
+          <div class="field outliers" title="Leave out rounds whose score, coins or medals fall outside these ranges">Outliers
+            <details class="devices">
+              <summary>{boundsSet ? `${boundsSet} ${boundsSet > 1 ? 'ranges' : 'range'} set` : 'None omitted'}{filter.incomplete ? ' · incomplete kept' : ''}</summary>
+              <div class="outlier-grid">
+                <span></span><span class="sub">Lowest</span><span class="sub">Highest</span>
+                {#each outliers as [stat, label, lo, hi, step] (stat)}
+                  <span>{label}</span>
+                  {#each [lo, hi] as k (k)}
+                    <input type="number" min="0" {step} inputmode="numeric" placeholder="Any" aria-label="{k.startsWith('min') ? 'Lowest' : 'Highest'} {stat}"
+                      value={filter[k]} oninput={e => setBound(k)(e.target.value)}>
+                  {/each}
                 {/each}
-              {/each}
-            </div>
-            <p class="sub outlier-note">Rounds outside a range are left out. Coins are {filter.net === '1' && filter.coins !== 'medals' ? 'net ' : ''}{filter.coins === 'final' ? 'final' : 'base'} coins;
-              the medal range only judges Tsums that earn medals.</p>
-            <label class="outlier-check"><input type="checkbox" checked={filter.incomplete === '1'}
-              onchange={e => set({incomplete: e.target.checked ? '1' : ''})}> Include incomplete rounds</label>
-            <p class="sub outlier-note">Incomplete rounds have no Tsum, or a score, coins, time or (for a Tsum that earns medals) medals that could not be read.</p>
-            {#if boundsSet}<button type="button" class="btn" onclick={clearOutliers}>Clear ranges</button>{/if}
-          </details>
-        </div>
+              </div>
+              <p class="sub outlier-note">Rounds outside a range are left out. Coins are {filter.net === '1' && filter.coins !== 'medals' ? 'net ' : ''}{filter.coins === 'final' ? 'final' : 'base'} coins;
+                the medal range only judges Tsums that earn medals.</p>
+              <label class="outlier-check"><input type="checkbox" checked={filter.incomplete === '1'}
+                onchange={e => set({incomplete: e.target.checked ? '1' : ''})}> Include incomplete rounds</label>
+              <p class="sub outlier-note">Incomplete rounds have no Tsum, or a score, coins, time or (for a Tsum that earns medals) medals that could not be read.</p>
+              {#if boundsSet}<button type="button" class="btn" onclick={clearOutliers}>Clear ranges</button>{/if}
+            </details>
+          </div>
+        {/if}
         <!-- The two toggles share a row when there is room and stack when not. -->
         <div class="seg-fields span-all">
           <div class="field">Game
@@ -155,7 +195,7 @@
             <Seg label="Primary stat" value={filter.coins} onpick={v => set({coins: v})}
               options={[['', 'Base', 'coin'], ['final', 'Final', 'coin'], ['medals', '', 'medal', 'Medals']]} />
             {#if filter.coins !== 'medals'}
-              <label class="outlier-check" title="Subtract what each round's boost items cost. Rounds recorded before items were have no net coins.">
+              <label class="outlier-check" title="Subtract what each round's boost items cost. Rounds recorded before items were have no net coins.{globalSite ? ' The median and spreads are not kept per item set, so they are left out.' : ''}">
                 <input type="checkbox" checked={filter.net === '1'} onchange={e => set({net: e.target.checked ? '1' : ''})}> Less item costs</label>
             {/if}
           </div>

@@ -1,5 +1,6 @@
 // Small helpers shared by every section: number and date formats, the API,
 // the Tsum catalog and each Tsum's colour.
+import {globalApi, isGlobal} from './global/client.js';
 import {isSnapshot, snapshotApi} from './snapshot/client.js';
 
 export const IMAGE_URL = id => `https://tsum-assets.gapscripts.app/tsums/block_${encodeURIComponent(id)}_l.png`;
@@ -61,7 +62,8 @@ export function initials(name) {
 
 export async function api(path, params = {}) {
   const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v !== null && v !== undefined));
-  // A published snapshot has no server: the same routes are answered in the browser.
+  // A published snapshot and the global site have no stats server: the same routes are answered in the browser.
+  if (isGlobal()) return globalApi(path, Object.fromEntries(q));
   if (isSnapshot()) return snapshotApi(path, Object.fromEntries(q));
   const res = await fetch(`/api/stats/${path}${q.size ? '?' + q : ''}`);
   if (!res.ok) throw new Error(`${path}: ${res.status}`);

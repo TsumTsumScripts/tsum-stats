@@ -4,20 +4,24 @@
 
   // t: the summary's totals; m: the same over rounds that earned medals.
   // noMedals drops the medal tiles when no round earned any (a Tsum that never does).
-  let {t, m, coins, basis, noMedals = false} = $props();
+  // approx marks the median, quartile and P90 as estimates (the global site's);
+  // missing says why they are not there, when they are not.
+  let {t, m, coins, basis, noMedals = false, approx = false, missing = ''} = $props();
 
   const u = $derived(coins === 'medals' ? 'medals' : 'coins');
   const medals = $derived(coins === 'medals');
   const unitCls = $derived(medals ? 'medal' : 'coin');
   const perHour = r => (r === null ? null : r * 3600);
   const bonus = $derived(t.avgBaseCoins && t.avgFinalCoins ? t.avgFinalCoins / t.avgBaseCoins - 1 : null);
+  /** A spread figure's note: its words and value, marked when it is an estimate. */
+  const spread = (words, v) => (v === null ? '' : `${words} ${approx ? '≈ ' : ''}${fmt(v)}`);
 
   // [label, value, class, note]
   const tiles = $derived([
     [`${cap(basis)} per second`, fmtRate(t.coinsPerSec), `hero ${unitCls}`, t.coinsPerSec === null ? '' : `≈ ${fmt(perHour(t.coinsPerSec))} ${u} an hour of play`],
-    [`Average ${u}`, fmt(t.avgCoins), unitCls, t.medianCoins === null ? '' : `median ${fmt(t.medianCoins)}`],
-    [`Lowest ${u}`, fmt(t.minCoins), unitCls, t.q1Coins === null ? '' : `a quarter under ${fmt(t.q1Coins)}`],
-    [`Highest ${u}`, fmt(t.maxCoins), unitCls, t.p90Coins === null ? '' : `one in ten over ${fmt(t.p90Coins)}`],
+    [`Average ${u}`, fmt(t.avgCoins), unitCls, t.medianCoins === null && t.rounds ? missing : spread('median', t.medianCoins)],
+    [`Lowest ${u}`, fmt(t.minCoins), unitCls, spread('a quarter under', t.q1Coins)],
+    [`Highest ${u}`, fmt(t.maxCoins), unitCls, spread('one in ten over', t.p90Coins)],
     ['Spread', t.stdCoins === null ? '—' : `± ${fmt(t.stdCoins)}`, '', `standard deviation of ${u}`],
     [`Total ${u}`, fmt(t.totalCoins), unitCls, medals || bonus === null ? '' : `coin bonus added ${pct(bonus)}`],
     [medals ? 'Rounds with medals' : 'Rounds', fmt(t.rounds), '', t.totalSeconds ? `${fmtRate(t.totalSeconds / 3600)} h played` : ''],
@@ -26,8 +30,8 @@
     // Medals beside coins, over the rounds that earned any; with medals primary the tiles above are these.
     ...(medals || (noMedals && !m.rounds) ? [] : [
       ['Medals per hour', fmt(perHour(m.coinsPerSec)), 'medal', m.coinsPerSec === null ? '' : `${fmtRate(m.coinsPerSec)} a second`],
-      ['Average medals', fmt(m.avgCoins), 'medal', m.medianCoins === null ? '' : `median ${fmt(m.medianCoins)}`],
-      ['Highest medals', fmt(m.maxCoins), 'medal', m.p90Coins === null ? '' : `one in ten over ${fmt(m.p90Coins)}`],
+      ['Average medals', fmt(m.avgCoins), 'medal', m.medianCoins === null && m.rounds ? missing : spread('median', m.medianCoins)],
+      ['Highest medals', fmt(m.maxCoins), 'medal', spread('one in ten over', m.p90Coins)],
       ['Total medals', fmt(m.totalCoins), 'medal', t.rounds ? `from ${fmt(m.rounds)} rounds (${pct(m.rounds / t.rounds)})` : ''],
     ]),
   ]);

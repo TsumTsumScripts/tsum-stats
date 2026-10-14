@@ -4,8 +4,9 @@
   import Avatar from '../../components/Avatar.svelte';
   import {cap, fmt, fmtDuration, fmtRate, pct} from '../../lib/util.js';
 
-  // rows: the Tsum table's rows (each with .m, its medal figures).
-  let {rows, picked, coins, nameOf, colorOf, focusOn, dropTsum} = $props();
+  // rows: the Tsum table's rows (each with .m, its medal figures). approx marks
+  // the median and 90th percentile as estimates (the global site's).
+  let {rows, picked, coins, nameOf, colorOf, focusOn, dropTsum, approx = false} = $props();
 
   const perHour = r => (r?.coinsPerSec == null ? null : r.coinsPerSec * 3600);
 
@@ -18,10 +19,10 @@
       [`${U} per second`, r => r.coinsPerSec, fmtRate, 'high'],
       [`${U} per hour`, perHour, fmt, 'high'],
       [`Average ${u}`, r => r.avgCoins, fmt, 'high'],
-      [`Median ${u}`, r => r.medianCoins, fmt, 'high'],
+      [`${approx ? '≈ ' : ''}Median ${u}`, r => r.medianCoins, fmt, 'high'],
       [`Lowest ${u}`, r => r.minCoins, fmt, 'high'],
       [`Highest ${u}`, r => r.maxCoins, fmt, 'high'],
-      ['One in ten over', r => r.p90Coins, fmt, 'high'],
+      [`${approx ? '≈ ' : ''}One in ten over`, r => r.p90Coins, fmt, 'high'],
       ['Spread (lower is steadier)', r => r.stdCoins, fmt, 'low'],
       [`Total ${u}`, r => r.coins, fmt],
       ['Average round', r => r.avgSeconds, fmtDuration, 'low'],
