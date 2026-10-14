@@ -137,6 +137,29 @@
 :root .rail-panel, :root .focus-bar { border-radius: 26px 32px 28px 34px; }
 :root #catalog > .panel:first-child { border-radius: 26px 36px 28px 40px; }
 
+/* Maxed Tsums: a marigold patch with its own stitching and hard edge, a warm glow that
+   breathes, the sheen sweeping across and a grape star badge. The rules above restyle
+   every .card, so without these a maxed card would look like any other. Ink is the patch's own. */
+:root .card.maxed {
+  --ink: var(--m-ink); --muted: var(--m-ink); --faint: var(--m-ink); --seam: var(--m-thread); --panel-edge: var(--m-thread);
+  --well: rgba(255, 255, 255, .55); --score: var(--j-edge); --coin: var(--m-edge);
+  color: var(--m-ink); background-color: var(--m-fill);
+  background-image: repeating-linear-gradient(31deg, rgba(255,255,255,.15) 0 1px, transparent 1px 4px), repeating-linear-gradient(-57deg, rgba(0,0,0,.045) 0 1px, transparent 1px 5px);
+  animation: felt-maxed-glow 2.8s ease-in-out infinite;
+}
+/* The tab takes the patch's edge (the page sets --tsum inline); the initials keep the page's ink on the avatar. */
+:root .card.maxed::after { background: var(--m-edge); }
+:root .card.maxed .avatar { color: #d8d2e4; }
+@keyframes felt-maxed-glow {
+  0%, 100% { box-shadow: 0 5px 0 var(--m-edge), 0 10px 18px var(--cast), 0 0 6px 0 var(--maxed-glow); }
+  50% { box-shadow: 0 5px 0 var(--m-edge), 0 10px 18px var(--cast), 0 0 24px 6px var(--maxed-glow); }
+}
+:root .card.maxed .maxed-shine { background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, .5) 50%, transparent 65%); background-size: 250% 100%; }
+:root .card.maxed .maxed-badge { width: 24px; height: 24px; font-size: 13px; top: 10px; right: 10px;
+  background: var(--g-fill); color: var(--g-ink); border: 2px dashed var(--g-thread); box-shadow: 0 3px 0 var(--g-edge);
+  animation: felt-maxed-badge 4s ease-in-out infinite; }
+@keyframes felt-maxed-badge { 0%, 70%, 100% { transform: rotate(-8deg); } 80% { transform: rotate(10deg) scale(1.15); } 90% { transform: rotate(-14deg); } }
+
 /* KPI tiles are the bright patches: a score is jade, coins marigold, medals periwinkle,
    the rest rose, and the hero tile grape. Ink is the patch's own dark tone throughout. */
 :root .kpi {
