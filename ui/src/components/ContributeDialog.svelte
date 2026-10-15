@@ -1,4 +1,22 @@
 <!-- The Contribute dialog: add your rounds to the global stats, see what has been sent, stop or unlink. -->
+<script module>
+  /**
+   * Calls set with the time now, and again once `until` (ms; NaN for none)
+   * has passed, so a state that ends at a time ends on screen too. A long
+   * wait is re-armed hourly. Returns the cancel, for an $effect.
+   */
+  export function tickUntil(until, set, timers = globalThis) {
+    let id;
+    const tick = () => {
+      const now = Date.now();
+      set(now);
+      if (until > now) id = timers.setTimeout(tick, Math.min(until - now + 250, 3_600_000));
+    };
+    tick();
+    return () => timers.clearTimeout(id);
+  }
+</script>
+
 <script>
   import {toast} from '../lib/ui.svelte.js';
   import {api, fmt} from '../lib/util.js';
@@ -65,11 +83,14 @@
   async function unlink() {
     if (!(await post('leave', {unlink: true}))) return;
     confirming = false;
-    toast('Your rounds are unlinked, and this computer has stopped contributing.', 6000);
+    toast('The global site is unlinking your rounds, and this computer has stopped contributing.', 6000);
   }
 
   const host = $derived(hostOf(st?.url));
-  const waiting = $derived(Boolean(st?.retryAt) && new Date(st.retryAt) > new Date());
+  // The daily limit's note and the disabled Upload now end when retryAt passes, even with no new state.
+  let now = $state(Date.now());
+  $effect(() => tickUntil(Date.parse(st?.retryAt ?? ''), t => (now = t)));
+  const waiting = $derived(Boolean(st?.retryAt) && Date.parse(st.retryAt) > now);
 </script>
 
 <dialog bind:this={dialog}>
@@ -82,10 +103,12 @@
       <p style="margin:0"><b>Stop and unlink your rounds?</b></p>
       <ul>
         <li>Uploads stop, and this computer forgets its contributor key.</li>
-        <li>Over the next few hours the global site takes your contributor number off every round you sent.
-          The rounds stay in the global figures, still with their hashed device code, and cannot be taken out of them.</li>
+        <li>Over the following hours (a day or more if you have sent many rounds) the global site takes your contributor
+          number off every round you sent. The rounds stay in the global figures, still with their hashed device code,
+          and cannot be taken out of them.</li>
         <li>This cannot be undone. If you join again later you are a new contributor, and rounds already sent are not sent again.</li>
       </ul>
+      {#if busy}<p class="sub" style="margin:0" aria-live="polite">{st.running ? 'Finishing the upload in progress, then unlinking…' : 'Unlinking…'}</p>{/if}
       {#if st.lastError}<p class="error">{st.lastError}</p>{/if}
       <div class="filter-actions">
         <button type="button" class="btn primary" onclick={unlink} disabled={busy}>Unlink my rounds</button>
@@ -100,20 +123,28 @@
 
       <p style="margin:0"><b>What is sent</b>, for each round from the last 60 days</p>
       <ul>
+        <li>The round's id, which carries when the round began and a code for the device that played it.</li>
         <li>The round's figures: when it ended, how long it ran, score, coins and medals.</li>
         <li>The Tsum, the game (international or JP), its skill level and the boost items used.</li>
-        <li>The script's version and the settings it played the round with.</li>
+        <li>The script's version and the settings it played the round with, and this app's version.</li>
       </ul>
       <p style="margin:0"><b>Never sent</b></p>
       <ul>
-        <li>Device names, your Tsum lists (which Tsums you own), and the names of files and folders on your computer or devices.</li>
+        <li>Device names, whether a round came live or from a CSV file, your Tsum lists (which Tsums you own), and the
+          names of files and folders on your computer or devices.</li>
       </ul>
       <p style="margin:0"><b>What the global site keeps</b></p>
       <ul>
-        <li>Your rounds are recorded under a random contributor number, with no name or account, and kept.
-          They are never shown publicly on their own: the page shows only figures pooled from everyone's rounds. This dialog shows your own totals.</li>
-        <li>A round's id carries a code for the device that played it. The site keeps only a hashed (scrambled) form of it,
-          to tell devices apart and to count a round sent twice only once.</li>
+        <li>Your rounds, for good, under a contributor number with no name or account. Numbers are given out in order
+          as players join. This dialog shows your own totals; your number is not published.</li>
+        <li>The public page shows figures added up over rounds of the same day, Tsum, game, skill level and boost items
+          (counts, totals, best and lowest, first and last end time), and how many contributors (in all and per Tsum) and
+          devices sent rounds in the last 30 days. Where only you, or a few players, send a Tsum, those figures can be close
+          to your own rounds: a group of one round shows that round's score, coins and end time. The page marks such Tsums
+          "few players".</li>
+        <li>Only a hashed (scrambled) form of each round's device code, to tell devices apart and to count a round sent
+          twice only once.</li>
+        <li>When you join, a hashed form of your internet address, for about a day, to limit how many joins one address makes.</li>
         <li>You can stop at any time. You can also unlink your rounds: they lose your contributor number, but stay in the
           global figures with their hashed device code. They cannot be taken out of the figures.</li>
       </ul>

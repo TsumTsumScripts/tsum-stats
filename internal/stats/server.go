@@ -119,7 +119,7 @@ func Register(app core.App, cfg *Config, embedded fs.FS) {
 		}
 		publisher := NewPublisher(se.App.DataDir(), site, se.App.DB, cfg.Version,
 			func(st PublishState) { bc.send(TopicPublish, st) })
-		contributor := NewContributor(se.App.DataDir(), cfg.GlobalURL, se.App.DB, cfg.Version,
+		contributor := NewContributor(se.App.DataDir(), cfg.GlobalURL, CatalogMedalTsums(embedded), se.App.DB, cfg.Version,
 			func(st GlobalState) { bc.send(TopicGlobal, st) })
 		go contributor.Run(stop)
 		registerRoutes(se, events, importer, puller, publisher, contributor, overlay, embedded, cfg)

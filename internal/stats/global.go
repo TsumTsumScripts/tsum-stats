@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"io/fs"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -36,8 +37,9 @@ const DefaultGlobalURL = "https://tsum-stats.gapscripts.app"
 const (
 	// RoundStatsSchema is the upload format, the Tsum script's own (roundShare.ts).
 	RoundStatsSchema = "gap.round-stats/1"
-	// GlobalBatchRows is the most records one upload carries; the Worker refuses more.
-	GlobalBatchRows = 250
+	// GlobalBatchRows is the most records one upload carries. The Worker takes
+	// up to 250; 100 keeps its CPU for one request well under Workers Free's 10 ms.
+	GlobalBatchRows = 100
 	// globalBatchBytes keeps a batch of long settings rows under the Worker's 1 MiB body limit.
 	globalBatchBytes = 768 << 10
 	// globalWindow is how far back rounds are sent: the Worker refuses older ones (ACCEPT_DAYS).
@@ -45,6 +47,9 @@ const (
 	// globalSettle holds a round back until its CSV row has usually replaced the live event's.
 	globalSettle = 20 * time.Minute
 	globalJitter = 10 * time.Minute
+	// globalUnlinkWait bounds how long an unlink waits for the batch in flight:
+	// longer than the HTTP client's timeout, so that batch has ended by then.
+	globalUnlinkWait = 90 * time.Second
 )
 
 // GlobalState is what the page shows. It never holds the key.
@@ -68,6 +73,8 @@ type GlobalState struct {
 // globalSaved is global.json in the data folder: the key and the record of uploads.
 type globalSaved struct {
 	// URL is the site the key belongs to; a key is never sent anywhere else.
+	// It is also the site ts_global_sent records uploads to, so it stays when
+	// the key is forgotten. A data folder contributes to one site at a time.
 	URL        string `json:"url"`
 	ID         int64  `json:"id"`
 	Key        string `json:"key"`
@@ -94,6 +101,9 @@ type Contributor struct {
 	wake            chan time.Duration // reschedules Run's next pass
 
 	memo *globalMemo
+	// medalTsums is the catalog's medal Tsums as a JSON array: the global site
+	// turns away a round of one without a medal figure.
+	medalTsums string
 
 	mu      sync.Mutex
 	saved   globalSaved
@@ -101,15 +111,19 @@ type Contributor struct {
 	pending int
 	gen     int  // counts joins and leaves, so a pass that overlaps one stops and changes nothing
 	busy    bool // a pass is running
-	joining bool
+	// passDone is closed when the running pass ends; nil while none runs.
+	passDone  chan struct{}
+	joining   bool
+	unlinking bool // no pass starts, and no join, until the unlink is answered
 }
 
 // NewContributor reads any saved key from dataDir. siteURL is --global-url;
-// "" turns contributing off.
-func NewContributor(dataDir, siteURL string, db func() dbx.Builder, version string, notify func(GlobalState)) *Contributor {
+// "" turns contributing off. medalTsums is the catalog's (CatalogMedalTsums).
+func NewContributor(dataDir, siteURL string, medalTsums []string, db func() dbx.Builder, version string, notify func(GlobalState)) *Contributor {
+	medals, _ := json.Marshal(append([]string{}, medalTsums...)) // [] for none, never null
 	c := &Contributor{
 		file: filepath.Join(dataDir, "global.json"), url: strings.TrimRight(strings.TrimSpace(siteURL), "/"),
-		db: db, version: version, notify: notify, http: &http.Client{Timeout: 60 * time.Second},
+		db: db, medalTsums: string(medals), version: version, notify: notify, http: &http.Client{Timeout: 60 * time.Second},
 		now: time.Now, jitter: func() time.Duration { return rand.N(globalJitter) },
 		first: 2 * time.Minute, interval: time.Hour, wake: make(chan time.Duration, 1),
 		memo: &globalMemo{seen: map[string]memoEntry{}},
@@ -118,6 +132,28 @@ func NewContributor(dataDir, siteURL string, db func() dbx.Builder, version stri
 		_ = json.Unmarshal(data, &c.saved)
 	}
 	return c
+}
+
+// CatalogMedalTsums is the medal: true Tsums of site's data/catalog.json, the
+// catalog the global site checks rounds against too; none when it is unreadable.
+func CatalogMedalTsums(site fs.FS) []string {
+	var catalog struct {
+		Tsums []struct {
+			ID    string `json:"id"`
+			Medal bool   `json:"medal"`
+		} `json:"tsums"`
+	}
+	data, err := fs.ReadFile(site, "data/catalog.json")
+	if err != nil || json.Unmarshal(data, &catalog) != nil {
+		return nil
+	}
+	var out []string
+	for _, t := range catalog.Tsums {
+		if t.Medal && t.ID != "" {
+			out = append(out, t.ID)
+		}
+	}
+	return out
 }
 
 // joined is a saved key for the site in use. The caller holds the lock.
@@ -133,7 +169,10 @@ func (c *Contributor) waiting() bool {
 
 // view is the state from what is saved. The caller holds the lock.
 func (c *Contributor) view() GlobalState {
-	s := GlobalState{URL: c.url, Pending: c.pending, LastError: c.saved.LastError, Running: c.busy}
+	s := GlobalState{URL: c.url, Pending: c.pending, Running: c.busy}
+	if c.saved.URL == "" || c.saved.URL == c.url {
+		s.LastError = c.saved.LastError // never another site's
+	}
 	if c.joined() {
 		s.Joined, s.Enabled, s.ID = true, c.saved.Enabled, c.saved.ID
 		s.Sent, s.LastUpload, s.RetryAt, s.Me = c.saved.Sent, c.saved.LastUpload, c.saved.RetryAt, c.me
@@ -150,7 +189,7 @@ func (c *Contributor) State() GlobalState {
 
 // Refresh counts the waiting rounds again, for the page opening the dialog.
 func (c *Contributor) Refresh() GlobalState {
-	n, err := countGlobalPending(c.db(), c.now(), c.memo)
+	n, err := countGlobalPending(c.db(), c.now(), c.medalTsums, c.memo)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err == nil {
@@ -216,6 +255,11 @@ func checkGlobalURL(s string) error {
 // Join makes this computer a contributor, or turns a saved one back on. The
 // first upload follows c.first later, so a player who changes their mind at
 // once can still leave before anything is sent.
+//
+// A data folder contributes to one site: a key saved for another is never
+// replaced (it is the only way to unlink the rounds sent there), so joining a
+// second site is refused. Once that key is forgotten, joining another site
+// empties ts_global_sent, since its rounds were sent to the first.
 func (c *Contributor) Join() error {
 	if err := checkGlobalURL(c.url); err != nil {
 		return err
@@ -225,19 +269,37 @@ func (c *Contributor) Join() error {
 		c.mu.Unlock()
 		return nil
 	}
-	// A pass still ending after a stop is no bar: the join's gen stops it changing anything.
-	if c.joining {
+	if c.saved.Key != "" && c.saved.URL != c.url {
+		other := c.saved.URL
 		c.mu.Unlock()
-		return errors.New("already joining; try again in a moment")
+		return fmt.Errorf("this data folder already contributes to %s. Start Tsum Tsum Stats with --global-url %s to carry on "+
+			"or unlink there; for a test site, use another data folder (--dir)", other, other)
+	}
+	// A pass still ending after a stop is no bar: the join's gen stops it changing anything.
+	if c.joining || c.unlinking {
+		c.mu.Unlock()
+		return errors.New("already joining or unlinking; try again in a moment")
 	}
 	c.joining = true
 	resume, key := c.joined(), c.saved.Key
+	otherSent := c.saved.URL != "" && c.saved.URL != c.url
 	c.mu.Unlock()
 	defer func() {
 		c.mu.Lock()
 		c.joining = false
 		c.mu.Unlock()
 	}()
+
+	// No pass runs while no key is joined, so nothing else writes the table now.
+	pending := -1
+	if otherSent {
+		if _, err := c.db().NewQuery("DELETE FROM ts_global_sent").Execute(); err != nil {
+			return fmt.Errorf("could not join the global stats: %w", err)
+		}
+		if n, err := countGlobalPending(c.db(), c.now(), c.medalTsums, c.memo); err == nil {
+			pending = n
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -254,6 +316,9 @@ func (c *Contributor) Join() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.gen++
+	if pending >= 0 {
+		c.pending = pending
+	}
 	if resume {
 		c.saved.Enabled, c.saved.LastError = true, ""
 	} else {
@@ -275,28 +340,58 @@ func (c *Contributor) Join() error {
 
 func joinError(err error) error {
 	var e *GlobalError
-	if errors.As(err, &e) && e.Code == "join-limit" {
+	switch {
+	case errors.As(err, &e) && e.wait() && e.Code == "join-limit":
 		return errors.New("the global site takes only a few joins a day from one address; try again tomorrow")
+	case errors.As(err, &e) && e.wait() && e.Code == "budget":
+		return errors.New("the global site has taken all it can for today; try again after 00:00 UTC")
 	}
 	return fmt.Errorf("could not join the global stats: %w", err)
 }
 
 // Leave stops the uploads. The key is kept, so Join resumes as the same
 // contributor. With unlink the global site is first asked to unlink this
-// contributor's rounds, then the key is forgotten.
+// contributor's rounds, then the key is forgotten. A key saved for another
+// site is left as it is.
 func (c *Contributor) Leave(unlink bool) error {
 	c.mu.Lock()
+	if !c.joined() {
+		c.mu.Unlock()
+		return nil
+	}
+	if unlink && c.unlinking {
+		c.mu.Unlock()
+		return errors.New("already unlinking; try again in a moment")
+	}
 	c.gen++
 	c.saved.Enabled, c.saved.LastError = false, ""
-	key := ""
-	if c.joined() {
-		key = c.saved.Key
+	key, done := c.saved.Key, c.passDone
+	if unlink {
+		c.unlinking = true
 	}
 	err := c.persist()
 	c.set()
 	c.mu.Unlock()
-	if err != nil || !unlink || key == "" {
+	if !unlink {
 		return err
+	}
+	defer func() {
+		c.mu.Lock()
+		c.unlinking = false
+		c.mu.Unlock()
+	}()
+	if err != nil {
+		return err
+	}
+	// The pass stops before its next batch, but the one in flight must be
+	// answered first: the site would otherwise store it after the unlink,
+	// under the old id.
+	if done != nil {
+		select {
+		case <-done:
+		case <-time.After(globalUnlinkWait):
+			return errors.New("uploads are stopped, but an upload is still finishing; try unlinking again in a minute")
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -307,7 +402,7 @@ func (c *Contributor) Leave(unlink bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.gen++
-	c.saved, c.me = globalSaved{}, nil
+	c.saved, c.me = globalSaved{URL: c.url}, nil
 	err = c.persist()
 	c.set()
 	return err
@@ -317,7 +412,7 @@ func (c *Contributor) Leave(unlink bool) error {
 // joins again, as a new contributor. The caller holds the lock.
 func (c *Contributor) rejected() {
 	c.gen++
-	c.saved = globalSaved{LastError: "The global site no longer accepts this computer's key. Join again to keep contributing."}
+	c.saved = globalSaved{URL: c.url, LastError: "The global site no longer accepts this computer's key. Join again to keep contributing."}
 	c.me = nil
 	_ = c.persist()
 	c.set()
@@ -386,10 +481,10 @@ type pass struct {
 
 // begin claims the pass. The caller holds the lock.
 func (c *Contributor) begin() (pass, bool) {
-	if c.busy || !c.joined() || !c.saved.Enabled {
+	if c.busy || c.unlinking || !c.joined() || !c.saved.Enabled {
 		return pass{}, false
 	}
-	c.busy = true
+	c.busy, c.passDone = true, make(chan struct{})
 	c.set()
 	return pass{gen: c.gen, key: c.saved.Key, wait: c.waiting()}, true
 }
@@ -405,7 +500,8 @@ func (c *Contributor) upload(p pass) {
 		err = c.send(ctx, site, p.gen)
 	}
 	var me *GlobalMe
-	if !errors.Is(err, ErrGlobalKey) {
+	// Not after a leave, whose unlink waits for this pass.
+	if !errors.Is(err, ErrGlobalKey) && !c.left(p.gen) {
 		m, meErr := site.Me(ctx)
 		if meErr == nil {
 			me = &m
@@ -413,11 +509,13 @@ func (c *Contributor) upload(p pass) {
 			err = meErr
 		}
 	}
-	pending, countErr := countGlobalPending(c.db(), c.now(), c.memo)
+	pending, countErr := countGlobalPending(c.db(), c.now(), c.medalTsums, c.memo)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.busy = false
+	close(c.passDone)
+	c.passDone = nil
 	if countErr == nil {
 		c.pending = pending
 	}
@@ -449,35 +547,41 @@ func (c *Contributor) upload(p pass) {
 	c.set()
 }
 
+// left is the player having left, or left and joined again, since the pass
+// of gen began.
+func (c *Contributor) left(gen int) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return gen != c.gen
+}
+
 // send is the batches of one pass. It stops at the first refusal, or when
 // the player leaves.
 func (c *Contributor) send(ctx context.Context, site *GlobalSite, gen int) error {
 	var cur globalCursor
 	for {
-		batch, next, err := nextGlobalBatch(c.db(), c.now(), cur, c.memo)
-		if err != nil || len(batch) == 0 {
+		batch, next, err := nextGlobalBatch(c.db(), c.now(), cur, c.medalTsums, c.memo)
+		if err != nil || len(batch) == 0 || c.left(gen) {
 			return err
 		}
-		c.mu.Lock()
-		gone := gen != c.gen
-		c.mu.Unlock()
-		if gone {
-			return nil
-		}
-		if _, err := site.Rounds(ctx, NewRoundBatch(globalRecords(batch), site.Client, c.now())); err != nil {
+		reply, err := site.Rounds(ctx, NewRoundBatch(globalRecords(batch), site.Client, c.now()))
+		if err != nil {
 			return err
 		}
-		// ok: true means "do not send these again", rejected rows too: only a
-		// change to a round's record sends it again.
+		// ok: true means "do not send these again", rejected rows too (only a
+		// change to a round's record sends it again), but for those the site
+		// names in retry: turned away for a reason that can pass, such as a
+		// clock ahead of the site's, they go again on the next pass.
+		taken := takenRows(batch, reply.Retry)
 		at := c.now()
-		if err := markGlobalSent(c.db(), batch, at); err != nil {
+		if err := markGlobalSent(c.db(), taken, at); err != nil {
 			return err
 		}
 		c.mu.Lock()
 		if gen == c.gen {
-			c.saved.Sent += len(batch)
+			c.saved.Sent += len(taken)
 			c.saved.LastUpload, c.saved.RetryAt = at.UTC().Format(time.RFC3339), ""
-			c.pending = max(0, c.pending-len(batch))
+			c.pending = max(0, c.pending-len(taken))
 			_ = c.persist()
 			c.set()
 		}
@@ -584,12 +688,13 @@ func NewRoundBatch(records []map[string]string, client string, now time.Time) Ro
 
 // GlobalBatches is every upload a pass would make at now, in order, without
 // marking anything sent: the forwarder's own encoding, for tests that feed it
-// to the global site.
-func GlobalBatches(db dbx.Builder, now time.Time, client string) ([]RoundBatch, error) {
+// to the global site. medalTsums is the catalog's (CatalogMedalTsums).
+func GlobalBatches(db dbx.Builder, now time.Time, client string, medalTsums []string) ([]RoundBatch, error) {
+	medals, _ := json.Marshal(append([]string{}, medalTsums...))
 	var out []RoundBatch
 	var cur globalCursor
 	for {
-		batch, next, err := nextGlobalBatch(db, now, cur, nil)
+		batch, next, err := nextGlobalBatch(db, now, cur, string(medals), nil)
 		if err != nil || len(batch) == 0 {
 			return out, err
 		}
@@ -601,14 +706,16 @@ func GlobalBatches(db dbx.Builder, now time.Time, client string) ([]RoundBatch, 
 // ---- Which rounds ----
 
 // globalCandidatesSQL is the rounds a pass may send (CONTRACT §7.2), oldest
-// first: complete, of a known build or one the settings name, played in the
-// window; with the fingerprint each was last sent with. Never the device or
-// the source.
+// first: complete, here and by the catalog's medal Tsums ({:medalTsums}, a
+// JSON array) as the global site judges it; of a known build or one the
+// settings name; played in the window; with the fingerprint each was last
+// sent with. Never the device or the source.
 const globalCandidatesSQL = `SELECT round_id, played_at, tsum, build, skill_type, script_version, duration_seconds,
 		score, base_coins, final_coins, medals, settings,
 		(SELECT hash FROM ts_global_sent s WHERE s.round_id = ts_rounds.round_id) AS sent_hash
 	FROM ts_rounds
 	WHERE ` + completeSQL + `
+		AND (medals IS NOT NULL OR tsum NOT IN (SELECT value FROM json_each({:medalTsums})))
 		AND (build IN ('global', 'jp') OR (json_valid(settings) AND json_type(settings, '$.jpVersion') IN ('true', 'false')))
 		AND played_at >= {:from} AND played_at <= {:to} AND (played_at, round_id) > ({:at}, {:id})
 	ORDER BY played_at, round_id`
@@ -630,11 +737,12 @@ type globalCursor struct{ at, id string }
 
 // scanGlobal walks the candidates after cur and hands take each one waiting
 // to be sent (never sent, or its record changed since) with its fingerprint.
-// take returns false to stop before that round. memo may be nil.
-func scanGlobal(db dbx.Builder, now time.Time, cur globalCursor, memo *globalMemo, take func(Round, int64) bool) (globalCursor, error) {
+// take returns false to stop before that round. medals is the catalog's medal
+// Tsums as a JSON array; memo may be nil.
+func scanGlobal(db dbx.Builder, now time.Time, cur globalCursor, medals string, memo *globalMemo, take func(Round, int64) bool) (globalCursor, error) {
 	rows, err := db.NewQuery(globalCandidatesSQL).Bind(dbx.Params{
 		"from": now.Add(-globalWindow).UTC().Format(sqlTime), "to": now.Add(-globalSettle).UTC().Format(sqlTime),
-		"at": cur.at, "id": cur.id,
+		"at": cur.at, "id": cur.id, "medalTsums": medals,
 	}).Rows()
 	if err != nil {
 		return cur, err
@@ -655,10 +763,10 @@ func scanGlobal(db dbx.Builder, now time.Time, cur globalCursor, memo *globalMem
 }
 
 // countGlobalPending counts the rounds waiting to be sent.
-func countGlobalPending(db dbx.Builder, now time.Time, memo *globalMemo) (int, error) {
+func countGlobalPending(db dbx.Builder, now time.Time, medals string, memo *globalMemo) (int, error) {
 	n := 0
 	memo.begin()
-	_, err := scanGlobal(db, now, globalCursor{}, memo, func(Round, int64) bool { n++; return true })
+	_, err := scanGlobal(db, now, globalCursor{}, medals, memo, func(Round, int64) bool { n++; return true })
 	if err == nil {
 		memo.end()
 	}
@@ -667,10 +775,10 @@ func countGlobalPending(db dbx.Builder, now time.Time, memo *globalMemo) (int, e
 
 // nextGlobalBatch is the next GlobalBatchRows waiting rounds after cur, fewer
 // when their records are long.
-func nextGlobalBatch(db dbx.Builder, now time.Time, cur globalCursor, memo *globalMemo) ([]pendingRound, globalCursor, error) {
+func nextGlobalBatch(db dbx.Builder, now time.Time, cur globalCursor, medals string, memo *globalMemo) ([]pendingRound, globalCursor, error) {
 	var batch []pendingRound
 	size := 0
-	next, err := scanGlobal(db, now, cur, memo, func(r Round, hash int64) bool {
+	next, err := scanGlobal(db, now, cur, medals, memo, func(r Round, hash int64) bool {
 		rec := GlobalRecord(r)
 		_, n := fingerprint(rec)
 		if len(batch) == GlobalBatchRows || len(batch) > 0 && size+n > globalBatchBytes {
@@ -760,8 +868,30 @@ func globalRecords(batch []pendingRound) []map[string]string {
 	return out
 }
 
+// takenRows is the batch less the rounds the global site asked to have again
+// (its reply's retry, by record id).
+func takenRows(batch []pendingRound, retry []string) []pendingRound {
+	if len(retry) == 0 {
+		return batch
+	}
+	again := map[string]bool{}
+	for _, id := range retry {
+		again[id] = true
+	}
+	var out []pendingRound
+	for _, r := range batch {
+		if !again[r.id] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // markGlobalSent records a batch the global site took, in one statement.
 func markGlobalSent(db dbx.Builder, batch []pendingRound, at time.Time) error {
+	if len(batch) == 0 {
+		return nil
+	}
 	var q strings.Builder
 	p := dbx.Params{"at": at.UTC().Format(sqlTime)}
 	q.WriteString("INSERT INTO ts_global_sent (round_id, hash, sent_at) VALUES ")
@@ -787,7 +917,8 @@ type GlobalSite struct {
 	HTTP   *http.Client
 }
 
-// ErrGlobalKey is the global site refusing the key: unlinked, or unknown to it.
+// ErrGlobalKey is the global site refusing the key (401 unauthorized): unlinked,
+// or unknown to it.
 var ErrGlobalKey = errors.New("the global site does not accept this computer's key")
 
 // GlobalError is the global site refusing a request, with its error code.
@@ -802,9 +933,17 @@ func (e *GlobalError) Error() string {
 	return fmt.Sprintf("the global site said %d %s", e.Status, e.Code)
 }
 
-// wait is a refusal that asks to come back later: a daily quota or budget.
+// wait is a refusal that asks to come back later: the Worker's own daily
+// limits, by their codes. Any other 429 or 5xx, such as the platform's own
+// error page, is a plain failure, and the next hourly pass tries again.
 func (e *GlobalError) wait() bool {
-	return e.Status == http.StatusTooManyRequests || e.Status == http.StatusServiceUnavailable
+	switch e.Status {
+	case http.StatusTooManyRequests:
+		return e.Code == "quota" || e.Code == "join-limit"
+	case http.StatusServiceUnavailable:
+		return e.Code == "budget"
+	}
+	return false
 }
 
 // GlobalMe is the global site's record of this contributor (GET /api/v1/me).
@@ -830,6 +969,9 @@ type RoundsReply struct {
 	Unchanged  int            `json:"unchanged"`
 	Duplicates int            `json:"duplicates"`
 	Rejected   map[string]int `json:"rejected"`
+	// Retry is the record ids rejected for a reason that can pass later
+	// (future): they are not taken as sent.
+	Retry []string `json:"retry"`
 }
 
 // do sends one request. The body goes uncompressed: inflating it would spend
@@ -861,14 +1003,15 @@ func (g *GlobalSite) do(ctx context.Context, method, endpoint string, body, out 
 	}
 	defer res.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if res.StatusCode == http.StatusUnauthorized {
-		return ErrGlobalKey
-	}
 	var reply struct {
 		OK    bool   `json:"ok"`
 		Error string `json:"error"`
 	}
 	_ = json.Unmarshal(data, &reply)
+	// Only the Worker's own answer forgets the key, never a page in its way.
+	if res.StatusCode == http.StatusUnauthorized && reply.Error == "unauthorized" {
+		return ErrGlobalKey
+	}
 	if res.StatusCode >= 300 || !reply.OK {
 		return &GlobalError{Status: res.StatusCode, Code: cmpOr(reply.Error, http.StatusText(res.StatusCode)),
 			RetryAfter: retryAfter(res.Header.Get("Retry-After"), time.Now())}
