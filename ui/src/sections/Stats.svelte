@@ -174,6 +174,15 @@
     return out;
   });
 
+  /** The Tsum page for the one focused Tsum, with the filters it understands. */
+  const pageLink = $derived.by(() => {
+    if (picked.length !== 1) return null;
+    // The page's ranges are rolling or all time; dates fall back to all time.
+    const days = Number(filter.days) ? filter.days : 'all';
+    const q = Object.entries({id: picked[0], days, coins: filter.coins, net: filter.net, device: pickedDevices.length === 1 ? filter.device : '', build: filter.build});
+    return `#/tsum?${new URLSearchParams(q.filter(([, v]) => v))}`;
+  });
+
   // ---- Loading ----
 
   function loadSummary() {
@@ -412,7 +421,7 @@
 
   <div class="stack stats-main">
     {#if picked.length}
-      <FocusBar {picked} {canBack} {nameOf} {colorOf} {addTsum} {dropTsum} {matchTsum} clear={() => set({tsum: ''})} />
+      <FocusBar {picked} {canBack} {nameOf} {colorOf} {addTsum} {dropTsum} {matchTsum} clear={() => set({tsum: ''})} {pageLink} />
     {/if}
 
     <div id="s-overview" class="anchor">

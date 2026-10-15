@@ -3,7 +3,8 @@
   import {cap, fmt, fmtDuration, fmtRate, pct} from '../../lib/util.js';
 
   // t: the summary's totals; m: the same over rounds that earned medals.
-  let {t, m, coins, basis} = $props();
+  // noMedals drops the medal tiles when no round earned any (a Tsum that never does).
+  let {t, m, coins, basis, noMedals = false} = $props();
 
   const u = $derived(coins === 'medals' ? 'medals' : 'coins');
   const medals = $derived(coins === 'medals');
@@ -23,7 +24,7 @@
     ['Average round', fmtDuration(t.avgSeconds), '', ''],
     ['Average score', fmt(t.avgScore), 'score', t.maxScore === null ? '' : `best ${fmt(t.maxScore)}`],
     // Medals beside coins, over the rounds that earned any; with medals primary the tiles above are these.
-    ...(medals ? [] : [
+    ...(medals || (noMedals && !m.rounds) ? [] : [
       ['Medals per hour', fmt(perHour(m.coinsPerSec)), 'medal', m.coinsPerSec === null ? '' : `${fmtRate(m.coinsPerSec)} a second`],
       ['Average medals', fmt(m.avgCoins), 'medal', m.medianCoins === null ? '' : `median ${fmt(m.medianCoins)}`],
       ['Highest medals', fmt(m.maxCoins), 'medal', m.p90Coins === null ? '' : `one in ten over ${fmt(m.p90Coins)}`],

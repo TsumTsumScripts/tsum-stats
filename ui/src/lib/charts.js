@@ -572,6 +572,64 @@ export function drawHistogram(container, hist, totals, ctx) {
   return keyLegend(top);
 }
 
+// ---- One Tsum's coins per round, a line per skill level ----
+
+/**
+ * bins: [{skill, from, rounds}] on hist's buckets. Each skill level is a line of
+ * its share of rounds per bucket, so levels with more rounds do not tower over
+ * the rest. Levels with fewer than few rounds are left out. Skill levels are
+ * ordered, so they are one hue, lightest for the lowest.
+ */
+export function drawSkillSpread(container, bins, hist, few = 20) {
+  const f = frame(container, {top: 16, right: 16, bottom: 26, left: 44});
+  const {g, inner} = f;
+  const w = hist.width;
+  const bySkill = d3.group(bins, bn => bn.skill);
+  const skills = [...bySkill].map(([skill, bs]) => ({skill, total: d3.sum(bs, bn => bn.rounds), at: new Map(bs.map(bn => [bn.from, bn.rounds]))}))
+    .filter(s => s.total >= few).sort((a, c) => Number(a.skill) - Number(c.skill) || a.skill.localeCompare(c.skill));
+  if (skills.length < 2) return empty(f, 'Needs two skill levels with 20 rounds or more');
+  const froms = [...new Set(bins.map(bn => bn.from))].sort((a, c) => a - c);
+  const steps = d3.range(froms[0], froms.at(-1) + w, w);
+  const shade = d3.interpolateLab(d3.interpolateLab(css('--chart-track'), css('--coin'))(0.35), css('--coin'));
+  const colorOf = (s, i) => shade(skills.length === 1 ? 1 : i / (skills.length - 1));
+  const lines = skills.map((s, i) => ({...s, color: colorOf(s, i), pts: steps.map(from => ({from, n: s.at.get(from) || 0, share: (s.at.get(from) || 0) / s.total}))}));
+  const x = d3.scaleLinear().domain([steps[0], steps.at(-1) + w]).range([0, inner.w]);
+  const y = d3.scaleLinear().domain([0, d3.max(lines, l => d3.max(l.pts, p => p.share))]).nice().range([inner.h, 0]);
+  g.append('g').attr('class', 'grid').call(d3.axisLeft(y).ticks(5).tickSize(-inner.w).tickFormat(''));
+  g.append('g').attr('class', 'axis').attr('transform', `translate(0,${inner.h})`)
+    .call(d3.axisBottom(x).ticks(Math.max(2, Math.floor(inner.w / 70))).tickFormat(v => compact.format(v)).tickSizeOuter(0));
+  g.append('g').attr('class', 'axis').call(d3.axisLeft(y).ticks(5).tickFormat(v => pct(v)).tickSizeOuter(0));
+  const mid = p => x(p.from + w / 2);
+  for (const l of lines) {
+    g.append('path').datum(l.pts).attr('fill', 'none').attr('stroke', l.color).attr('stroke-width', 2)
+      .attr('d', d3.line().x(mid).y(p => y(p.share)).curve(d3.curveMonotoneX));
+  }
+  // A label at each line's peak, when there are few enough lines to keep them apart.
+  if (lines.length <= 4) {
+    const placed = [];
+    for (const l of lines) {
+      const top = l.pts.reduce((a, p) => (p.share > a.share ? p : a));
+      const lx = mid(top);
+      let ly = y(top.share) - 6;
+      // Step up past any label already placed close by.
+      while (placed.some(([px, py]) => Math.abs(px - lx) < 56 && Math.abs(py - ly) < 14)) ly -= 14;
+      placed.push([lx, ly]);
+      g.append('text').attr('class', 'value-label').attr('x', lx).attr('y', ly).attr('text-anchor', 'middle').text(`Skill ${l.skill}`);
+    }
+  }
+  const range = from => (hist.cap !== null && from >= hist.cap ? `${fmt(hist.cap)} ${U} or more` : `${fmt(from)}–${fmt(from + w - 1)} ${U}`);
+  const rule = g.append('line').attr('y1', 0).attr('y2', inner.h).attr('stroke', css('--chart-rule')).style('display', 'none');
+  g.append('rect').attr('width', inner.w).attr('height', inner.h).attr('fill', 'transparent')
+    .on('pointermove', e => {
+      const [mx] = d3.pointer(e);
+      const i = Math.max(0, Math.min(steps.length - 1, Math.floor((x.invert(mx) - steps[0]) / w)));
+      rule.attr('x1', mid({from: steps[i]})).attr('x2', mid({from: steps[i]})).style('display', null);
+      showTip([[b(range(steps[i]))], ...[...lines].reverse().map(l => [sw(l.color), `Skill ${l.skill} `, b(pct(l.pts[i].share)), ` · ${fmt(l.pts[i].n)} rounds`])], e);
+    })
+    .on('pointerleave', () => { rule.style('display', 'none'); hideTip(); });
+  return lines.map(l => ({label: `Skill ${l.skill} · ${fmt(l.total)} rounds`, color: l.color}));
+}
+
 // ---- Catalog: how long until every Tsum is maxed, at the player's pace ----
 
 const MAX_DAYS = 3650; // past ten years, a line is cut at the edge

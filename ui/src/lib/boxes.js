@@ -18,17 +18,33 @@ export function toMax(t, own) {
   if (!own) {
     boxes = sum(steps);
   } else {
-    const skill = own.skill ?? 1;
-    if (skill >= steps.length || (own.skillMax && skill >= own.skillMax)) {
-      boxes = 0;
-    } else {
-      // skillProgress is the percent through the current level; an older list has none.
-      const next = steps[skill];
-      const done = Math.min(next - 1, Math.round((next * (own.skillProgress ?? 0)) / 100));
-      boxes = next - Math.max(0, done) + sum(steps.slice(skill + 1));
-    }
+    const next = nextBoxes(steps, own);
+    boxes = next === 0 ? 0 : next + sum(steps.slice((own.skill ?? 1) + 1));
   }
   return {boxes, cost: boxes * BOX_PRICE[unit], unit};
+}
+
+/** Boxes still to open for the next skill level; 0 at full skill. */
+function nextBoxes(steps, own) {
+  const skill = own.skill ?? 1;
+  if (skill >= steps.length || (own.skillMax && skill >= own.skillMax)) return 0;
+  // skillProgress is the percent through the current level; an older list has none.
+  const next = steps[skill];
+  const done = Math.min(next - 1, Math.round((next * (own.skillProgress ?? 0)) / 100));
+  return next - Math.max(0, done);
+}
+
+/**
+ * {boxes, cost, unit, skill} to take an owned Tsum to its next skill level
+ * (skill is that level); null when not owned, without box counts, or at full skill.
+ */
+export function toNext(t, own) {
+  const steps = t?.boxes;
+  if (!steps?.length || !own) return null;
+  const boxes = nextBoxes(steps, own);
+  if (!boxes) return null;
+  const unit = t.medal ? 'medals' : 'coins';
+  return {boxes, cost: boxes * BOX_PRICE[unit], unit, skill: (own.skill ?? 1) + 1};
 }
 
 /** Totals per unit over entries ({left}), plus how many had no box counts. */

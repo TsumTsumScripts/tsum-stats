@@ -7,6 +7,8 @@
 // `loader` supplies the files: {json(name) -> Promise<object>}.
 
 const MAX_PER_PAGE = 200;
+// How many rounds make up a Tsum's recent form (tsum.go: FormRounds).
+const FORM_ROUNDS = 50;
 
 // ---- Reading the files ----
 
@@ -28,7 +30,28 @@ function decodeMonth(m) {
     const cost = itemCost(m.items[i]);
     return c === null || cost === null ? null : c - cost;
   });
-  return {...m, at, netBaseCoins: net(m.baseCoins), netFinalCoins: net(m.finalCoins)};
+  // Each round's settings object; a snapshot from before they were kept has none.
+  const dict = {...m.dict, settings: (m.dict.settings ?? []).map(parseSettings)};
+  return {...m, dict, settings: m.settings ?? new Array(m.n).fill(null),
+    at, netBaseCoins: net(m.baseCoins), netFinalCoins: net(m.finalCoins)};
+}
+
+/** A round's settings JSON as an object; anything but an object is none (tsum.go: settingsSQL). */
+function parseSettings(s) {
+  try {
+    const o = JSON.parse(s);
+    return o && typeof o === 'object' && !Array.isArray(o) ? o : {};
+  } catch {
+    return {};
+  }
+}
+
+/** A setting's value as text (tsum.go: settingValueSQL); undefined for an object or array. */
+function settingText(v) {
+  if (v === null) return 'null';
+  if (typeof v === 'boolean' || typeof v === 'number') return String(v);
+  if (typeof v === 'string') return v;
+  return undefined;
 }
 
 const two = n => String(n).padStart(2, '0');
@@ -277,22 +300,31 @@ export function createEngine(loader) {
     return 10 * mag;
   }
 
-  function histogram(sel, c, totals) {
-    const h = {width: 0, cap: null, bins: []};
-    if (totals.minCoins === null || totals.maxCoins === null) return h;
+  /** The bucket width and the last bucket's start (summary.go: histBounds); null without coin figures. */
+  function histBounds(totals) {
+    if (totals.minCoins === null || totals.maxCoins === null) return null;
     const lo = totals.minCoins;
     let hi = totals.maxCoins;
     if (totals.q1Coins !== null && totals.q3Coins !== null) {
       hi = Math.min(hi, totals.q3Coins + Math.trunc((3 * (totals.q3Coins - totals.q1Coins)) / 2));
     }
-    h.width = niceStep((hi - lo) / 24);
-    const limit = (Math.floor(hi / h.width) + 1) * h.width;
+    const width = niceStep((hi - lo) / 24);
+    return {width, limit: (Math.floor(hi / width) + 1) * width};
+  }
+  const bucketOf = (v, {width, limit}) => Math.min(Math.floor(v / width) * width, limit);
+
+  function histogram(sel, c, totals) {
+    const h = {width: 0, cap: null, bins: []};
+    const bounds = histBounds(totals);
+    if (!bounds) return h;
+    h.width = bounds.width;
+    const limit = bounds.limit;
     if (totals.maxCoins >= limit) h.cap = limit;
     const bins = new Map();
     each(sel, (sh, i) => {
       const v = sh[c][i];
       if (v === null) return;
-      const bucket = Math.min(Math.floor(v / h.width) * h.width, limit);
+      const bucket = bucketOf(v, bounds);
       const key = bucket + '\u0000' + sh.dict.tsum[sh.tsum[i]];
       const bin = bins.get(key);
       if (bin) bin.rounds++;
@@ -353,6 +385,104 @@ export function createEngine(loader) {
       })),
       histogram: histogram(sel, c, main.totals),
       medals,
+    };
+  }
+
+  /** /api/stats/tsum: one Tsum's page (tsum.go: DescribeTsum). */
+  async function tsum(q) {
+    const id = String(q.id ?? '').trim();
+    if (!id) throw new Error('tsum: id is required');
+    const f = parseFilter({...q, tsum: id});
+    const c = coinCol(f);
+    const settings = new Map(), versions = new Map(), devices = new Map(), field = new Map(), form = new Map();
+    const into = (map, key, sh, i, extra) => {
+      if (!map.has(key)) map.set(key, {a: acc(), ...extra});
+      add(map.get(key).a, sh, i, c);
+    };
+    const sel = await select(f);
+    // Rounds are in time order, so the position stands for the server's round_id tie-break.
+    const total = sel.reduce((n, {idx}) => n + idx.length, 0);
+    let pos = 0;
+    each(sel, (sh, i) => {
+      const back = total - pos++; // 1 for the newest round
+      if (back <= 2 * FORM_ROUNDS) into(form, back <= FORM_ROUNDS ? 'recent' : 'before', sh, i, {key: back <= FORM_ROUNDS ? 'recent' : 'before'});
+      const s = sh.settings[i] === null ? {} : sh.dict.settings[sh.settings[i]];
+      for (const [setting, v] of Object.entries(s)) {
+        const key = settingText(v);
+        if (key !== undefined) into(settings, `${setting}\u0000${key}`, sh, i, {setting, key});
+      }
+      const version = sh.dict.scriptVersion[sh.scriptVersion[i]];
+      into(versions, version, sh, i, {key: version});
+      const device = sh.dict.device[sh.device[i]];
+      into(devices, device, sh, i, {key: device});
+    });
+    each(await select({...f, tsums: []}), (sh, i) => {
+      const t = sh.dict.tsum[sh.tsum[i]];
+      into(field, t, sh, i, {tsum: t});
+    });
+
+    // What boxes are paid with: final coins (net when asked) and medals, a missing medal figure as 0.
+    const ef = {...f, tsums: [], medals: false, finalCoins: true};
+    const ec = rangeCol(ef);
+    const earn = {coins: 0, coinSecs: 0, medals: 0, medalSecs: 0};
+    each(await select(ef), (sh, i) => {
+      const d = sh.duration[i];
+      if (d === null || !(d > 0)) return;
+      if (sh[ec][i] !== null) { earn.coins += sh[ec][i]; earn.coinSecs += d; }
+      earn.medals += sh.medals[i] ?? 0;
+      earn.medalSecs += d;
+    });
+
+    const summed = await summary({...q, tsum: id});
+
+    // Rounds under the target, of those with the primary stat.
+    const goal = intCell(q.target);
+    let target = null;
+    if (goal !== null) {
+      target = {target: goal, rounds: 0, under: 0};
+      each(sel, (sh, i) => {
+        const v = sh[c][i];
+        if (v === null) return;
+        target.rounds++;
+        if (v < goal) target.under++;
+      });
+    }
+
+    // The histogram's buckets split by skill level (tsum.go: SkillBins).
+    const skillBins = new Map();
+    const bounds = histBounds(summed.totals);
+    if (bounds) {
+      each(sel, (sh, i) => {
+        const v = sh[c][i];
+        const s = sh.settings[i] === null ? {} : sh.dict.settings[sh.settings[i]];
+        if (v === null || !Object.hasOwn(s, 'skillLevel')) return;
+        const skill = settingText(s.skillLevel);
+        if (skill === undefined) return;
+        const from = bucketOf(v, bounds);
+        const key = `${skill}\u0000${from}`;
+        if (skillBins.has(key)) skillBins.get(key).rounds++;
+        else skillBins.set(key, {skill, from, rounds: 1});
+      });
+    }
+
+    const group = ({a, key}) => ({
+      key, rounds: a.rounds, avgCoins: avg(a.sum, a.n), maxCoins: a.max, coinsPerSec: rate(a),
+      avgScore: avg(a.scoreSum, a.scoreN), first: sqlTime(a.first), last: sqlTime(a.last),
+    });
+    const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+    return {
+      summary: summed,
+      settings: [...settings.values()].sort((x, y) => cmp(x.setting, y.setting) || cmp(x.key, y.key))
+        .map(g => ({setting: g.setting, ...group(g)})),
+      versions: [...versions.values()].map(group).sort((x, y) => cmp(y.last, x.last) || cmp(x.key, y.key)),
+      devices: [...devices.values()].map(group).sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),
+      field: [...field.values()].sort((x, y) => cmp(x.tsum, y.tsum)).map(({a, tsum: t}) => ({
+        tsum: t, rounds: a.rounds, rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, coinsPerSec: rate(a),
+      })),
+      form: [...form.values()].map(group).sort((x, y) => cmp(y.key, x.key)),
+      skillBins: [...skillBins.values()].sort((x, y) => cmp(x.skill, y.skill) || x.from - y.from),
+      earn: {coinsPerSec: earn.coinSecs ? earn.coins / earn.coinSecs : null, medalsPerSec: earn.medalSecs ? earn.medals / earn.medalSecs : null},
+      target,
     };
   }
 
@@ -437,6 +567,7 @@ export function createEngine(loader) {
       switch (path) {
         case 'summary': return summary(params);
         case 'rounds': return rounds(params);
+        case 'tsum': return tsum(params);
         case 'tsums': return tsums();
         case 'round-devices': return roundDevices();
         case 'owned': return owned(params);

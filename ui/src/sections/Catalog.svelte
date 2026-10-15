@@ -92,6 +92,12 @@
   async function loadSources() {
     sources = await api('owned-sources');
   }
+  // Rounds played per Tsum, so a played Tsum links to its Tsum page.
+  let played = $state.raw(new Map());
+  async function loadPlayed() {
+    played = new Map((await api('tsums').catch(() => [])).map(t => [t.tsum, t.rounds]));
+  }
+  const tsumPage = id => `#/tsum?id=${encodeURIComponent(id)}`;
   $effect(() => {
     if (sources && !(listKey in lists)) loadList(filter.build, filter.device, listKey);
   });
@@ -187,12 +193,18 @@
     if (filter.build !== 'jp') filter.build = 'global';
     onStateChange({...filter});
     loadSources();
+    loadPlayed();
   });
 
   /** A Tsum list was imported: fetch the lists again. */
   export function listsChanged() {
     for (const k of Object.keys(lists)) delete lists[k];
     loadSources();
+  }
+
+  /** Rounds were imported or played: refresh which Tsums link to their page. */
+  export function roundsChanged() {
+    loadPlayed();
   }
 </script>
 
@@ -289,7 +301,7 @@
               {#each view.shown as e (e.id)}
                 {@const o = e.own}
                 <tr class:missing={!o} class:maxed={isMaxed(o)} style:--tsum={e.color}>
-                  <td class="who"><Avatar id={e.id} name={e.name} /><span class="names"><b>{e.name}{#if o?.favorite}<span class="fav-star" title="Favorite" role="img" aria-label="Favorite"></span>{/if}</b>{#if e.alt}<span class="alt">{e.alt}</span>{/if}</span>{#if isMaxed(o)}<span class="maxed-badge" title="Max level and skill" role="img" aria-label="Max level and skill"></span>{/if}</td>
+                  <td class="who"><Avatar id={e.id} name={e.name} /><span class="names"><b>{#if played.has(e.id)}<a href={tsumPage(e.id)} title="{fmt(played.get(e.id))} rounds · its Tsum page">{e.name}</a>{:else}{e.name}{/if}{#if o?.favorite}<span class="fav-star" title="Favorite" role="img" aria-label="Favorite"></span>{/if}</b>{#if e.alt}<span class="alt">{e.alt}</span>{/if}</span>{#if isMaxed(o)}<span class="maxed-badge" title="Max level and skill" role="img" aria-label="Max level and skill"></span>{/if}</td>
                   <td class="num">{@render figure(o, o?.level, MAX_LEVEL, o ? `${o.level ?? '?'}/${MAX_LEVEL}` : '', 'level')}</td>
                   <td class="num">{@render figure(o, o?.skill, o?.skillMax, o ? skillText(o) : '', 'skill')}</td>
                   <td class="num">{@render toMaxText(e.left)}</td>
@@ -307,6 +319,7 @@
             <span class="portrait"><Avatar id={e.id} name={e.name} large />{#if o?.favorite}<span class="fav-star" title="Favorite" role="img" aria-label="Favorite"></span>{/if}</span>
             <div class="name">{e.name}</div>
             {#if e.alt}<div class="alt">{e.alt}</div>{/if}
+            {#if played.has(e.id)}<a class="played-link" href={tsumPage(e.id)} title="Its Tsum page">{fmt(played.get(e.id))} rounds →</a>{/if}
             {#if o}
               <div class="stats">
                 {@render meter('Lv', o.level, MAX_LEVEL, 'level')}

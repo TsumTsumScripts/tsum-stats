@@ -357,15 +357,11 @@ func coinSpreads(db dbx.Builder, f Filter, group string) (map[string]Spread, err
 // from the lowest round up to Q3 + 1.5 × the middle half's width (Tukey's fence).
 func coinHistogram(db dbx.Builder, f Filter, t Totals) (CoinHistogram, error) {
 	h := CoinHistogram{Bins: []CoinBin{}}
-	if t.MinCoins == nil || t.MaxCoins == nil {
+	width, limit, ok := histBounds(t)
+	if !ok {
 		return h, nil
 	}
-	lo, hi := *t.MinCoins, *t.MaxCoins
-	if t.Q1 != nil && t.Q3 != nil {
-		hi = min(hi, *t.Q3+3*(*t.Q3-*t.Q1)/2)
-	}
-	h.Width = niceStep(float64(hi-lo) / 24)
-	limit := (floorDiv(hi, h.Width) + 1) * h.Width
+	h.Width = width
 	if *t.MaxCoins >= limit {
 		h.Cap = &limit
 	}
@@ -373,10 +369,28 @@ func coinHistogram(db dbx.Builder, f Filter, t Totals) (CoinHistogram, error) {
 	where, p := f.whereAnd(c + " IS NOT NULL")
 	p["w"] = h.Width
 	p["cap"] = limit
-	// v minus its floored remainder, so net coins below zero bucket downwards too.
-	err := db.NewQuery(`SELECT MIN(v - ((v % {:w}) + {:w}) % {:w}, {:cap}) AS bucket, tsum, COUNT(*) AS rounds
+	err := db.NewQuery(`SELECT ` + bucketSQL + ` AS bucket, tsum, COUNT(*) AS rounds
 		FROM (SELECT ` + c + ` AS v, tsum FROM ts_rounds` + where + `) GROUP BY bucket, tsum ORDER BY bucket`).Bind(p).All(&h.Bins)
 	return h, err
+}
+
+// bucketSQL is v's histogram bucket for width {:w}, with everything from {:cap}
+// up in the last: v minus its floored remainder, so net coins below zero bucket
+// downwards too.
+const bucketSQL = "MIN(v - ((v % {:w}) + {:w}) % {:w}, {:cap})"
+
+// histBounds is the histogram's bucket width and the start of its last
+// bucket for rounds with totals t; ok is false when they have no coin figures.
+func histBounds(t Totals) (width, limit int64, ok bool) {
+	if t.MinCoins == nil || t.MaxCoins == nil {
+		return 0, 0, false
+	}
+	lo, hi := *t.MinCoins, *t.MaxCoins
+	if t.Q1 != nil && t.Q3 != nil {
+		hi = min(hi, *t.Q3+3*(*t.Q3-*t.Q1)/2)
+	}
+	width = niceStep(float64(hi-lo) / 24)
+	return width, (floorDiv(hi, width) + 1) * width, true
 }
 
 // floorDiv is a / b rounded down, for b > 0.

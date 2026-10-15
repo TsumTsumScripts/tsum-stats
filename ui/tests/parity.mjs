@@ -19,6 +19,7 @@ const by = (...keys) => (a, b) => {
   return 0;
 };
 function normalize(route, v) {
+  if (route === 'tsum') return {...v, summary: normalize('summary', v.summary)};
   if (route === 'summary') {
     const sortTsums = t => [...t].sort(by('tsum'));
     return {

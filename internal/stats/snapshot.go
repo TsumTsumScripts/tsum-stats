@@ -113,6 +113,8 @@ type monthFile struct {
 		ScriptVersion []string `json:"scriptVersion"`
 		Device        []string `json:"device"`
 		Source        []string `json:"source"`
+		// Settings are the rounds' script settings, as stored (JSON objects).
+		Settings []string `json:"settings"`
 	} `json:"dict"`
 	// At is the first round's time in seconds since 1970 (UTC), then each next
 	// round's gap after the one before. Rounds are in time order.
@@ -123,6 +125,7 @@ type monthFile struct {
 	ScriptVersion []int      `json:"scriptVersion"`
 	Device        []int      `json:"device"`
 	Source        []int      `json:"source"`
+	Settings      []int      `json:"settings"`
 	Duration      []*float64 `json:"duration"`
 	Score         []*int64   `json:"score"`
 	BaseCoins     []*int64   `json:"baseCoins"`
@@ -153,7 +156,7 @@ func (d *dictionary) add(s string) int {
 // encodeMonth builds one month's file from its rounds, which are in time order.
 func encodeMonth(month string, rounds []Round, devices func(string) string) ([]byte, error) {
 	m := monthFile{Format: SnapshotFormat, Month: month, N: len(rounds)}
-	var tsum, build, skill, ver, device, source dictionary
+	var tsum, build, skill, ver, device, source, settings dictionary
 	var prev int64
 	for i, r := range rounds {
 		t, err := time.Parse(sqlTime, r.PlayedAt)
@@ -173,6 +176,7 @@ func encodeMonth(month string, rounds []Round, devices func(string) string) ([]b
 		m.ScriptVersion = append(m.ScriptVersion, ver.add(r.ScriptVersion))
 		m.Device = append(m.Device, device.add(devices(r.Device)))
 		m.Source = append(m.Source, source.add(r.Source))
+		m.Settings = append(m.Settings, settings.add(r.Settings))
 		m.Duration = append(m.Duration, r.Duration)
 		m.Score = append(m.Score, r.Score)
 		m.BaseCoins = append(m.BaseCoins, r.BaseCoins)
@@ -182,6 +186,7 @@ func encodeMonth(month string, rounds []Round, devices func(string) string) ([]b
 	}
 	m.Dict.Tsum, m.Dict.Build, m.Dict.SkillType = orEmpty(tsum.values), orEmpty(build.values), orEmpty(skill.values)
 	m.Dict.ScriptVersion, m.Dict.Device, m.Dict.Source = orEmpty(ver.values), orEmpty(device.values), orEmpty(source.values)
+	m.Dict.Settings = orEmpty(settings.values)
 	return json.Marshal(m)
 }
 
