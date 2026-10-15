@@ -53,7 +53,7 @@ cite it by section (`CONTRACT §3.2`).
 | `src/data.ts` | `GET /data/global/*` from R2, through the edge cache |
 | `migrations/0001_init.sql` | The D1 schema (§3.1) |
 | `wrangler.jsonc` | Bindings, the route, the cron, the local dev address, the tunables |
-| `deploy.sh` | The deploy, with its account checks |
+| `deploy.sh` | The deploy from a terminal, with its account checks, for when the GAP Devkit (its Tsum Tsum global stats card is the deploy) is not available |
 | `test/` | vitest in workerd (below) |
 
 The Worker shares code with the page rather than copying it: `parseTime` and
@@ -71,7 +71,8 @@ figures differ where rounds cross midnight.
 catalog) is stored, archived and counted as its contributor's, but stays out
 of every public figure. After a deploy whose catalog has it, `POST
 /api/v1/admin/rebuild` brings in its days still in D1. So update
-`ui/public/data/catalog.json` and run `./deploy.sh` when the script learns a
+`ui/public/data/catalog.json`, push it and deploy (the Devkit card,
+[CLOUDFLARE-SETUP.md](CLOUDFLARE-SETUP.md#5-deploy)) when the script learns a
 new Tsum; no round of it is lost meanwhile.
 
 ## Tests

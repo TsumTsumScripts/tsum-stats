@@ -8,9 +8,12 @@ It lives on your **personal** Cloudflare account, the one that owns
 the `app-assets` and `gap-testers` buckets. Read [Never](#never) before you
 start.
 
-You do this once, by hand. Afterwards `./deploy.sh` is how the site is
-deployed. Every Cloudflare command runs on a scoped API token, never on
-`wrangler login`, so whatever account an OAuth login points at is never used.
+You do this once, by hand. Afterwards the site is deployed by the GAP
+Devkit's **Tsum Tsum global stats** card (step 5); `./deploy.sh` does the same
+from a terminal, only for when the Devkit is not available. Both run every
+Cloudflare command on a scoped API token, never on `wrangler login`, so
+whatever account an OAuth login points at (the GAP account, on this computer)
+is never used.
 
 You need Node 22 or newer and a terminal in `global/`. How the Worker works is
 in [README.md](README.md); every shape it uses is in [CONTRACT.md](CONTRACT.md).
@@ -22,8 +25,10 @@ in [README.md](README.md); every shape it uses is in [CONTRACT.md](CONTRACT.md).
    - **Check:** Account home → **Domains** lists `gapscripts.app` and not
      `gapapp.app`. If you see `gapapp.app`, you are in the GAP account: switch.
    - **Check:** **Domains → gapscripts.app → DNS → Records** has no record
-     named `tsum-stats`. The first deploy makes it, and a custom domain cannot
-     be made over an existing CNAME.
+     named `tsum-stats`. The first deploy makes it. Run from the Devkit, not
+     a terminal, wrangler has Cloudflare replace a record of that name (or
+     take the name from another Worker) without asking, so nothing else may
+     use it.
 2. Copy the **Account ID**: **Domains → gapscripts.app → Overview**, the
    **API** section near the bottom (32 hex characters). Workers & Pages →
    **Account Details** shows it too. You need it in step 2.
@@ -51,14 +56,17 @@ in [README.md](README.md); every shape it uses is in [CONTRACT.md](CONTRACT.md).
    Leave everything under **DNS & Zones** (Account DNS Settings, DNS View,
    Registrar …) unticked.
 
-   No zone permissions, on purpose. For the `custom_domain` route, wrangler
-   (4.145) makes one account-level call,
-   `POST /accounts/<id>/workers/scripts/tsum-global/domains/changeset`, and
+   No zone permissions, on purpose. For the `custom_domain` route, every
+   deploy with wrangler (4.145) makes two account-level calls on the Worker,
+   even once the domain is attached:
+   `POST /accounts/<id>/workers/scripts/tsum-global/domains/changeset` (what
+   would change) and `PUT …/tsum-global/domains/records` (the attach).
    Cloudflare then creates the DNS record and certificate on the zone itself;
-   its API reference lists only Workers Scripts for that. Some scoped tokens
-   are reported to fail there anyway. If the first deploy stops at attaching
-   `tsum-stats.gapscripts.app`, attach it once by hand (step 5) instead of
-   widening the token.
+   its API reference lists only Workers Scripts for attaching a domain. Some
+   scoped tokens are reported to fail there anyway. If the first deploy stops
+   at attaching `tsum-stats.gapscripts.app`, attach it once by hand (step 5)
+   before anything else; step 5 also says what to do if deploys still fail
+   there.
 4. **Continue to summary → Create Token**, and copy the token: it is shown
    once. With it on the clipboard (macOS), save it outside the repo, readable
    only by you. `$(pbpaste)` keeps it out of your shell history:
@@ -71,7 +79,8 @@ in [README.md](README.md); every shape it uses is in [CONTRACT.md](CONTRACT.md).
 
 **Check:** `ls -l ~/.config/tsum-global/cloudflare.env` shows `-rw-------`,
 and `grep -c '^CLOUDFLARE_API_TOKEN=.\{30,\}' ~/.config/tsum-global/cloudflare.env`
-prints `1`. `deploy.sh` refuses the file unless it is mode 600.
+prints `1`. The Devkit card and `deploy.sh` refuse the file unless it is
+mode 600.
 
 ## 2. Pin the account
 
@@ -116,7 +125,7 @@ npx wrangler r2 bucket create tsum-global --update-config=false
 **Check:**
 
 - `grep -c REPLACE_WITH_ wrangler.jsonc` prints `0`. Step 2 replaced the
-  account id and this step the database id; `deploy.sh` refuses any left.
+  account id and this step the database id; the deploy refuses any left.
 - `npx wrangler d1 list` and `npx wrangler r2 bucket list` show `tsum-global`.
 - In the dashboard, **Storage & Databases → D1 SQL Database** and **R2 Object
   Storage** each list `tsum-global`. The bucket's **Settings** show the public
@@ -143,9 +152,10 @@ chmod 600 ~/.config/tsum-global/secrets.env
 - **`ADMIN_KEY`** opens `/api/v1/admin/*`. Keep it in your password manager
   too.
 
-`deploy.sh` uploads both with the first deploy (`wrangler deploy
---secrets-file`), and afterwards only while the Worker lacks one, so a later
-deploy can never change `DEVICE_KEY`. Do not set these first values with
+The first deploy uploads both (`wrangler deploy --secrets-file`). Afterwards
+a deploy sends one only while the Worker lacks it, and never one the Worker
+has, so a later deploy can never change `DEVICE_KEY`. Keep `secrets.env`: the
+Devkit card is "not set up" without it. Do not set these first values with
 `wrangler secret put`: before the first deploy there is no Worker, and `secret
 put` would create an empty placeholder one.
 
@@ -160,51 +170,100 @@ nothing.
 
 ## 5. Deploy
 
-```sh
-./deploy.sh --check   # only the checks
-./deploy.sh
-```
+**Push first.** The deploy builds a commit from GitHub, not your working
+tree: commit `wrangler.jsonc` (steps 2 and 3) and push the branch with
+`global/` (`git push -u origin global-stats` until it is merged into `main`,
+which has no `global/` before that).
 
-It reads the token from `cloudflare.env` itself, whatever your shell holds,
-and hands it to each wrangler command alone: a token the shell exports is
-dropped first, and npm's install scripts and the page's build never see one.
-It refuses to go on unless:
+**Plan, then deploy the card in the Devkit.** Start the GAP Devkit
+(`tools/devkit/start.sh` of the GAP folder beside this repo, then
+<http://127.0.0.1:8791>, **Release**), pick
+**Tsum Tsum global stats** and choose the branch or commit. It offers `main`
+once `main` has `global/`, and until then the newest branch on origin that
+has it. Until steps 1 and 4 are done the card says "not set up" and lists
+what is missing. **Plan** it
+and read the plan: what is live (`no Worker yet` the first time) and the
+commit it would deploy. Then **Deploy** it and confirm. `../tools/DEPLOYMENTS.md`
+describes the card in full.
 
-- `cloudflare.env` exists, is mode 600 and has `CLOUDFLARE_API_TOKEN=`;
-- `wrangler.jsonc` has no `REPLACE_WITH_` left, a 32-hex `account_id` and the
-  route `tsum-stats.gapscripts.app`, and neither it nor `src/` mentions
-  `gapapp.app`;
-- `wrangler whoami` runs on an API token that sees exactly one account, the
-  one `wrangler.jsonc` pins;
-- the Worker has both secrets already, or `secrets.env` has them (mode 600, at
-  least 32 characters each).
+Before anything reads or changes Cloudflare, the card refuses to go on unless:
 
-Then it:
+- `cloudflare.env` exists, is mode 600 and has `CLOUDFLARE_API_TOKEN=`, and
+  `secrets.env` is mode 600 and has both secrets (at least 32 characters
+  each);
+- the commit's `wrangler.jsonc` has no `REPLACE_WITH_` left, a 32-hex
+  `account_id`, the D1 `database_id`, only the custom domain
+  `tsum-stats.gapscripts.app` and no `build` command (wrangler would run it
+  with the token), and neither it nor `src/` mentions `gapapp.app`;
+- `wrangler whoami`, on that token alone, runs on an API token that sees
+  exactly one account, the one `wrangler.jsonc` pins.
 
-1. builds the page in global mode (`cd ../ui && npm ci && npx vite build
-   --mode global`, into `global/site/`) and checks that it has the global tag;
-2. applies the D1 migrations (`wrangler d1 migrations apply tsum-global
-   --remote`), which asks you to confirm: answer **yes**;
-3. deploys the Worker with its page, the cron trigger `5 * * * *` and the
-   custom domain, plus the secrets the first time.
+Each wrangler command gets the token from `cloudflare.env` and no Cloudflare
+variable from the Devkit's environment, so neither the `wrangler login` that
+the Devkit's GAP cards use nor a token some shell exported is ever used, and
+npm's install scripts and the page's build never get one. Then, in a worktree
+of its own at the commit, it:
+
+1. checks the worktree's `wrangler.jsonc` and `src/` the same way again;
+2. builds the page in global mode (`cd ui && npm ci && npm run build:global`,
+   into `global/site/`) and checks that it has the global tag;
+3. checks that the worktree is still exactly the commit, apart from
+   `global/site/` and `node_modules/`: the install scripts and the build run
+   code that could change what wrangler reads. Then `npm ci` in `global/`,
+   and the same check again;
+4. applies the D1 migrations (`wrangler d1 migrations apply tsum-global
+   --remote`);
+5. deploys the Worker with its page, the cron trigger `5 * * * *` and the
+   custom domain, tagged with the commit, plus the secrets the Worker lacks
+   (both, the first time);
+6. checks from outside: the page has the global tag, `/api/v1/me` without a
+   key answers 401, and the Worker runs that commit. Only then does the card
+   count the commit as live.
+
+If a later deploy fails, the card rolls the Worker back to the version before
+it; the migrations stay, as they only ever add. The first deploy has nothing
+to roll back to: if it fails after the upload, the job ends **rollback
+failed**, the new version stays up unchecked, and the plan then shows
+`<commit> (not checked yet) → <commit>`. Fix what failed and deploy again:
+the card deploys the same commit again (the secrets are not sent twice) and
+checks it.
 
 The first deploy also creates the `tsum-stats.gapscripts.app` DNS record and
-its certificate, which can take a few minutes.
+its certificate, which can take a few minutes; the card's check waits up to
+five for them.
 
 **If it stops at the custom domain** (an authentication or permission error
 while attaching `tsum-stats.gapscripts.app`, after the Worker itself
 uploaded): the token has no zone permissions (step 1). Attach the domain once
 by hand: **Workers & Pages → tsum-global → Settings → Domains & Routes → Add →
 Custom domain → `tsum-stats.gapscripts.app`**, wait for it to show Active,
-then deploy again. Later deploys find the domain attached and change nothing
-on the zone. Only if they still fail, add zone permissions to the token
-(Workers Routes Edit, DNS Edit and Zone Read, on `gapscripts.app` only; that
-needs a user API token if the account token page offers no zone permissions). Workers Free allows 5 cron
-triggers per account, and this Worker uses one. Every later deploy is the same
-command and changes no secret.
+then deploy again. wrangler still sends the attach on every deploy (step 1),
+so if deploys keep failing there, every one fails and the card rolls it
+back. Then add zone permissions to the token (Workers Routes Edit, DNS Edit
+and Zone Read, on `gapscripts.app` only; that needs a user API token if the
+account token page offers no zone permissions) and deploy again. Workers Free
+allows 5 cron triggers per account, and this Worker uses one. Every later
+deploy is the same plan and deploy, and changes no secret.
 
-**Check:** `--check` prints `deploy: the token sees only account <id>` and
-`deploy: checks passed`, and the deploy ends with `deploy: done.`
+**Without the Devkit**, `./deploy.sh` in `global/` makes the same token and
+account checks and the same deploy, but from your working tree as it is, with
+nothing checked afterwards and no rollback. It builds the page first, stops if
+the build changed anything else in `global/` (or the `ui/` files the Worker
+bundles), and runs `npm ci` in `global/` and the checks again before any
+wrangler command. Use it only when the Devkit is not available:
+
+```sh
+./deploy.sh --check   # only the checks
+./deploy.sh           # the migrations ask you to confirm: answer yes
+```
+
+**Check:** the plan showed `no Worker yet → <commit>` (or `<commit> (not
+checked yet) → <commit>` when you deploy again after attaching the domain by
+hand), and the job ends with the card **deployed**, its log saying
+`tsum-stats.gapscripts.app runs <commit>`. A plan afterwards says **up to
+date**. With `deploy.sh`, `--check` prints `deploy: the token sees only
+account <id>` and `deploy: checks passed`, and the deploy ends with `deploy:
+done.`
 
 ## 6. Check it works
 
@@ -380,7 +439,7 @@ Plans**. Nothing in the code changes. Optionally, then:
   million requests a month, $0.30 a million; past 10 million R2 reads, $0.36
   a million). Normal traffic is far below that. If a scraper ever shows up,
   a rate-limiting rule on `tsum-stats.gapscripts.app` is the fix;
-- run `./deploy.sh`.
+- commit and push what you changed, and deploy (step 5).
 
 ## 8. After launch
 
@@ -390,36 +449,17 @@ Plans**. Nothing in the code changes. Optionally, then:
    - **A new Tsum.** The Worker knows the Tsums of the `catalog.json` it was
      deployed with. Rounds of a newer one are kept, but stay out of the
      public figures until a deploy knows it. When the script learns a Tsum,
-     update `ui/public/data/catalog.json`, run `./deploy.sh`, then `POST
-     /api/v1/admin/rebuild` with `{}` (README, *Admin routes*).
+     update `ui/public/data/catalog.json`, push it and deploy (step 5), then
+     `POST /api/v1/admin/rebuild` with `{}` (README, *Admin routes*).
 2. **The website.** Add the Global stats link and the contribute section:
    [WEBSITE-LINKS.md](WEBSITE-LINKS.md) has the exact edits for
    `../tsum-tsum-website`.
-3. **Record it** in `../tools/DEPLOYMENTS.md`, which every repo reads before
-   a deploy:
-   - in **Rules first → Two Cloudflare accounts**, add to what the personal
-     account owns: "the global stats (Worker, D1 and R2 `tsum-global`, on
-     `tsum-stats.gapscripts.app`)";
-   - under **Per part**, after *Tsum Tsum Stats*:
-
-     ```md
-     ### Tsum Tsum global stats (`tsum-stats/global`)
-     - Worker `tsum-global` on `tsum-stats.gapscripts.app` (custom domain), D1 `tsum-global`,
-       R2 `tsum-global` (private: the Worker serves `data/global/`, never `archive/`).
-       Personal Cloudflare account.
-     - **Local:** `cd global && npm run dev`, on 127.0.0.1:8788 (local D1 and R2; see `global/README.md`).
-     - **Release:** not a Devkit card. `global/deploy.sh`, on the scoped token in
-       `~/.config/tsum-global/cloudflare.env` (`global/CLOUDFLARE-SETUP.md`): checks the
-       account, builds the page, migrates D1, deploys. Secrets `DEVICE_KEY` (never change it)
-       and `ADMIN_KEY` are set once, from `~/.config/tsum-global/secrets.env`.
-       Rollback = `wrangler rollback` in a shell set up as in CLOUDFLARE-SETUP.md step 2;
-       migrations stay.
-     ```
-
-   DEPLOYMENTS.md's first rule says releases go through the Devkit, never a
-   hand-run `wrangler deploy`. This Worker has no Devkit card, so either add
-   one or keep the entry's "not a Devkit card" line, so the next session knows
-   `deploy.sh` is the way.
+3. **DEPLOYMENTS.md**: done, nothing to record. `../tools/DEPLOYMENTS.md`,
+   which every repo reads before a deploy, lists the global stats as the
+   personal account's under **Rules first → Two Cloudflare accounts**, and
+   **Per part → Tsum Tsum global stats** has the Devkit card: its token and
+   secrets files, what live means, the rollback, that the branch must be on
+   origin, and that it goes before a tsum-stats release with Contribute.
 
 ## Never
 
@@ -427,18 +467,22 @@ Plans**. Nothing in the code changes. Optionally, then:
   login. Every command runs on the token in `cloudflare.env`.
 - **A bare `npx wrangler …` in a shell not set up as in step 2.** A
   `CLOUDFLARE_API_TOKEN` left from GAP work, or the OAuth login, would be used
-  instead. `deploy.sh` is safe either way: it reads the token file itself.
+  instead. The Devkit card and `deploy.sh` are safe either way: they read the
+  token file themselves.
 - **A GAP-account token in `cloudflare.env`**, or a token for this project
   that can see the GAP account.
 - **Routes, custom domains or DNS records on `gapapp.app`**, or a GAP name
-  (`gap-companion`, `gap-tester-gate`, `app-assets`, `gap-testers`) anywhere in
-  `wrangler.jsonc`. `deploy.sh` refuses `gapapp.app`; the rest is up to you.
+  (`gap-companion`, `gap-tester-gate`, `app-assets`, `gap-testers`) as a value
+  in `wrangler.jsonc`. The Devkit card refuses both; `deploy.sh` refuses
+  `gapapp.app`, and the names are up to you.
 - **Changing `DEVICE_KEY`.** Rounds sent again would count twice. If the
   Worker is ever deleted and made again, put the same value back from your
   password manager.
 - **A public URL or custom domain on the `tsum-global` bucket.** `archive/`
   holds every round as it was sent.
 - **`workers_dev` or `preview_urls`** turned on: the site has one address.
+- **A `build` command in `wrangler.jsonc`.** `wrangler deploy` runs it with
+  the token in its environment. The Devkit card and `deploy.sh` refuse it.
 
 ## Working on it locally
 

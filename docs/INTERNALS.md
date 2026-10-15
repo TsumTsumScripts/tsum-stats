@@ -289,9 +289,13 @@ tools/build.sh --publish   # also create the GitHub release v<version>
 - **Publishing:** `--publish` uploads the binaries and the pin to one release,
   so the pin never names a missing file. Bump `VERSION` first; it refuses an
   existing tag.
-- **The global site** is not part of the build: `global/deploy.sh` deploys it
-  (`global/CLOUDFLARE-SETUP.md`). The binaries name it as the `--global-url`
-  default, so it goes live before the first release with Contribute.
+- **The global site** is not part of the build: the GAP Devkit's **Tsum Tsum
+  global stats** card deploys it from a pushed commit, on the personal
+  Cloudflare account only (`../tools/DEPLOYMENTS.md`,
+  `global/CLOUDFLARE-SETUP.md`; `global/deploy.sh` only when the Devkit is not
+  available). The binaries name it as the `--global-url` default, so it goes
+  live before the first release with Contribute: in a Devkit stack job that
+  card runs before **Tsum Tsum Stats**.
 
 ## Working on the page
 
