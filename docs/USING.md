@@ -646,12 +646,19 @@ when they draw, and redraw when the theme changes.
 | `--ink`, `--muted`, `--faint` | Text, from strongest to faintest |
 | `--drop`, `--press`, `--lift`, `--inset`, `--float` | Shadows: under panels, pressed buttons, top highlight, sunken wells, popovers |
 | `--accent-a`, `--accent-b`, `--accent-edge`, `--accent-shadow`, `--accent-ink` | Pressed toggles, primary buttons, progress, focus rings |
+| `--link` | The accent as text: links, sort arrows, the head-to-head leader. `--accent-a` unless set; a light theme sets a darker one, since a fill colour is too pale to read as type |
 | `--badge-a`, `--badge-b`, `--hero-top` | The logo badge and Help's step numbers; the hero KPI tile |
 | `--score`, `--coin`, `--medal` (each with `-shadow`), `--good`, `--bad` | Figures by kind; online dots |
 | `--axis-line`, `--grid-line`, `--chart-rule`, `--chart-track` | Chart axes, gridlines, the hover rule, the empty part of radial bars |
 | `--chart-other`, `--build-intl`, `--build-jp`, `--build-none`, `--avatar-a`, `--avatar-b` | "Other" slices; the sunburst's game ring; a portrait's backing |
 
 Tsums keep their own colours (`color` in the catalog) in every theme.
+
+Text in the built-in felt themes is at least 4.5:1 against what it sits on
+(3:1 for large type), disabled buttons aside. Under 720px wide (phones) the
+top bar scrolls away with the page and only the Stats rail stays pinned; a
+theme that restyles padding or type sizes should give them a phone size in
+its own `@media (max-width: 719px)` block, as the felt themes do.
 
 **Maxed Tsums** (level 50 and full skill) get a `maxed` class in the Catalog,
 so a theme can restyle them completely. Hooks, all optional:

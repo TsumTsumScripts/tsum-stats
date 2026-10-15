@@ -54,7 +54,9 @@
   --inset: inset 0 2px 4px rgba(6, 7, 10, 0.65);
   --float: 0 10px 28px rgba(0, 0, 0, 0.5);
 
-  /* Buttons and highlights */
+  /* Buttons and highlights. --link is the accent as text (links, sort arrows), which a
+     light theme darkens: the fills are too pale to read as type. */
+  --link: var(--accent-a);
   --accent-a: #ffb866;
   --accent-b: #ec7a26;
   --accent-edge: #b5561a;
@@ -122,7 +124,11 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .page { max-width: 1480px; margin: 0 auto; padding: 0 16px 80px; }
 @media (min-width: 720px) { .page { padding: 0 28px 90px; } }
 
-/* Top bar: stays on screen; its height is --topbar-h, set by app.js. */
+/* Top bar: stays on screen; its height is --topbar-h, set by app.js. What sticks below it
+   (the rail, the focus bar, the catalog's controls) sits at --sticky-top: the top bar's
+   height, or 0 on a phone, where the top bar scrolls away to leave the screen to the page. */
+:root { --sticky-top: var(--topbar-h, 70px); }
+html { overflow-x: clip; }
 .topbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   position: sticky; top: 0; z-index: 40; margin: 0 -16px; padding: 12px 16px 10px;
   background: var(--topbar-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -187,6 +193,8 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
   .topbar-actions { gap: 6px; }
   .topbar-actions .btn, .topbar #site-btn { padding: 3px 10px; }
   .topbar > .theme-pick .sub { display: none; }
+  :root { --sticky-top: 0px; }
+  .topbar { position: relative; }
 }
 .theme-pick { display: inline-flex; align-items: center; gap: 6px; }
 .theme-pick select { padding: 4px 8px; border-radius: 999px; border: 2px solid var(--panel-edge); background: var(--well);
@@ -207,7 +215,7 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
   color: var(--ink); box-shadow: var(--lift), var(--drop); }
 .btn:hover { filter: brightness(1.1); }
 .btn:active { transform: translateY(2px); box-shadow: var(--lift), var(--press); }
-.btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+.btn:disabled { opacity: 0.6; cursor: default; transform: none; }
 
 /* Live devices */
 .live { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -237,13 +245,13 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 .sub { color: var(--faint); font-size: 13px; }
 section[hidden] { display: none !important; }
 .stack { display: grid; gap: 16px; margin-top: 18px; }
-.anchor { scroll-margin-top: calc(var(--topbar-h, 70px) + var(--rail-h, 0px) + 16px); }
+.anchor { scroll-margin-top: calc(var(--sticky-top) + var(--rail-h, 0px) + 16px); }
 
 /* Stats layout: the rail holds the filters and the jump menu. Narrow, it is a
    bar under the top bar whose filters drop down; wide, a sticky side column. */
 .stats-layout { display: grid; gap: 16px; margin-top: 18px; align-items: start; }
 .stats-layout > .stats-main { margin-top: 0; min-width: 0; }
-.rail { position: sticky; top: var(--topbar-h, 70px); z-index: 30; min-width: 0; }
+.rail { position: sticky; top: var(--sticky-top); z-index: 30; min-width: 0; }
 .rail-panel { padding: 10px 12px; }
 .rail-head { display: flex; gap: 10px; align-items: center; min-width: 0; }
 .chips { display: flex; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
@@ -265,7 +273,7 @@ section[hidden] { display: none !important; }
 .jump button[aria-current="true"] { color: var(--accent-ink); background: linear-gradient(180deg, var(--accent-a), var(--accent-b)); }
 @media (min-width: 1180px) {
   .stats-layout { grid-template-columns: 260px minmax(0, 1fr); }
-  .rail { top: calc(var(--topbar-h, 70px) + 16px); max-height: calc(100vh - var(--topbar-h, 70px) - 32px); overflow: hidden auto; scrollbar-width: none; border-radius: var(--radius); }
+  .rail { top: calc(var(--sticky-top) + 16px); max-height: calc(100vh - var(--sticky-top) - 32px); overflow: hidden auto; scrollbar-width: none; border-radius: var(--radius); }
   .rail-panel { padding: 16px; }
   .rail-toggle { display: none; }
   .rail-head { flex-direction: column; align-items: stretch; }
@@ -407,15 +415,15 @@ body.chart-open { overflow: hidden; }
 .pager select { padding: 4px 8px; border-radius: 10px; border: 2px solid var(--panel-edge); background: var(--well); font-weight: 700; font-size: 13px; }
 td.empty-row { text-align: center; padding: 24px; white-space: normal; }
 .linkish { all: unset; cursor: pointer; }
-.linkish:hover .tsum-cell > :last-child { text-decoration: underline; }
+.linkish:hover .tsum-name { text-decoration: underline; }
 .linkish:focus-visible { outline: 3px solid var(--accent-a); border-radius: 6px; }
 table { width: 100%; border-collapse: separate; border-spacing: 0 4px; font-size: 14px; }
 th { text-align: left; font-size: 12px; color: var(--faint); font-weight: 800; padding: 4px 10px; white-space: nowrap; }
 th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 th button { all: unset; cursor: pointer; }
 th button:focus-visible { outline: 3px solid var(--accent-a); }
-th[aria-sort="ascending"] button::after { content: ' \25B2'; color: var(--accent-a); }
-th[aria-sort="descending"] button::after { content: ' \25BC'; color: var(--accent-a); }
+th[aria-sort="ascending"] button::after { content: ' \25B2'; color: var(--link); }
+th[aria-sort="descending"] button::after { content: ' \25BC'; color: var(--link); }
 td { padding: 7px 10px; background: var(--cell); white-space: nowrap; }
 td:first-child { border-radius: 10px 0 0 10px; }
 td:last-child { border-radius: 0 10px 10px 0; }
@@ -449,7 +457,7 @@ tr.fresh td { animation: fresh 2.4s ease-out; }
 .avatar.lg { width: 84px; height: 84px; font-size: 24px; border: 2px solid var(--panel-edge); box-shadow: var(--lift); }
 
 /* Catalog: its controls stay under the top bar. */
-#catalog > .panel:first-child { position: sticky; top: var(--topbar-h, 70px); z-index: 20; }
+#catalog > .panel:first-child { position: sticky; top: var(--sticky-top); z-index: 20; }
 .card { border-top: 4px solid var(--tsum, var(--panel-edge)); }
 
 /* Catalog */
@@ -569,7 +577,7 @@ a.pill { text-decoration: none; }
 a.pill:hover { color: var(--ink); }
 .help p, .help li { line-height: 1.55; color: var(--muted); }
 .help b { color: var(--ink); }
-.help a { color: var(--accent-a); }
+.help a { color: var(--link); }
 .help h3 { font-size: 17px; margin: 18px 0 6px; }
 .help .lead { margin: 4px 0 14px; }
 .help-status { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
@@ -608,7 +616,7 @@ a.pill:hover { color: var(--ink); }
 .picked { display: flex; flex-wrap: wrap; gap: 6px; }
 .picked:empty { display: none; }
 .picked .avatar, .focus-bar .avatar { width: 20px; height: 20px; font-size: 9px; }
-.focus-bar { position: sticky; top: calc(var(--topbar-h, 70px) + var(--rail-h, 0px) + 8px); z-index: 20;
+.focus-bar { position: sticky; top: calc(var(--sticky-top) + var(--rail-h, 0px) + 8px); z-index: 20;
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; }
 .focus-bar[hidden] { display: none; }
 .focus-bar .spacer { flex: 1; }
@@ -616,13 +624,13 @@ a.pill:hover { color: var(--ink); }
 .focus-bar .chip { cursor: default; font-size: 13px; }
 .focus-bar button.chip { cursor: pointer; }
 .focus-add { flex: 0 1 180px; min-width: 120px; padding: 4px 10px; font-size: 13px; }
-.stats-main:has(.focus-bar:not([hidden])) .anchor { scroll-margin-top: calc(var(--topbar-h, 70px) + var(--rail-h, 0px) + 80px); }
+.stats-main:has(.focus-bar:not([hidden])) .anchor { scroll-margin-top: calc(var(--sticky-top) + var(--rail-h, 0px) + 80px); }
 
 /* Head to head: a column per Tsum; a bar under each figure scaled to the row's largest. */
 .versus { border-collapse: separate; border-spacing: 0 4px; width: 100%; }
 .versus thead th { vertical-align: bottom; text-align: right; }
 .versus thead th .sub { display: block; font-size: 11px; font-weight: 700; }
-.versus thead th.leader .sub { color: var(--accent-a); }
+.versus thead th.leader .sub { color: var(--link); }
 .versus-tsum { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); font-size: 14px; }
 .versus tbody th { color: var(--muted); font-size: 13px; }
 .versus td { position: relative; padding-bottom: 10px; }
@@ -709,10 +717,12 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 .breakdown td:first-child { white-space: normal; }
 .breakdown .bd-label { font-weight: 800; }
 .breakdown .tag, .breakdown td .sub { margin-left: 8px; }
-.breakdown tr.few td { opacity: 0.6; }
-/* The global site's Tsums with too few contributors, flagged like the breakdowns' few rounds. */
-.dt tr.few td { opacity: 0.6; }
+/* Rows with too few rounds (or, on the global site, too few players) to trust: hatched, and
+   flagged in words, rather than faded, which would take their figures below 4.5:1. */
+.breakdown tr.few td, .dt tr.few td { background-image: repeating-linear-gradient(135deg, var(--hairline) 0 1px, transparent 1px 7px); }
 .few-flag { margin-left: 8px; white-space: nowrap; }
+/* A box inside a tile (the Tsum page's target): its hint in the tile's ink, faded but readable. */
+.kpi input::placeholder { color: var(--muted); opacity: 0.8; }
 .breakdown tr.mark td { box-shadow: inset 0 2px 0 color-mix(in srgb, var(--accent-a) 50%, transparent), inset 0 -2px 0 color-mix(in srgb, var(--accent-a) 50%, transparent); }
 .bd-rate { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .bd-bar { display: block; width: 90px; height: 8px; border-radius: 999px; background: var(--well); overflow: hidden; }
@@ -720,7 +730,14 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 .bd-bar > span.best { background: var(--coin); }
 td.medal .bd-bar > span { background: color-mix(in srgb, var(--medal) 55%, var(--well)); }
 td.medal .bd-bar > span.best { background: var(--medal); }
-@media (max-width: 559px) { .bd-bar { display: none; } }
+/* Phone: the bar, and the highest, average score and when columns, go, so the rate and change fit. */
+@media (max-width: 559px) {
+  .bd-bar { display: none; }
+  .breakdown col:nth-child(n+6), .breakdown th:nth-child(n+6), .breakdown td:nth-child(n+6) { display: none; }
+  .breakdown { min-width: 0; }
+  .breakdown .bd-c-label { width: 30%; }
+  .breakdown th, .breakdown td { padding-left: 6px; padding-right: 6px; }
+}
 .settings-list { margin-top: 0; gap: 18px; }
 
 .insights .kpi .value .unit { font-size: 15px; color: var(--muted); }
@@ -732,6 +749,31 @@ td.medal .bd-bar > span.best { background: var(--medal); }
 .insights .target b { color: var(--ink); font-family: var(--font-display); font-size: 18px; }
 .breakdown.payback { table-layout: auto; min-width: 640px; }
 .payback-note { margin: 8px 0 0; }
-.played-link { font-size: 12px; font-weight: 800; color: var(--accent-a); text-decoration: none; }
+.played-link { font-size: 12px; font-weight: 800; color: var(--link); text-decoration: none; }
 .played-link:hover, .tsum-list .names a:hover { text-decoration: underline; }
 .tsum-list .names a { color: inherit; text-decoration: none; }
+
+/* Phones, after every rule they adjust. */
+@media (max-width: 719px) {
+  /* The catalog's controls are most of a phone's screen: they scroll with the page. */
+  #catalog > .panel:first-child { position: static; }
+  /* KPI tiles two to a row, the hero across both; figures a size down so a pair fits. */
+  .kpis { gap: 10px; }
+  .kpi { flex: 1 1 140px; padding: 12px 14px; }
+  .kpi.hero { flex-basis: 100%; }
+  .kpi .value { font-size: 22px; }
+  .kpi.hero .value { font-size: 38px; }
+  /* The pager on one row: no first and last, the page info smaller. */
+  .pager { flex-wrap: nowrap; gap: 6px; }
+  .pager-nav .btn[title] { display: none; }
+  .pager-nav .btn { padding: 4px 10px; font-size: 13px; }
+  .pager-mid { gap: 6px; font-size: 12px; min-width: 0; flex-wrap: wrap; justify-content: center; text-align: center; }
+  .pager select { padding: 3px 4px; font-size: 12px; }
+  .dt .pager { margin: 10px -4px 0; padding: 6px; }
+  .pager-nav .btn { white-space: nowrap; }
+  /* A long Tsum name wraps, so the figures beside it are on screen before the table scrolls. */
+  .dt .tsum-name { white-space: normal; min-width: 7em; max-width: 9.5em; }
+  /* The global site's note takes a row of its own, its status wrapping rather than cut off. */
+  .topbar .global-note { flex: 1 1 100%; flex-wrap: wrap; }
+  .topbar .global-note .pill { white-space: normal; overflow: visible; }
+}

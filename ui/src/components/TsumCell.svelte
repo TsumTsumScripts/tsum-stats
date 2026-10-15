@@ -6,7 +6,7 @@
 </script>
 
 {#snippet cell()}
-  <span class="tsum-cell"><i class="sw" style:background={color}></i><Avatar id={id || '?'} {name} />{name}</span>
+  <span class="tsum-cell"><i class="sw" style:background={color}></i><Avatar id={id || '?'} {name} /><span class="tsum-name">{name}</span></span>
 {/snippet}
 
 {#if onpick}

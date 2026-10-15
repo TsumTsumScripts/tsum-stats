@@ -668,17 +668,21 @@ export function drawMaxOut(container, series) {
     g.append('path').attr('fill', 'none').attr('stroke', s.color).attr('stroke-width', 2)
       .attr('d', d3.line()([[x(today), y(share(s, 0))], [x(d3.timeHour.offset(today, end * 24)), y(share(s, end))]]));
   }
-  // Each finish date marked on the baseline and labelled above it; a label that
-  // would sit on the one before it goes a row higher.
-  let lastX = -Infinity, row = 0;
+  // Each finish date marked on the baseline and labelled above it, in the lowest
+  // row where the label (measured, as set) clears every label already there.
+  const placed = [];
   for (const s of [...live].sort((a, c) => a.days - c.days)) {
     if (s.days > span) continue;
     const px = x(d3.timeHour.offset(today, s.days * 24));
-    row = px - lastX < 120 ? row + 1 : 0;
-    lastX = px;
     g.append('circle').attr('cx', px).attr('cy', y(0)).attr('r', 4).attr('fill', css('--bg')).attr('stroke', s.color).attr('stroke-width', 2);
-    g.append('text').attr('class', 'value-label').attr('x', Math.min(px, inner.w)).attr('y', y(0) - 10 - row * 16)
+    const label = g.append('text').attr('class', 'value-label').attr('x', Math.min(px, inner.w)).attr('y', y(0) - 10)
       .attr('text-anchor', px > inner.w - 60 ? 'end' : 'middle').text(`${s.label} ${finishLabel.format(d3.timeHour.offset(today, s.days * 24))}`);
+    const box = label.node().getBBox();
+    const [x0, x1] = [box.x - 6, box.x + box.width + 6];
+    let row = 0;
+    while (placed.some(p => p.row === row && p.x0 < x1 && x0 < p.x1)) row++;
+    placed.push({row, x0, x1});
+    label.attr('y', y(0) - 10 - row * 16);
   }
   const pts = d3.range(span + 1).map(d => ({d, date: d3.timeDay.offset(today, d)}));
   dayHover(f, x, pts, (p, e) => showTip([[b(dayLabel.format(p.date))], ...live.map(s => [sw(s.color), `${s.label} still to earn `,
