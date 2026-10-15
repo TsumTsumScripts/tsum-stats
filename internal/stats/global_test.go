@@ -472,10 +472,42 @@ func TestGlobalBatchesOldestFirst(t *testing.T) {
 		t.Fatalf("%d rows recorded as sent", n)
 	}
 
-	// Nothing new, nothing sent.
+	// Nothing new, nothing sent: the check moves on, the last upload does not.
+	later := globalNow.Add(time.Hour)
+	c.now = func() time.Time { return later }
 	runPass(t, c)
 	if len(f.batches) != 6 {
 		t.Fatalf("an unchanged pass uploaded: %d batches", len(f.batches))
+	}
+	if st2 := c.State(); st2.LastUpload != st.LastUpload || st2.LastCheck != later.UTC().Format(time.RFC3339) {
+		t.Fatalf("after an unchanged pass: last upload %q (was %q), last check %q", st2.LastUpload, st.LastUpload, st2.LastCheck)
+	}
+}
+
+// The page is told when the next pass is due, and only while contributing.
+func TestGlobalNextUpload(t *testing.T) {
+	app := testApp(t)
+	f := newFakeWorker(t)
+	c, _ := testContributor(t, app, f)
+	if st := c.State(); st.NextUpload != "" {
+		t.Fatalf("not joined, next upload %q", st.NextUpload)
+	}
+	if err := c.Join(); err != nil {
+		t.Fatal(err)
+	}
+	at := func(d time.Duration) string { return globalNow.Add(d).UTC().Format(time.RFC3339) }
+	if st := c.State(); st.NextUpload != at(c.first) {
+		t.Fatalf("after joining, next upload %q, want %q", st.NextUpload, at(c.first))
+	}
+	c.untilNext()
+	if st := c.State(); st.NextUpload != at(c.interval) {
+		t.Fatalf("after a pass, next upload %q, want %q", st.NextUpload, at(c.interval))
+	}
+	if err := c.Leave(false); err != nil {
+		t.Fatal(err)
+	}
+	if st := c.State(); st.NextUpload != "" {
+		t.Fatalf("stopped, next upload %q", st.NextUpload)
 	}
 }
 

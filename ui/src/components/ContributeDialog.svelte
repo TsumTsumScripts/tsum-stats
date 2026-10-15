@@ -170,7 +170,9 @@
         <ul>
           <li>Rounds sent: <b>{fmt(st.sent)}</b></li>
           <li>Waiting to send: <b>{fmt(st.pending)}</b></li>
-          <li>Last upload: <b>{st.lastUpload ? at(st.lastUpload) : 'none yet'}</b></li>
+          <li>Rounds last sent: <b>{st.lastUpload ? at(st.lastUpload) : 'none yet'}</b></li>
+          {#if st.lastCheck}<li>Last checked for new rounds: <b>{at(st.lastCheck)}</b></li>{/if}
+          {#if st.nextUpload && !st.running}<li>Next upload: <b>{at(st.nextUpload)}</b>, then about hourly while Tsum Tsum Stats runs</li>{/if}
           {#if waiting}<li>The global site's daily limit is reached. Uploads carry on after <b>{at(st.retryAt)}</b>.</li>{/if}
         </ul>
         {#if st.me}

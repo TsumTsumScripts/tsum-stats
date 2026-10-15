@@ -62,6 +62,10 @@ type GlobalState struct {
 	Sent       int    `json:"sent"`
 	Pending    int    `json:"pending"`
 	LastUpload string `json:"lastUpload"`
+	// LastCheck is the last pass the global site answered, rounds sent or not.
+	LastCheck string `json:"lastCheck"`
+	// NextUpload is when the next hourly pass is due; "" when not contributing.
+	NextUpload string `json:"nextUpload"`
 	LastError  string `json:"lastError"`
 	// RetryAt is when the global site said to come back (its daily limits); "" when it did not.
 	RetryAt string    `json:"retryAt"`
@@ -82,6 +86,7 @@ type globalSaved struct {
 	JoinedAt   string `json:"joinedAt"`
 	Sent       int    `json:"sent"`
 	LastUpload string `json:"lastUpload"`
+	LastCheck  string `json:"lastCheck,omitempty"`
 	LastError  string `json:"lastError"`
 	RetryAt    string `json:"retryAt"`
 }
@@ -109,8 +114,9 @@ type Contributor struct {
 	saved   globalSaved
 	me      *GlobalMe
 	pending int
-	gen     int  // counts joins and leaves, so a pass that overlaps one stops and changes nothing
-	busy    bool // a pass is running
+	gen     int       // counts joins and leaves, so a pass that overlaps one stops and changes nothing
+	busy    bool      // a pass is running
+	next    time.Time // when Run's timer fires next
 	// passDone is closed when the running pass ends; nil while none runs.
 	passDone  chan struct{}
 	joining   bool
@@ -131,6 +137,7 @@ func NewContributor(dataDir, siteURL string, medalTsums []string, db func() dbx.
 	if data, err := os.ReadFile(c.file); err == nil {
 		_ = json.Unmarshal(data, &c.saved)
 	}
+	c.next = c.now().Add(c.first) // Run's first timer
 	return c
 }
 
@@ -175,7 +182,10 @@ func (c *Contributor) view() GlobalState {
 	}
 	if c.joined() {
 		s.Joined, s.Enabled, s.ID = true, c.saved.Enabled, c.saved.ID
-		s.Sent, s.LastUpload, s.RetryAt, s.Me = c.saved.Sent, c.saved.LastUpload, c.saved.RetryAt, c.me
+		s.Sent, s.LastUpload, s.LastCheck, s.RetryAt, s.Me = c.saved.Sent, c.saved.LastUpload, c.saved.LastCheck, c.saved.RetryAt, c.me
+		if c.saved.Enabled && !c.next.IsZero() {
+			s.NextUpload = c.next.UTC().Format(time.RFC3339)
+		}
 	}
 	return s
 }
@@ -332,6 +342,7 @@ func (c *Contributor) Join() error {
 	if meErr == nil {
 		c.me = &me
 	}
+	c.next = c.now().Add(c.first)
 	err := c.persist()
 	c.set()
 	c.schedule(c.first)
@@ -461,7 +472,7 @@ func (c *Contributor) Run(stop <-chan struct{}) {
 }
 
 // untilNext is the wait before the next pass: the interval, or until the
-// global site said to come back, with jitter.
+// global site said to come back, with jitter. It tells the page when that is.
 func (c *Contributor) untilNext() time.Duration {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -469,7 +480,10 @@ func (c *Contributor) untilNext() time.Duration {
 	if t, err := time.Parse(time.RFC3339, c.saved.RetryAt); err == nil {
 		d = max(d, t.Sub(c.now()))
 	}
-	return d + c.jitter()
+	d += c.jitter()
+	c.next = c.now().Add(d)
+	c.set()
+	return d
 }
 
 // pass is what one upload run works with, taken when it starts.
@@ -542,6 +556,9 @@ func (c *Contributor) upload(p pass) {
 		c.saved.LastError = "The last upload did not go through: " + err.Error()
 	default:
 		c.saved.LastError = ""
+	}
+	if err == nil || refused != nil {
+		c.saved.LastCheck = c.now().UTC().Format(time.RFC3339) // the site answered
 	}
 	_ = c.persist()
 	c.set()

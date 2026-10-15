@@ -425,8 +425,10 @@ sent and what the global site keeps; tick *I agree…* and press **Join**. The
 first upload starts about two minutes later, so you can still back out. After
 that, Tsum Tsum Stats sends your new rounds about once an hour, in the
 background, while it runs. **Upload now** sends at once. The dialog shows your
-contributor number, the rounds sent and waiting, the last upload, and the
-global site's own count of your rounds, devices and days.
+contributor number, the rounds sent and waiting, when rounds were last sent,
+when it last checked for new ones (every hourly pass, even with nothing to
+send), when the next upload is due, and the global site's own count of your
+rounds, devices and days.
 
 **What is sent** is each round's stats CSV row as the script writes it: the
 round id (which carries when the round began and a code for the device that

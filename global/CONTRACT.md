@@ -801,7 +801,7 @@ reload the manifest once and retry.
 
 ### 7.1 Settings (`<data dir>/global.json`, mode 0600)
 
-`{"url": "https://tsum-stats.gapscripts.app", "id": 17, "key": "…", "enabled": true, "joinedAt": "…", "sent": 12345, "lastUpload": "…", "lastError": "", "retryAt": ""}`
+`{"url": "https://tsum-stats.gapscripts.app", "id": 17, "key": "…", "enabled": true, "joinedAt": "…", "sent": 12345, "lastUpload": "…", "lastCheck": "…", "lastError": "", "retryAt": ""}`
 
 `url` is the site the key came from: a key is used only while `--global-url`
 names that site, and is never sent anywhere else. It is also the site
@@ -857,7 +857,7 @@ nothing. `lastError` is shown only for its own site (or when `url` is `""`).
 `POST` routes are guarded by `sameOrigin`.
 
 - `GET /api/stats/global`:
-  `{enabled, joined, url, id, sent, pending, lastUpload, lastError, retryAt, me, running}`.
+  `{enabled, joined, url, id, sent, pending, lastUpload, lastCheck, nextUpload, lastError, retryAt, me, running}`.
   `pending` counts rows waiting; `me` is the last `/api/v1/me` answer or null;
   `running` is true while a pass uploads.
 - `POST /api/stats/global/join`: joins (or re-enables a saved key) and fetches
