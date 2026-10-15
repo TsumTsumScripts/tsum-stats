@@ -3,8 +3,8 @@
   the rounds table. The server filters, sorts, pages and aggregates, so the
   page never holds more than one page of rounds however many there are.
   On the global site there are no rounds, only their sums per UTC day (the
-  day each round began): no rounds table or hours, and filters by skill level
-  and items instead of devices.
+  day each round began) and their 2 % bins: no rounds table or hours, filters
+  by skill level and items instead of devices, and coin and medal ranges only.
 -->
 <script>
   import {onMount, tick} from 'svelte';
@@ -39,17 +39,21 @@
   // days is the time range: '7' or '30' (rolling, up to today), 'all', or '' for the from/to dates.
   // min/max Score, Coins and Medals are the outlier ranges (OUTLIERS); incomplete '1' keeps rounds with an unread figure.
   // On the global site, skill and items are comma lists of skill levels and item masks (-1: not recorded).
+  // minRounds leaves Tsums with fewer rounds in the filter out of the rankings (the Tsum table and efficiency chart);
+  // it is the page's alone, never sent, so every total still counts their rounds.
   const blank = () => ({tsum: '', device: '', days: '7', from: '', to: '', ...Object.fromEntries(OUTLIER_KEYS.map(k => [k, ''])),
-    incomplete: '', build: '', coins: '', net: '', sort: '-playedAt', page: 1, perPage: 50, ...(globalSite ? {skill: '', items: ''} : {})});
+    incomplete: '', build: '', coins: '', net: '', minRounds: '', sort: '-playedAt', page: 1, perPage: 50, ...(globalSite ? {skill: '', items: ''} : {})});
   /** The outlier ranges: a stat, its link keys and the input step. */
   const OUTLIERS = [['score', 'Score', 'minScore', 'maxScore', 1000], ['coins', 'Coins', 'minCoins', 'maxCoins', 100], ['medals', 'Medals', 'minMedals', 'maxMedals', 10]];
   const OUTLIER_KEYS = OUTLIERS.flatMap(([, , lo, hi]) => [lo, hi]);
+  // The global site keeps bins of coins and medals, not of scores: no score range there.
+  const RANGES = globalSite ? OUTLIERS.filter(([stat]) => stat !== 'score') : OUTLIERS;
   const listOf = s => (s ? s.split(',').filter(Boolean) : []);
   /** A filter from the link's params; a link with dates but no days keeps its dates. */
   function fromParams(p) {
     const s = {...blank(), ...p};
-    // Every global round is complete and has no device, so those filters do not apply.
-    if (globalSite) Object.assign(s, {device: '', incomplete: '', ...Object.fromEntries(OUTLIER_KEYS.map(k => [k, '']))});
+    // Every global round is complete and has no device, and there are no score bins, so those filters do not apply.
+    if (globalSite) Object.assign(s, {device: '', incomplete: '', minScore: '', maxScore: ''});
     if ((p.from || p.to) && !p.days) s.days = '';
     s.page = Number(s.page) || 1;
     s.perPage = Number(s.perPage) || 50;
@@ -161,9 +165,12 @@
   function set(patch, {resetPage = true, only} = {}) {
     const push = 'tsum' in patch && patch.tsum !== filter.tsum;
     const sortOnly = 'sort' in patch && Object.keys(patch).length === 1;
-    Object.assign(filter, patch, resetPage && !('page' in patch) ? {page: 1} : {});
+    // The minimum rounds is applied here, to what is loaded already.
+    const pageOnly = Object.keys(patch).every(k => k === 'minRounds');
+    Object.assign(filter, patch, resetPage && !('page' in patch) && !pageOnly ? {page: 1} : {});
     onStateChange({...filter}, {push});
     navTick++;
+    if (pageOnly) return;
     if (only !== 'rounds' && !sortOnly) loadSummary();
     loadRounds();
   }
@@ -195,12 +202,13 @@
       out.push({label: `${label} ${rangeName[stat]}`, clear: () => set({[lo]: '', [hi]: ''})});
     }
     if (filter.incomplete) out.push({label: 'Incomplete rounds', clear: () => set({incomplete: ''})});
+    if (minRounds) out.push({label: `Tsums with ${fmt(minRounds)}+ rounds`, clear: () => set({minRounds: ''})});
     return out;
   });
 
-  /** The Tsum page for the one focused Tsum, with the filters it understands; the global site has none. */
+  /** The Tsum page for the one focused Tsum, with the filters it understands. */
   const pageLink = $derived.by(() => {
-    if (picked.length !== 1 || globalSite) return null;
+    if (picked.length !== 1) return null;
     // The page's ranges are rolling or all time; dates fall back to all time.
     const days = Number(filter.days) ? filter.days : 'all';
     const q = Object.entries({id: picked[0], days, coins: filter.coins, net: filter.net, device: pickedDevices.length === 1 ? filter.device : '', build: filter.build});
@@ -273,10 +281,16 @@
   // Contributors per Tsum; one with fewer than status.minContributors is flagged "few players".
   const playersOf = $derived(new Map(played.map(t => [t.tsum, t.contributors ?? null])));
   const fewPlayers = r => globalSite && status && r.players !== null && r.players < status.minContributors;
-  /** Why the global site's spreads are missing, when they are: its bins are kept per skill level, not per item set. */
-  const noSpreads = $derived(summary?.global && !summary.global.spreads ? (pickedItems.length ? 'with an items filter' : 'with item costs taken off') : '');
+  /**
+   * Why the global site's spreads are missing, when they are: a range cuts the
+   * bins of its own figure only, so the others' (coins under a medal range,
+   * medals under a coin range) have none to give.
+   */
+  const noSpreads = $derived(summary?.global && !summary.global.spreads
+    ? (summary.global.range === 'medals' ? 'with a medal range' : summary.global.range ? 'with a coin range' : 'yet for some days') : '');
+  const noSpreadsWhy = 'a range keeps whole bins of its own figure, and the other figures\' bins cannot be cut by it';
   // The charts mark the global site's spreads as estimates, or say why they are missing.
-  const spreadCtx = $derived(summary?.global ? {...ctx, approx: true, noSpreads: noSpreads && `No spreads ${noSpreads}: the bins are not kept per item set`} : ctx);
+  const spreadCtx = $derived(summary?.global ? {...ctx, approx: true, noSpreads: noSpreads && `No spreads ${noSpreads}: ${noSpreadsWhy}`} : ctx);
 
   /** The played Tsum whose English or JP name (or id) is text, or ''. */
   function matchTsum(text) {
@@ -287,6 +301,9 @@
 
   // ---- What the summary shows ----
 
+  /** The fewest rounds a Tsum needs in the filter to be ranked; 0 for any. */
+  const minRounds = $derived(Math.max(0, Math.floor(Number(filter.minRounds)) || 0));
+  const ranked = t => t.rounds >= minRounds;
   /** The Tsum table's rows: each with its name, share of the primary stat, and medal figures (m). */
   const tsumRows = $derived.by(() => {
     if (!summary) return [];
@@ -299,21 +316,23 @@
   });
 
   const effSub = $derived(summary && {
-    rate: `${fmt(summary.tsums.length)} Tsums · click one to focus, Ctrl/⌘-click to compare`,
+    rate: `${fmt(byRounds.length)} Tsums · click one to focus, Ctrl/⌘-click to compare`,
     box: 'the 12 most played · box: middle half · bar: median · dot: average · whiskers: lowest to 90th percentile · ring: highest',
     bubble: 'every Tsum · across: average coins · up: coins per second · size: rounds',
-  }[views.eff]);
+  }[views.eff] + (minRounds ? ` · Tsums with ${fmt(minRounds)} rounds or more` : ''));
   const shareSub = $derived(summary && (views.share === 'sunburst'
     ? (new Set(summary.mix.map(m => m.build)).size > 1 ? 'inner: game · middle: Tsum · outer: items used' : 'inner: Tsum · outer: items used')
     : 'top 8 Tsums, the rest as Other'));
   const dailySub = $derived(summary && {
     stack: `total ${basis}, top 7 Tsums`, rate: `${basis} per second of play`, avg: `average ${basis} per round, with the day's lowest–highest band`,
   }[views.daily] + (globalSite ? ' · by the UTC day each round began' : ''));
-  const histSub = $derived(summary && (noSpreads ? `not available ${noSpreads}: the bins behind it are kept per skill level, not per item set`
+  const histSub = $derived(summary && (noSpreads ? `not available ${noSpreads}: ${noSpreadsWhy}`
     : `how many rounds ended with each amount of ${basis}, by Tsum${summary.global ? ' · ≈ from 2 % wide bins' : ''}`));
 
   // Each chart's draw arguments; null until there is a summary.
-  const byRounds = $derived(summary ? [...summary.tsums].sort((a, c) => c.rounds - a.rounds) : []);
+  const byRounds = $derived(summary ? summary.tsums.filter(ranked).sort((a, c) => c.rounds - a.rounds) : []);
+  // Shares are of every Tsum in the filter, ranked or not; the table lists the ranked ones.
+  const tableRows = $derived(tsumRows.filter(ranked));
   const args = $derived(summary && {
     compare: picked.length > 1 ? [summary.dailyTsums, picked, ctx, views.compare] : null,
     eff: [views.eff, byRounds, spreadCtx, views.effMetric],
@@ -476,7 +495,7 @@
 <svelte:document onkeydowncapture={onKey} />
 
 <section id="stats" class="stats-layout" class:loading {hidden}>
-  <FilterRail {filter} {range} {chips} outliers={OUTLIERS} {picked} {played} {playedDevices} {pickedDevices} comparing={picked.length > 1}
+  <FilterRail {filter} {range} {chips} outliers={RANGES} {picked} {played} {playedDevices} {pickedDevices} comparing={picked.length > 1}
     skills={status?.skills ?? []} {pickedSkills} {itemChoices} {pickedItems}
     {set} reset={() => set({...blank(), coins: filter.coins, net: filter.net})} {addTsum} {dropTsum} {matchTsum} {nameOf} {colorOf} bind:open={railOpen} />
 
@@ -564,7 +583,7 @@
           {ticked.size ? `Compare ${ticked.size} ticked` : 'Compare ticked'}
         </button>
       {/snippet}
-      <DataTable columns={tsumColumns} rows={tsumRows} key="tsums" search="Search Tsums" pageSize={25} pageSizes={[10, 25, 50, 100]}
+      <DataTable columns={tsumColumns} rows={tableRows} key="tsums" search="Search Tsums" pageSize={25} pageSizes={[10, 25, 50, 100]}
         sorting={[{id: 'coinsPerSec', desc: true}]} countLabel={n => `${fmt(n)} Tsums`} rowClass={r => (fewPlayers(r) ? 'few' : null)}>
         {#snippet empty()}No Tsums match these filters.{/snippet}
       </DataTable>

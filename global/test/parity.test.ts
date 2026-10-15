@@ -30,6 +30,8 @@ interface Case {
   expected: any;
   /** Summaries: whether the primary stat's and the medal set's spreads can be worked out. */
   spreads?: { primary: boolean; medals: boolean };
+  /** An outlier range cuts cells: their lowest, highest, spread, score extremes and times are about (CONTRACT §6.2). */
+  cut?: boolean;
 }
 
 interface Fixture {
@@ -79,18 +81,25 @@ function diff(a: any, b: any, path = ""): string[] {
   return out;
 }
 
+/** What a cut cell keeps only about: taken out of both sides of a range's case. */
+const ABOUT = ["minCoins", "maxCoins", "stdCoins", "maxScore", "minScore", "first", "last"];
+const dropAbout = (rows: any[]) => rows.forEach(r => ABOUT.forEach(k => delete r[k]));
+
 /** The quartiles and P90: approximate on the global site (CONTRACT §6.2). */
 const SPREADS = ["q1Coins", "medianCoins", "q3Coins", "p90Coins"];
 
 /**
  * A spread from the bins: within 2 % of the exact value, exact under 100; null
- * where the bins cannot give one. Checked, then taken out so the rest compares exactly.
+ * where the bins cannot give one. Net coins: within two bins of their coins
+ * before the cost (at most 7,000), as bins of different costs overlap.
+ * Checked, then taken out so the rest compares exactly.
  */
-function takeSpreads(want: any, got: any, on: boolean, path: string): string[] {
+function takeSpreads(want: any, got: any, on: boolean, net: boolean, path: string): string[] {
   const out: string[] = [];
   for (const k of SPREADS) {
     const w = want[k], g = got[k];
-    const fine = !on || w === null ? g === null : Math.abs(w) < 100 ? g === w : g !== null && Math.abs(g - w) <= 0.02 * Math.abs(w);
+    const near = (tol: number) => g !== null && Math.abs(g - w) <= tol;
+    const fine = !on || w === null ? g === null : net ? near(0.04 * (Math.abs(w) + 7000)) : Math.abs(w) < 100 ? g === w : near(0.02 * Math.abs(w));
     if (!fine) out.push(`${path}.${k}: server ${w}, global ${g}${on ? "" : " (should have none)"}`);
     delete want[k];
     delete got[k];
@@ -116,12 +125,15 @@ function compareSummary(c: Case, want: any, got: any): string[] {
     v.medals.tsums = sortTsums(v.medals.tsums);
     v.dailyTsums = [...v.dailyTsums].sort(by("day", "tsum"));
     v.mix = [...v.mix].sort(by("build", "tsum", "items"));
+    if (c.cut) dropAbout([v.totals, ...v.tsums, ...v.daily, v.medals.totals, ...v.medals.tsums]);
   }
   for (const [set, on] of [["", primary], [".medals", medals]] as const) {
     const w = set ? want.medals : want, g = set ? got.medals : got;
-    out.push(...takeSpreads(w.totals, g.totals, on, `${set}.totals`));
+    // Medals are never net.
+    const net = !set && c.params.net === "1" && c.params.coins !== "medals";
+    out.push(...takeSpreads(w.totals, g.totals, on, net, `${set}.totals`));
     if (w.tsums.length !== g.tsums.length) continue; // diff says so
-    w.tsums.forEach((t: any, i: number) => out.push(...takeSpreads(t, g.tsums[i], on, `${set}.tsums[${t.tsum}]`)));
+    w.tsums.forEach((t: any, i: number) => out.push(...takeSpreads(t, g.tsums[i], on, net, `${set}.tsums[${t.tsum}]`)));
   }
   return [...out, ...diff(want, got)];
 }

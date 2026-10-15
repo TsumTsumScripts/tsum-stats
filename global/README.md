@@ -46,12 +46,13 @@ cite it by section (`CONTRACT §3.2`).
 | `src/admin.ts` | The admin routes |
 | `src/run.ts` | `Run`: one invocation's D1 queries, R2 operations, bytes, and rows read and written |
 | `src/job.ts` | The hourly job: claims dirty days, runs each step on its own, and lists the `state` keys it keeps |
-| `src/rollup.ts` | Step 1: the `pending` sums folded into `cells`, `bins` and `contrib_cells`, and full recomputes |
+| `src/rollup.ts` | Step 1: the `pending` sums folded into `cells`, `cell_bins` and `contrib_cells`, and full recomputes |
 | `src/parts.ts` | Part files (split when too long), month compaction, the trash, the manifest and its running totals |
 | `src/unlink.ts` | Step 3: finishing an unlink, day by day |
 | `src/archive.ts` | Steps 4 and 4b and restore: final days staged and written to `archive/`, dropped from D1 lazily, and back |
 | `src/data.ts` | `GET /data/global/*` from R2, through the edge cache |
 | `migrations/0001_init.sql` | The D1 schema (§3.1) |
+| `migrations/0002_cell_bins.sql` | Bins per cell with their figures (`cell_bins`), and every day marked to be recomputed into them |
 | `wrangler.jsonc` | Bindings, the route, the cron, the local dev address, the tunables |
 | `deploy.sh` | The deploy from a terminal, with its account checks, for when the GAP Devkit (its Tsum Tsum global stats card is the deploy) is not available |
 | `test/` | vitest in workerd (below) |
@@ -74,6 +75,12 @@ of every public figure. After a deploy whose catalog has it, `POST
 `ui/public/data/catalog.json`, push it and deploy (the Devkit card,
 [CLOUDFLARE-SETUP.md](CLOUDFLARE-SETUP.md#5-deploy)) when the script learns a
 new Tsum; no round of it is lost meanwhile.
+
+**After the deploy that adds `0002_cell_bins.sql`**, every day is dirty: the
+hourly runs recompute them into `cell_bins`, eight a run, and publish each
+again in part format 2. Until a day's turn, its part keeps its old bins, which
+the page does not read (its quartiles and histogram are missing there). To
+finish at once, call `POST /api/v1/admin/rollup` until `more` is false.
 
 ## Tests
 

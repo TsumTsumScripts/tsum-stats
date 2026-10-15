@@ -185,6 +185,12 @@ The rail's **Include incomplete rounds** box (`incomplete=1`) keeps them.
 range is base or final coins even in Medals mode, and the medal range only
 judges medal Tsums' rounds, so it does not drop other Tsums' 0-medal rounds.
 
+**Min rounds per Tsum.** The rail's box (`minRounds` in the link) leaves
+Tsums with fewer rounds in the filter out of the Tsum table and the efficiency
+chart, so a Tsum played a handful of times does not top the rankings. It is
+the page's alone: every total, share and other chart still counts their
+rounds.
+
 With coins as the primary stat, the summary also carries `medals`: the same
 totals and per-Tsum figures for medals, over the rounds that earned any. They
 fill the medal KPI tiles and the Tsum table's medal columns, which drop out in
@@ -518,18 +524,31 @@ everyone's rounds, and in the *Midnight Felt* theme until you pick another:
   say UTC.
 - **The quartiles, median and P90 are approximate**, marked ≈. They come from
   bins 2 % wide, so each is within 2 % of the exact figure, and exact under
-  100. Every count, total, average, best and rate is exact. With *Less item
-  costs* (on coins) or an items filter, the spreads and the histogram are not
-  available: the bins are kept per skill level, not per item set.
-- **Filters:** Tsums, game, dates, primary stat and *Less item costs*, as
-  here, plus **skill level** and **items used**. No device, outlier or
-  incomplete-round filters.
+  100. Every count, total, average, best and rate is exact.
+- **Filters:** Tsums, game, dates, primary stat, *Less item costs* and min
+  rounds per Tsum, as here, plus **skill level** and **items used**. No device
+  or incomplete-round filters.
+- **Outliers:** coin and medal ranges, one at a time; no score range. Rounds
+  are kept in their 2 % bins, so a range keeps or leaves out whole bins, by
+  their rounds' average: the rounds, totals, averages and rates of what it
+  keeps are exact for that, the lowest, highest and standard deviation are
+  estimates, and the best score and first and last rounds are those of every
+  round. Only the range's own figure keeps its median and histogram: with a
+  coin range the medal spreads go, and with a medal range the coin ones
+  (except in Medals mode).
 - **Players.** The Tsums table's Players column counts the contributors who
   sent rounds of that Tsum in the last 30 days. Under 3, the row is dimmed and
   marked *few players*.
-- **Not there:** the Rounds table, By hour of day, the Tsum page, Help, and
-  anything about one player's collection. The Catalog lists every Tsum with
-  its global rounds.
+- **The Tsum page** is there, over everyone's rounds of the Tsum: its rank by
+  rate among every Tsum, its share of all rounds and its players, the KPI
+  tiles, consistency and rounds under a target (≈, from the bins), by skill
+  level with its spread chart, per day, the histogram, by items and *Do the
+  items pay?*. Not there: recent form, boxes to the next skill, settings,
+  versions, devices, best rounds and By hour of day. The Catalog links each
+  played Tsum to it.
+- **Not there:** the Rounds table, By hour of day, Help, and anything about
+  one player's collection. The Catalog lists every Tsum with its global
+  rounds.
 
 ## Changing the site
 

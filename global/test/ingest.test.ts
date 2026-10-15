@@ -317,7 +317,7 @@ describe("limits", () => {
       { contributor: only.id, tsum: "brandnewtsum", rounds: 2 },
     ]);
     expect(await rows("SELECT DISTINCT tsum FROM cells")).toEqual([{ tsum: "mickey" }]);
-    expect(await rows("SELECT DISTINCT tsum FROM bins")).toEqual([{ tsum: "mickey" }]);
+    expect(await rows("SELECT DISTINCT tsum FROM cell_bins")).toEqual([{ tsum: "mickey" }]);
     const m = (await (await call("/data/global/manifest.json")).json()) as { rounds: number; tsums: { tsum: string }[]; parts: { file: string }[] };
     expect(m).toMatchObject({ rounds: 2, contributors: 1, tsums: [{ tsum: "mickey", rounds: 2, contributors: 1 }] });
     const part = await (await call("/data/global/" + m.parts[0].file)).text();

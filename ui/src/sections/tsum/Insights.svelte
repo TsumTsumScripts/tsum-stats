@@ -8,7 +8,10 @@
   // detail: the /tsum answer; own: the Tsum's Tsum list row (null when not owned,
   // undefined while loading); entry: its catalog entry; target / setTarget: the
   // rounds-under figure's threshold in the primary stat (null for none).
-  let {detail, own, entry, unit, basis, target, setTarget} = $props();
+  // whose: 'your' rounds, or on the global site 'all' of them; approx: the
+  // median and the rounds under the target are estimates from 2 % bins.
+  let {detail, own, entry, unit, basis, target, setTarget, whose = 'your', approx = false} = $props();
+  const about = $derived(approx ? '≈ ' : '');
 
   const t = $derived(detail.summary.totals);
 
@@ -81,14 +84,14 @@
   <div class="panel kpi">
     <div class="label">Consistency</div>
     <div class="value">{steadiness === null ? '—' : `± ${pct(steadiness)}`}</div>
-    <div class="note">half your rounds land within this of the median, {fmt(t.medianCoins)}</div>
+    <div class="note">half {whose === 'your' ? 'your' : 'the'} rounds land within this of the median, {about}{fmt(t.medianCoins)}</div>
     <label class="target">
       <span>Rounds under</span>
       <input type="number" inputmode="numeric" placeholder={t.medianCoins === null ? 'a target' : fmt(t.medianCoins).replace(/\D/g, '')}
         value={target ?? ''} oninput={onTarget} aria-label="Target {basis}">
       <span>{unit}:</span>
-      <b>{under === null ? '—' : pct(under)}</b>
+      <b>{under === null ? '—' : about + pct(under)}</b>
     </label>
-    {#if detail.target?.rounds}<div class="note">{fmt(detail.target.under)} of {fmt(detail.target.rounds)} rounds</div>{/if}
+    {#if detail.target?.rounds}<div class="note">{about}{fmt(detail.target.under)} of {fmt(detail.target.rounds)} rounds{approx ? ', to the nearest 2 % bin' : ''}</div>{/if}
   </div>
 </div>

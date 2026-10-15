@@ -20,24 +20,28 @@ export const MANIFEST = DATA + "manifest.json";
 /** How long a replaced part stays: past the manifest's max-age, and a reload. */
 const TRASH_GRACE_MS = 15 * 60 * 1000;
 
-// The part's columns, in the cells and bins tables' meanings, camelCased.
+// The part's columns, in the cells and cell_bins tables' meanings, camelCased.
 const camel = (c: string) => c.replace(/_([a-z])/g, (_, x: string) => x.toUpperCase());
 const CELL_COLUMNS = [
   "day", "build", "tsum", "skill", "items", "medal", "rounds", "secs", "score_sum", "score_min", "score_max",
   "first", "last", "base_sum", "base_sq", "base_min", "base_max", "final_sum", "final_sq", "final_min", "final_max",
   "medals_n", "medals_sum", "medals_sq", "medals_min", "medals_max", "medals_secs",
 ];
-const BIN_COLUMNS = ["day", "build", "tsum", "skill", "base", "final", "medals"];
+const BIN_COLUMNS = ["day", "build", "tsum", "skill", "items", "medal", "base", "final", "medals"];
+const BIN_KEY_COLUMNS = 6;
 const arrays = (cols: string[], json: string[] = []) =>
   cols.map(c => `'${camel(c)}', json_group_array(${json.includes(c) ? `json(${c})` : c})`).join(", ");
 
-/** A part's body from the cells rows `cells` and the bins rows `bins` (subqueries). */
-const body = (cells: string, bins: string) => `json_object('kind', 'tsum-global-part', 'format', 1, 'from', ?1, 'to', ?2,
+/**
+ * A part's body from the cells rows `cells` and the cell_bins rows `bins`
+ * (subqueries). Format 2: bins per cell, each bin with its rounds' figures.
+ */
+const body = (cells: string, bins: string) => `json_object('kind', 'tsum-global-part', 'format', 2, 'from', ?1, 'to', ?2,
     'cells', json((SELECT json_object('n', count(*), ${arrays(CELL_COLUMNS)}) FROM ${cells})),
     'bins', json((SELECT json_object('n', count(*), ${arrays(BIN_COLUMNS, ["base", "final", "medals"])}) FROM ${bins})))`;
 
 const CELLS_OF = "(SELECT * FROM cells WHERE day >= ?1 AND day < ?2 ORDER BY day, build, tsum, skill, items, medal)";
-const BINS_OF = "(SELECT * FROM bins WHERE day >= ?1 AND day < ?2 ORDER BY day, build, tsum, skill)";
+const BINS_OF = "(SELECT * FROM cell_bins WHERE day >= ?1 AND day < ?2 ORDER BY day, build, tsum, skill, items, medal)";
 
 /**
  * One part, [?1, ?2): about how long its file is (each row's values written
@@ -47,8 +51,8 @@ const BINS_OF = "(SELECT * FROM bins WHERE day >= ?1 AND day < ?2 ORDER BY day, 
  */
 export const RENDER = `WITH c AS (SELECT count(*) AS n, coalesce(sum(length(json_array(${CELL_COLUMNS.join(", ")}))), 0) AS est,
       coalesce(sum(rounds), 0) AS rounds, min(first) AS first, max(last) AS last FROM cells WHERE day >= ?1 AND day < ?2),
-    b AS (SELECT count(*) AS n, coalesce(sum(length(json_array(${BIN_COLUMNS.slice(0, 4).join(", ")})) + length(base) + length(final) + length(medals)), 0) AS est
-      FROM bins WHERE day >= ?1 AND day < ?2),
+    b AS (SELECT count(*) AS n, coalesce(sum(length(json_array(${BIN_COLUMNS.slice(0, BIN_KEY_COLUMNS).join(", ")})) + length(base) + length(final) + length(medals)), 0) AS est
+      FROM cell_bins WHERE day >= ?1 AND day < ?2),
     t AS MATERIALIZED (SELECT tsum, skill, sum(rounds) AS n FROM cells WHERE day >= ?1 AND day < ?2 GROUP BY tsum, skill)
   SELECT est, cells, bins, rounds, summary, CASE WHEN est <= ?3 THEN ${body(CELLS_OF, BINS_OF)} END AS body FROM (
     SELECT 600 + c.est + b.est AS est, c.n AS cells, b.n AS bins, c.rounds AS rounds,
@@ -60,7 +64,7 @@ export const RENDER = `WITH c AS (SELECT count(*) AS n, coalesce(sum(length(json
 /** File ?3 of a part too long for one: the ?4 cells rows and ?5 bins rows from the ?3-th share on, and its rounds. */
 const RENDER_SHARE = `SELECT ${body(
   "(SELECT * FROM (SELECT * FROM cells WHERE day >= ?1 AND day < ?2 ORDER BY day, build, tsum, skill, items, medal LIMIT ?4 OFFSET ?3 * ?4))",
-  "(SELECT * FROM (SELECT * FROM bins WHERE day >= ?1 AND day < ?2 ORDER BY day, build, tsum, skill LIMIT ?5 OFFSET ?3 * ?5))",
+  "(SELECT * FROM (SELECT * FROM cell_bins WHERE day >= ?1 AND day < ?2 ORDER BY day, build, tsum, skill, items, medal LIMIT ?5 OFFSET ?3 * ?5))",
 )} AS body, (SELECT coalesce(sum(rounds), 0) FROM (SELECT rounds FROM cells WHERE day >= ?1 AND day < ?2
     ORDER BY day, build, tsum, skill, items, medal LIMIT ?4 OFFSET ?3 * ?4)) AS rounds`;
 

@@ -60,12 +60,10 @@ const ROUNDS = Array.from({length: 6000}, makeRound).sort((a, b) => a.playedAt -
 
 const bin = v => (v < 100 ? v : 100 + Math.floor(Math.log(v / 100) / Math.log(1.02)));
 const mid = b => (b < 100 ? b : Math.round(100 * 1.02 ** (b - 99.5)));
-/** What the bins give for an exact value v of a group from lo to hi: its bin's middle, kept within them. */
-const approx = (v, lo, hi) => Math.min(hi, Math.max(lo, mid(bin(v))));
 const dayOf = at => sqlTime(at).slice(0, 10);
 const sha8 = s => createHash('sha256').update(s).digest('hex').slice(0, 8);
 
-/** One part: the cells and bins of the rounds in [from, to). */
+/** One part: the cells and their bins (format 2) of the rounds in [from, to). */
 function partOf(from, to, rounds) {
   const cells = new Map(), bins = new Map();
   for (const r of rounds) {
@@ -89,10 +87,12 @@ function partOf(from, to, rounds) {
       c.medalsN++; c.medalsSum += r.medals; c.medalsSq += r.medals * r.medals; c.medalsSecs += r.duration;
       c.medalsMin = lo(c.medalsMin, r.medals); c.medalsMax = hi(c.medalsMax, r.medals);
     }
-    const bk = [day, r.build, r.tsum, r.skill].join('|');
-    if (!bins.has(bk)) bins.set(bk, {day, build: r.build, tsum: r.tsum, skill: r.skill, base: {}, final: {}, medals: {}});
-    const b = bins.get(bk);
-    const into = (o, v) => { o[bin(v)] = (o[bin(v)] ?? 0) + 1; };
+    if (!bins.has(ck)) bins.set(ck, {day, build: r.build, tsum: r.tsum, skill: r.skill, items: r.items, medal, base: {}, final: {}, medals: {}});
+    const b = bins.get(ck);
+    const into = (o, v) => {
+      const f = (o[bin(v)] ??= [0, 0, 0, 0, 0, 0]);
+      f[0]++; f[1] += r.duration; f[2] += r.score; f[3] += r.base; f[4] += r.final; f[5] += r.medals ?? 0;
+    };
     into(b.base, r.base);
     into(b.final, r.final);
     if (r.medals > 0) into(b.medals, r.medals);
@@ -101,9 +101,9 @@ function partOf(from, to, rounds) {
   const columns = (rows, keys) => ({n: rows.length, ...Object.fromEntries(keys.map(k => [k, rows.map(row => row[k]).reverse()]))});
   const cellRows = [...cells.values()];
   return {
-    kind: 'tsum-global-part', format: 1, from, to,
+    kind: 'tsum-global-part', format: 2, from, to,
     cells: columns(cellRows, Object.keys(cellRows[0])),
-    bins: columns([...bins.values()], ['day', 'build', 'tsum', 'skill', 'base', 'final', 'medals']),
+    bins: columns([...bins.values()], ['day', 'build', 'tsum', 'skill', 'items', 'medal', 'base', 'final', 'medals']),
   };
 }
 
@@ -212,9 +212,41 @@ function keepRound(r, q) {
   return true;
 }
 
+/** A round's cell (CONTRACT §3.1): its start day, build, Tsum, skill level, items and whether it earned medals. */
+const cellKey = r => [dayOf(r.playedAt), r.build, r.tsum, r.skill, r.items, r.medals > 0 ? 1 : 0].join('|');
+
+/**
+ * The rounds an outlier range keeps (CONTRACT §6.2): those of each cell's bins
+ * whose rounds' average (less the items' cost, for net coins) is in the
+ * range. The medal range judges only the Tsums that earn medals.
+ */
+function cutRounds(rounds, q) {
+  const n = k => (q[k] === undefined || q[k] === '' ? null : Number(q[k]));
+  const coins = n('minCoins') !== null || n('maxCoins') !== null;
+  const medals = !coins && (n('minMedals') !== null || n('maxMedals') !== null);
+  if (!coins && !medals) return rounds;
+  const [lo, hi] = coins ? [n('minCoins'), n('maxCoins')] : [n('minMedals'), n('maxMedals')];
+  const net = coins && q.net === '1';
+  const own = r => (medals ? r.medals : q.coins === 'final' ? r.final : r.base);
+  const inside = v => (lo === null || v >= lo) && (hi === null || v <= hi);
+  const groups = new Map();
+  for (const r of rounds) {
+    if (medals && (!MEDAL_TSUMS.has(r.tsum) || !(r.medals > 0))) continue;
+    const k = `${cellKey(r)}|${bin(own(r))}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  const keep = new Set();
+  for (const g of groups.values()) {
+    const cost = net ? itemCost(g[0].items < 0 ? null : g[0].items) : 0;
+    if (cost !== null && inside(g.reduce((s, r) => s + own(r), 0) / g.length - cost)) for (const r of g) keep.add(r);
+  }
+  return rounds.filter(r => keep.has(r) || (medals && (!MEDAL_TSUMS.has(r.tsum) || (!(r.medals > 0) && inside(0)))));
+}
+
 /** The summary a brute force over the rounds gives: the snapshot engine's, with the spreads exact. */
 async function expected(rounds, q) {
-  const kept = rounds.filter(r => keepRound(r, q));
+  const kept = cutRounds(rounds.filter(r => keepRound(r, q)), q);
   return snapshotOf(kept).call('summary', {coins: q.coins ?? '', net: q.net ?? ''});
 }
 
@@ -242,8 +274,7 @@ function normalize(v) {
 /**
  * The differences between want (the brute force) and got (the engine). Numbers
  * are equal to 1e-9 relative, as sums are added in another order. A spread
- * figure is the middle of the exact one's bin, kept within the group's lowest
- * and highest: so within 2 % of it, and exact under 100. With spreads off it is null.
+ * figure is checked by spreadDiff; with spreads off it is null.
  */
 function diff(want, got, spreads, path = '') {
   if (typeof want === 'number' && typeof got === 'number') {
@@ -256,61 +287,122 @@ function diff(want, got, spreads, path = '') {
   if (Array.isArray(want) && want.length !== got.length) return [`${path}: want ${want.length} entries, got ${got.length}`];
   const out = [];
   for (const k of new Set([...Object.keys(want), ...Object.keys(got)])) {
-    if (SPREADS.has(k)) out.push(...spreadDiff(want[k], got[k], want, spreads, `${path}.${k}`));
+    if (k === 'net' || k === 'binned') continue; // markBinned's notes
+    if (SPREADS.has(k) && typeof want[k] !== 'string') out.push(...spreadDiff(want[k], got[k], want, spreads, `${path}.${k}`));
     else out.push(...diff(want[k], got[k], spreads, `${path}.${k}`));
   }
   return out;
 }
 
-/** One spread figure: got against the exact want of the group g (a totals or Tsum row). */
+/**
+ * One spread figure: got against the exact want of the group g (a totals or
+ * Tsum row), and against what the bins give (g.binned, from binnedSpreads).
+ * Within 2 % of the exact one, exact under 100; net coins, whose bins of
+ * different item costs overlap, within two bins of their coins before the cost.
+ */
 function spreadDiff(want, got, g, spreads, path) {
   if (!spreads || want === null) return got === null ? [] : [`${path}: want null, got ${got}`];
-  const close = want < 100 ? got === want : Math.abs(got - want) <= 0.02 * Math.abs(want);
-  return close && got === approx(want, g.minCoins, g.maxCoins) ? [] : [`${path}: exact ${want}, want ${approx(want, g.minCoins, g.maxCoins)}, got ${got}`];
-}
-
-/** The value a case's primary stat takes for a round (null when it has none). */
-function statOf(r, q) {
-  if (q.coins === 'medals') return r.medals;
-  const v = q.coins === 'final' ? r.final : r.base;
-  if (q.net !== '1') return v;
-  const cost = itemCost(r.items < 0 ? null : r.items);
-  return cost === null ? null : v - cost;
+  const key = path.split('.').at(-1);
+  // A net figure's bin is 2 % of its coins before the cost (at most 7,000), and bins of different costs overlap.
+  const close = Math.abs(want) < 100 && !g.net ? got === want : Math.abs(got - want) <= 0.02 * (g.net ? 2 * (Math.abs(want) + 7000) : Math.abs(want));
+  const binned = g.binned?.[key];
+  return close && (binned === undefined || Math.abs(got - binned) < 1e-9 * Math.max(1, Math.abs(got)))
+    ? [] : [`${path}: exact ${want}, binned ${binned}, got ${got}`];
 }
 
 /**
- * The histogram the bins give, worked out from the raw rounds: each round's
- * bin middle, kept within its Tsum's exact lowest and highest, bucketed on the
- * engine's bounds.
+ * The spreads the bins give for some rounds: a bin's rounds of each item cost
+ * at their average (less the cost), in that order, the lower nearest rank's,
+ * kept within lo and hi. valueOf gives a round's stat before any cost, costOf its cost.
+ */
+function binnedSpreads(rounds, valueOf, costOf, lo, hi) {
+  const groups = new Map();
+  for (const r of rounds) {
+    const v = valueOf(r), cost = costOf(r);
+    if (v === null || cost === null) continue;
+    const k = `${cellKey(r)}|${bin(v)}`;
+    if (!groups.has(k)) groups.set(k, {bin: bin(v), cost, n: 0, sum: 0});
+    const g = groups.get(k);
+    g.n++; g.sum += v;
+  }
+  const merged = new Map();
+  for (const g of groups.values()) {
+    const k = `${g.bin}|${g.cost}`;
+    const m = merged.get(k) ?? {n: 0, sum: 0, cost: g.cost};
+    m.n += g.n; m.sum += g.sum;
+    merged.set(k, m);
+  }
+  const pairs = [...merged.values()].map(m => [m.sum / m.n - m.cost, m.n]).sort((a, b) => a[0] - b[0]);
+  const n = pairs.reduce((s, [, k]) => s + k, 0);
+  const at = (num, den) => {
+    const rank = Math.floor(((n - 1) * num) / den);
+    let seen = 0;
+    for (const [v, k] of pairs) if ((seen += k) > rank) return Math.min(hi, Math.max(lo, v));
+    return hi;
+  };
+  return n ? {q1Coins: at(1, 4), medianCoins: at(1, 2), q3Coins: at(3, 4), p90Coins: at(9, 10)} : null;
+}
+
+/** A round's stat before any items' cost, and the cost (0 unless net; null when its items are unknown). */
+const grossOf = (r, q) => (q.coins === 'medals' ? r.medals : q.coins === 'final' ? r.final : r.base);
+const costOf = (r, q) => (q.coins !== 'medals' && q.net === '1' ? itemCost(r.items < 0 ? null : r.items) : 0);
+
+/**
+ * The histogram the bins give, worked out from the raw rounds: each bin's
+ * rounds of one item cost at their average, kept within its Tsum's lowest and
+ * highest, bucketed on the engine's bounds.
  */
 function expectedHistogram(rounds, q, got) {
   const bounds = histBounds(got.totals);
   if (!bounds) return {width: 0, cap: null, bins: []};
   const range = new Map(got.tsums.map(t => [t.tsum, t]));
+  const groups = new Map();
+  for (const r of cutRounds(rounds.filter(r => keepRound(r, q)), q)) {
+    const v = grossOf(r, q), cost = costOf(r, q);
+    if (v === null || cost === null || (q.coins === 'medals' && !(v > 0))) continue;
+    const k = `${r.tsum}|${bin(v)}|${cost}`;
+    if (!groups.has(k)) groups.set(k, {tsum: r.tsum, cost, n: 0, sum: 0});
+    const g = groups.get(k);
+    g.n++; g.sum += v;
+  }
   const buckets = new Map();
-  for (const r of rounds) {
-    if (!keepRound(r, q)) continue;
-    const v = statOf(r, q);
-    if (v === null || (q.coins === 'medals' && !(v > 0))) continue;
-    const t = range.get(r.tsum);
-    const from = bucketOf(approx(v, t.minCoins, t.maxCoins), bounds);
-    const key = `${from}|${r.tsum}`;
-    if (!buckets.has(key)) buckets.set(key, {from, tsum: r.tsum, rounds: 0});
-    buckets.get(key).rounds++;
+  for (const g of groups.values()) {
+    const t = range.get(g.tsum);
+    const from = bucketOf(Math.min(t.maxCoins, Math.max(t.minCoins, g.sum / g.n - g.cost)), bounds);
+    const key = `${from}|${g.tsum}`;
+    if (!buckets.has(key)) buckets.set(key, {from, tsum: g.tsum, rounds: 0});
+    buckets.get(key).rounds += g.n;
   }
   return {width: bounds.width, cap: got.totals.maxCoins >= bounds.limit ? bounds.limit : null, bins: [...buckets.values()].sort(by('from', 'tsum'))};
 }
 
 const {files, manifest} = publish(ROUNDS);
 
+/** Each group of want (totals and Tsums, of the primary stat and of the medal set) told what its bins give. */
+function markBinned(want, q) {
+  const kept = cutRounds(ROUNDS.filter(r => keepRound(r, q)), q);
+  const mark = (set, rounds, valueOf, cost, net) => {
+    const of = rs => binnedSpreads(rs, valueOf, cost, -Infinity, Infinity);
+    Object.assign(set.totals, {net, binned: clampTo(of(rounds), set.totals)});
+    for (const t of set.tsums) Object.assign(t, {net, binned: clampTo(of(rounds.filter(r => r.tsum === t.tsum)), t)});
+  };
+  const clampTo = (s, g) => s && Object.fromEntries(Object.entries(s).map(([k, v]) => [k, Math.min(g.maxCoins, Math.max(g.minCoins, v))]));
+  const primary = q.coins === 'medals' ? kept.filter(r => r.medals > 0) : kept;
+  mark(want, primary, r => grossOf(r, q), r => costOf(r, q), q.net === '1' && q.coins !== 'medals');
+  mark(want.medals, kept.filter(r => r.medals > 0), r => r.medals, () => 0, false);
+}
+/** markBinned's notes, taken out again. */
+const unmark = set => [set.totals, ...set.tsums].forEach(g => { delete g.net; delete g.binned; });
+
 /**
  * Checks one filter's summary against the brute force; returns what the engine
  * answered. spreads: the primary stat has them; medalSpreads: the medal figures do.
+ * cut: an outlier range is set, so the lowest, highest, spread and score extremes are about.
  */
-async function check(engine, q, {spreads = true, medalSpreads = spreads} = {}) {
+async function check(engine, q, {spreads = true, medalSpreads = spreads, range = null, ignored = [], cut = false} = {}) {
   const got = await engine.call('summary', q);
   const want = await expected(ROUNDS, q);
-  assert.deepEqual(got.global, {approx: true, spreads}, 'global note');
+  assert.deepEqual(got.global, {approx: true, spreads, range, ignored}, 'global note');
   assert.deepEqual(got.hours, [], 'hours');
   // The server's orders, before the open ties are fixed.
   for (const list of [got.tsums, got.medals.tsums, got.mix]) {
@@ -320,21 +412,44 @@ async function check(engine, q, {spreads = true, medalSpreads = spreads} = {}) {
   assert.ok(got.histogram.bins.every((b, i) => !i || got.histogram.bins[i - 1].from <= b.from), 'buckets in order');
 
   const {global, hours, histogram, ...rest} = got;
-  const [w, g] = [normalize({...want, hours: undefined, histogram: undefined}), normalize({...rest, hours: undefined, histogram: undefined})];
+  const [w, g] = [normalize({...want, hours: undefined, histogram: undefined}), normalize(structuredClone({...rest, hours: undefined, histogram: undefined}))];
+  if (cut) { aboutOnly(w, spreads, medalSpreads); aboutOnly(g); }
+  else markBinned(w, q);
   const problems = [...diff({...w, medals: undefined}, {...g, medals: undefined}, spreads), ...diff(w.medals, g.medals, medalSpreads, '.medals')];
+  if (!cut) { unmark(w); unmark(w.medals); }
   assert.deepEqual(problems.slice(0, 10), [], `${JSON.stringify(q)}: ${problems.length} differences`);
 
   if (!spreads) {
     assert.deepEqual(histogram, {width: 0, cap: null, bins: []}, 'no histogram without spreads');
+  } else if (cut) {
+    assert.equal(histogram.bins.reduce((n, b) => n + b.rounds, 0), want.totals.coinRounds, 'histogram rounds');
   } else {
     assert.deepEqual({...histogram, bins: [...histogram.bins].sort(by('from', 'tsum'))}, expectedHistogram(ROUNDS, q, got), 'histogram');
-    // Every round with the stat is in it, once.
+    // Every round with the stat (net coins: whose items are known) is in it, once.
     for (const t of got.tsums) {
       const n = histogram.bins.filter(b => b.tsum === t.tsum).reduce((s, b) => s + b.rounds, 0);
-      assert.equal(n, q.coins === 'medals' ? t.rounds : want.tsums.find(w => w.tsum === t.tsum).rounds, `histogram rounds of ${t.tsum}`);
+      const has = ROUNDS.filter(r => r.tsum === t.tsum && keepRound(r, q) && grossOf(r, q) !== null && costOf(r, q) !== null);
+      assert.equal(n, q.coins === 'medals' ? t.rounds : has.length, `histogram rounds of ${t.tsum}`);
     }
   }
   return got;
+}
+
+/**
+ * Under an outlier range, the figures a cut cell keeps only about (CONTRACT
+ * §6.2) are taken out, and the spreads too, leaving whether there are any:
+ * the rest must match exactly. primary and medals: whether the brute force's
+ * spreads should be there (the engine's are left as they are).
+ */
+function aboutOnly(v, primary = true, medals = true) {
+  const sets = [[[v.totals, ...v.tsums, ...v.daily], primary], [[v.medals.totals, ...v.medals.tsums], medals]];
+  for (const [rows, on] of sets) {
+    for (const r of rows) {
+      for (const k of ['minCoins', 'maxCoins', 'stdCoins', 'maxScore', 'minScore', 'first', 'last', ...SPREADS]) {
+        if (k in r) r[k] = SPREADS.has(k) ? (r[k] === null || !on ? null : 'some') : 'about';
+      }
+    }
+  }
 }
 
 // ---- The cases ----
@@ -374,19 +489,52 @@ test('summary matches the brute force over every filter', async t => {
   for (const q of cases) await t.test(JSON.stringify(q), () => check(engine, q));
 });
 
-test('net coins and an items filter have exact figures but no spreads', async t => {
+test('net coins and an items filter have their spreads too: the bins are kept per item set', async t => {
   const engine = createGlobalEngine(loaderOf(files));
-  // Net coins have none; the medal figures (never net) keep theirs. An items filter leaves out both.
   const cases = [
-    [{net: '1'}, true],
-    [{net: '1', coins: 'final', build: 'jp'}, true],
-    [{net: '1', tsum: 'tiny'}, true],
-    [{items: '7'}, false],
-    [{items: '-1,0', coins: 'final'}, false],
-    [{items: '65', coins: 'medals'}, false],
-    [{items: '1,5', net: '1', skill: '2,3', from: '2026-09-15T00:00:00Z'}, false],
+    {net: '1'},
+    {net: '1', coins: 'final', build: 'jp'},
+    {net: '1', tsum: 'tiny'},
+    {items: '7'},
+    {items: '-1,0', coins: 'final'},
+    {items: '65', coins: 'medals'},
+    {items: '1,5', net: '1', skill: '2,3', from: '2026-09-15T00:00:00Z'},
   ];
-  for (const [q, medalSpreads] of cases) await t.test(JSON.stringify(q), () => check(engine, q, {spreads: false, medalSpreads}));
+  for (const q of cases) await t.test(JSON.stringify(q), () => check(engine, q));
+});
+
+test('an outlier range keeps whole bins: exact sums, the range\'s own spreads', async t => {
+  const engine = createGlobalEngine(loaderOf(files));
+  // [query, the range applied, the primary stat keeps its spreads, the medal figures do]
+  const cases = [
+    [{minCoins: '1500', maxCoins: '4000'}, 'base', true, false],
+    [{maxCoins: '2500', tsum: 'mickey,beastda'}, 'base', true, false],
+    [{minCoins: '3000', coins: 'final', build: 'jp'}, 'final', true, false],
+    [{minCoins: '1000', maxCoins: '3000', net: '1'}, 'base', true, false],
+    [{maxCoins: '60', tsum: 'tiny'}, 'base', true, false],
+    [{minCoins: '2000', coins: 'medals'}, 'base', false, false],
+    [{minMedals: '50', maxMedals: '300'}, 'medals', false, true],
+    [{minMedals: '100', coins: 'medals', skill: '2,3'}, 'medals', true, true],
+    [{maxMedals: '200', items: '0,7'}, 'medals', false, true],
+    [{minMedals: '0', maxMedals: '80', tsum: 'stitch'}, 'medals', false, true],
+    // Nothing is in it.
+    [{minCoins: '900000'}, 'base', true, false],
+  ];
+  for (const [q, range, spreads, medalSpreads] of cases) {
+    await t.test(JSON.stringify(q), () => check(engine, q, {spreads, medalSpreads, range, cut: true}));
+  }
+  await t.test('both ranges: the coins\' is applied, the medals\' left out', () =>
+    check(engine, {minCoins: '1500', minMedals: '100'}, {spreads: true, medalSpreads: false, range: 'base', ignored: ['medals'], cut: true}));
+});
+
+test('a range on one round: its bin is kept or left out whole', async () => {
+  const solo = {...ROUNDS[0], tsum: 'solo', base: 12345, final: 23456, medals: null, playedAt: day0 + 3600};
+  const engine = createGlobalEngine(loaderOf(publish([solo, ...ROUNDS]).files));
+  for (const [q, rounds] of [[{minCoins: '12345'}, 1], [{maxCoins: '12345'}, 1], [{minCoins: '12346'}, 0], [{maxCoins: '12344'}, 0]]) {
+    const s = await engine.call('summary', {...q, tsum: 'solo'});
+    assert.equal(s.totals.rounds, rounds, JSON.stringify(q));
+    if (rounds) assert.deepEqual([s.totals.minCoins, s.totals.maxCoins, s.totals.medianCoins], [12345, 12345, 12345]);
+  }
 });
 
 test('a Tsum with one round has its spreads exact', async () => {
@@ -414,7 +562,7 @@ test('an empty filter gives the empty summary', async t => {
   const engine = createGlobalEngine(loaderOf(files));
   for (const q of [{tsum: 'nobody'}, {from: '2027-01-01T00:00:00Z'}, {to: '2026-08-01T00:00:00Z'}, {skill: '9'}, {items: '2', coins: 'medals'}]) {
     await t.test(JSON.stringify(q), async () => {
-      const got = await check(engine, q, {spreads: !q.items});
+      const got = await check(engine, q);
       assert.equal(got.totals.rounds, 0);
       assert.equal(got.totals.avgCoins, null);
       assert.equal(got.totals.first, null);
@@ -426,7 +574,7 @@ test('an empty filter gives the empty summary', async t => {
 test('ignored parameters change nothing', async () => {
   const engine = createGlobalEngine(loaderOf(files));
   const plain = await engine.call('summary', {coins: 'final'});
-  const noisy = await engine.call('summary', {coins: 'final', device: 'Phone', minCoins: '4000', maxScore: '1', incomplete: '1', tz: '540'});
+  const noisy = await engine.call('summary', {coins: 'final', device: 'Phone', minScore: '4000', maxScore: '1', incomplete: '1', tz: '540'});
   assert.deepEqual(noisy, plain);
 });
 
@@ -502,7 +650,37 @@ test('the other routes', async () => {
   assert.deepEqual((await engine.call('themes')).map(t => t.file), ['halloween.css', 'midnight-felt.css', 'daylight-felt.css', 'ember.css']);
   for (const route of ['devices', 'round-devices', 'owned-sources']) assert.deepEqual(await engine.call(route), []);
   assert.deepEqual(await engine.call('owned', {build: 'jp'}), {list: null});
-  for (const route of ['rounds', 'tsum', 'publish']) {
+  for (const route of ['rounds', 'publish']) {
     await assert.rejects(engine.call(route, {id: 'mickey'}), /not available on the global site/);
   }
+});
+
+test('the Tsum page: its figures, its rank, by skill level', async () => {
+  const engine = createGlobalEngine(loaderOf(files));
+  const q = {id: 'mickey', coins: 'final', from: '2026-09-01T00:00:00Z', target: '3000'};
+  const d = await engine.call('tsum', q);
+  assert.deepEqual(d.summary, await engine.call('summary', {...q, tsum: 'mickey'}));
+  const rs = ROUNDS.filter(r => r.tsum === 'mickey' && keepRound(r, {from: q.from}));
+  // By skill level: exact, the unknown level left out.
+  const levels = [...new Set(rs.map(r => r.skill))].filter(s => s >= 0).sort();
+  assert.deepEqual(d.settings.map(s => [s.setting, s.key, s.rounds]),
+    levels.map(s => ['skillLevel', String(s), rs.filter(r => r.skill === s).length]));
+  const lvl = d.settings[0], at = rs.filter(r => r.skill === Number(lvl.key));
+  assert.ok(Math.abs(lvl.avgCoins - at.reduce((n, r) => n + r.final, 0) / at.length) < 1e-9);
+  assert.deepEqual([d.versions, d.devices, d.form], [[], [], []]);
+  // Every Tsum's rate in the same filter.
+  const field = new Map(d.field.map(t => [t.tsum, t]));
+  for (const t of Object.keys(TSUMS)) {
+    const ts = ROUNDS.filter(r => r.tsum === t && keepRound(r, {from: q.from}));
+    assert.equal(field.get(t).rounds, ts.length, t);
+    assert.ok(Math.abs(field.get(t).coinsPerSec - ts.reduce((n, r) => n + r.final, 0) / ts.reduce((n, r) => n + r.duration, 0)) < 1e-9, t);
+  }
+  // The skill levels' buckets add up to the rounds of known levels; the rounds under the target are about right.
+  assert.equal(d.skillBins.reduce((n, b) => n + b.rounds, 0), rs.filter(r => r.skill >= 0).length);
+  assert.equal(d.target.rounds, rs.length);
+  const under = rs.filter(r => r.final < 3000).length;
+  assert.ok(Math.abs(d.target.under - under) <= 0.05 * rs.length, `under ${d.target.under}, exactly ${under}`);
+  const all = ROUNDS.filter(r => keepRound(r, {from: q.from}));
+  assert.ok(Math.abs(d.earn.medalsPerSec - all.reduce((n, r) => n + (r.medals ?? 0), 0) / all.reduce((n, r) => n + r.duration, 0)) < 1e-9);
+  await assert.rejects(engine.call('tsum', {}), /id is required/);
 });

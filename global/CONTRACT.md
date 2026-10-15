@@ -92,7 +92,7 @@ record as sent; only a change to the record sends it again.
 at deploy. A well-formed id it does not have (a Tsum newer than the deploy)
 is **accepted**: stored, archived, counted in `contrib_cells`, `recent` and
 the contributor's counters, but left out of every public table and file
-(`cells`, `bins`, the parts, the manifest) until a deploy's catalog has it.
+(`cells`, `cell_bins`, the parts, the manifest) until a deploy's catalog has it.
 Then `POST /api/v1/admin/rebuild` brings in its days still in D1 (an archived
 day needs `restore` first). Its medals may be null: `incomplete` applies the
 medals rule only to the catalog's `medal: true` Tsums.
@@ -220,7 +220,7 @@ again), its quota (`429 quota`, on accepted rows) and today's budget
 - `rounds`: inserts, and this contributor's changed rows (one statement; the
   settings ids are looked up as one map for the batch's hashes);
 - `pending`: one row for the batch's newly inserted rounds, added up as the
-  day tables keep them (`ingest.ts: aggregate`): their `cells` and `bins`
+  day tables keep them (`ingest.ts: aggregate`): their `cells` and `cell_bins`
   rows (the catalog's Tsums only), their `contrib_cells` rows by device,
   their start days, and `{tsum: the newest of those days}`. The hourly job
   adds these in (§3.2, step 1a) without reading `rounds`;
@@ -377,7 +377,7 @@ Budget rows older than 7 days are deleted at the first run after 00:00 UTC.
 
 ## 3. Storage
 
-### 3.1 D1 schema (`global/migrations/0001_init.sql`)
+### 3.1 D1 schema (`global/migrations/0001_init.sql`, `0002_cell_bins.sql`)
 
 ```sql
 CREATE TABLE contributors (
@@ -436,7 +436,8 @@ CREATE TABLE pending (
   days TEXT NOT NULL,                    -- the start days they fall on
   tsums TEXT NOT NULL,                   -- {tsum: the newest of those days with a round of it}
   cells TEXT NOT NULL,                   -- the cells rows they add to (the catalog's Tsums only)
-  bins TEXT NOT NULL,                    -- the bins rows they add to: [day, build, tsum, skill, {base}, {final}, {medals}]
+  bins TEXT NOT NULL,                    -- '[]': the per-skill bins of before 0002, no longer written
+  cell_bins TEXT NOT NULL DEFAULT '[]',  -- the cell_bins rows they add to: [day, build, tsum, skill, items, medal, {base}, {final}, {medals}]
   cc TEXT NOT NULL                       -- [day, build, tsum, device, rounds, secs, base, final, medals]
 );
 
@@ -467,7 +468,17 @@ CREATE TABLE cells (
   PRIMARY KEY (day, build, tsum, skill, items, medal)
 ) WITHOUT ROWID;
 
--- Public: histogram bins per day × build × Tsum × skill, each a JSON object {"<bin>": rounds}.
+-- Public: one row per cells row (its key), each a JSON object {"<bin>": [rounds, secs, score, base, final, medals]}
+-- (migrations/0002_cell_bins.sql).
+CREATE TABLE cell_bins (
+  day TEXT NOT NULL, build INTEGER NOT NULL, tsum TEXT NOT NULL, skill INTEGER NOT NULL,
+  items INTEGER NOT NULL, medal INTEGER NOT NULL,
+  base TEXT NOT NULL, final TEXT NOT NULL, medals TEXT NOT NULL,  -- medals: {} unless medal = 1
+  PRIMARY KEY (day, build, tsum, skill, items, medal)
+) WITHOUT ROWID;
+
+-- Before 0002: histogram bins per day × build × Tsum × skill, {"<bin>": rounds}. Kept, no longer
+-- written or read, so a Worker rolled back to before 0002 still finds it.
 CREATE TABLE bins (
   day TEXT NOT NULL, build INTEGER NOT NULL, tsum TEXT NOT NULL, skill INTEGER NOT NULL,
   base TEXT NOT NULL, final TEXT NOT NULL, medals TEXT NOT NULL,  -- medals: rounds with medals > 0
@@ -503,10 +514,19 @@ A cell's figures are over its rounds: `secs` their durations; `score_*`,
 `base_*`, `final_*` every round's (`*_sq` is the exact integer sum of squares,
 kept as REAL). The `medals_*` columns are over the rounds whose medals were
 read (not null): `medals_n` counts them, `medals_secs` adds their durations.
-A `bins` object's keys are bin numbers (§5) as text, in any order; `medals`
-is `{}` when no round earned any. `cells` and `bins` hold the catalog's Tsums
+A `cell_bins` row holds the bins of the same cell's rounds: each of its
+rounds counted in the bin of its base coins, of its final coins and, when it
+earned any, of its medals. An object's keys are bin numbers (§5) as text, in
+any order; each value is that bin's figures (§5). `medals` is `{}` in a
+`medal = 0` row. `cells` and `cell_bins` hold the catalog's Tsums
 only (§1.2); `contrib_cells` every Tsum. The day tables are kept for good,
 archived days' too.
+
+`0002_cell_bins.sql` adds `cell_bins` and `pending.cell_bins`, and marks
+every day with cells or waiting uploads dirty, so the next runs recompute
+each one into `cell_bins` and publish it again in part format 2. A day whose
+rounds have left D1 (`dropped_through`) cannot be recomputed, and keeps no
+bins (none had when it was added).
 
 `rounds` has no secondary index on purpose: one row written per round. Every
 scan of `rounds` is a key range (§1.1); none reads it by contributor.
@@ -533,12 +553,12 @@ still run; the next run tries it again.
 
 The steps:
 
-1. **The day tables** (`cells`, `bins`, `contrib_cells`):
+1. **The day tables** (`cells`, `cell_bins`, `contrib_cells`):
    1. **Fold** the `pending` sums in, oldest upload first, up to 25,000 rounds
       a run, in one batch. Who a round counts for is decided by its
       contributor's status at fold time: a banned one's (`banned`,
       `unlinking-banned`, or gone as `gone:<id>` = `"banned"`) stay out of
-      `cells` and `bins`; those of contributor 0 or of one `unlinking`,
+      `cells` and `cell_bins`; those of contributor 0 or of one `unlinking`,
       `unlinking-banned` or no longer there stay out of `contrib_cells`,
       `span:<id>` and `recent`. Bins objects are merged per upload without a
       sort; a `contrib_cells` row's `device_set` is merged only when a new
@@ -549,7 +569,7 @@ The steps:
       `ROLLUP_DAYS_PER_RUN` (8), within the run's queries and
       `READ_BUDGET_PER_DAY`. Only a ban, an unban, a changed round, a merge, a
       rebuild or a restore makes a day dirty. Over the day's key range (§1.1):
-      `cells` and `bins` from rounds of the catalog's Tsums whose contributor
+      `cells` and `cell_bins` from rounds of the catalog's Tsums whose contributor
       is not `banned`/`unlinking-banned`; `contrib_cells` from every round
       **except contributor 0's and those of contributors being unlinked**,
       with `devices` = distinct device hashes (`device_set`). It upserts only
@@ -690,30 +710,33 @@ into it; 0 for a contributor being unlinked or no longer there; never for one
 ### 4.2 Part files
 
 One day (`day-…`) or one month (`month-…`), columnar like the snapshot's
-month files:
+month files. Format 2 (since `0002_cell_bins.sql`) has bins per cell, each
+with its figures; format 1 had bins per day × build × Tsum × skill, counts
+only, and the page reads a format 1 part's cells but none of its bins:
 
 ```json
 {
-  "kind": "tsum-global-part", "format": 1, "from": "2026-10-14", "to": "2026-10-15",
+  "kind": "tsum-global-part", "format": 2, "from": "2026-10-14", "to": "2026-10-15",
   "cells": {"n": 2, "day": ["2026-10-14", "…"], "build": [0, 1], "tsum": ["beastda", "…"], "skill": [5, -1],
             "items": [7, -1], "medal": [0, 1], "rounds": [], "secs": [], "scoreSum": [], "scoreMin": [], "scoreMax": [],
             "first": [], "last": [], "baseSum": [], "baseSq": [], "baseMin": [], "baseMax": [],
             "finalSum": [], "finalSq": [], "finalMin": [], "finalMax": [],
             "medalsN": [], "medalsSum": [], "medalsSq": [], "medalsMin": [], "medalsMax": [], "medalsSecs": []},
-  "bins": {"n": 1, "day": ["2026-10-14"], "build": [0], "tsum": ["beastda"], "skill": [5],
-           "base": [{"231": 4, "232": 9}], "final": [{"…": 1}], "medals": [{}]}
+  "bins": {"n": 1, "day": ["2026-10-14"], "build": [0], "tsum": ["beastda"], "skill": [5], "items": [7], "medal": [0],
+           "base": [{"231": [4, 726.5, 48020000, 3801, 5702, 0]}], "final": [{"…": […]}], "medals": [{}]}
 }
 ```
 
-Each array holds one value per row (`n` rows), in the `cells` table's column
-meanings (§3.1). Rows are in no particular order, and a bins object may list
-its bins in any order. A file is built in one SQL statement (`json_object`
+Each array holds one value per row (`n` rows), in the `cells` and `cell_bins`
+tables' column meanings (§3.1). A bins row has the key of one cells row,
+which may be in another file of the same part. Rows are in no particular
+order, and a bins object may list its bins in any order. A file is built in one SQL statement (`json_object`
 over `json_group_array` of one ordered subquery), so its arrays line up.
 
 **A part too long for one value.** D1 first adds up how long the part's file
 would be. A part over `VALUE_MAX_BYTES` (1,500,000) is published as several
 files for the same `[from, to)`, each holding a share of the part's `cells`
-rows and, apart from those, a share of its `bins` rows, about half the limit
+rows and, apart from those, a share of its `cell_bins` rows, about half the limit
 each. The files together hold the part's rows, each row once, and the page
 adds up every file the manifest lists (§6). Their `rounds` add up to the
 part's.
@@ -731,6 +754,14 @@ mid(b) = b < 100 ? b : round(100 · 1.02^(b − 99.5))
 Values under 100 are exact; above, a bin is 2 % wide. The Worker computes
 bins at ingest (JavaScript `Math.log`; a restore the same in SQL), so the page
 only ever uses `low`/`mid`.
+
+**A bin's figures**, in a `cell_bins` object: `[rounds, secs, score, base,
+final, medals]`, the count of the cell's rounds in the bin and the sums of
+their durations, scores, base coins, final coins and medals (null as 0).
+`secs` is a REAL; an upload's sums may write a whole one as an integer, which
+a recompute compares as a REAL. The bin's own value (`base` for base bins,
+and so on) over `rounds` is its **average**, which the page uses in place of
+`mid(b)`: exact for a bin of one round, and within the bin always.
 
 ## 6. The page in global mode
 
@@ -753,17 +784,20 @@ can touch, several for one part included, and adds them up.
 | `themes` | The built-in themes in `site.go: themeOrder` order, `[{file, name}]` |
 | `devices`, `round-devices`, `owned-sources` | `[]` |
 | `owned` | `{list: null}` |
-| `rounds`, `tsum`, anything else | throws "not available on the global site" |
+| `tsum` | The server's `TsumDetail` shape (`tsum.go`) as the cells can answer it, see §6.3 |
+| `rounds`, anything else | throws "not available on the global site" |
 
 ### 6.2 Filters and figures
 
 Parameters as `queries.go: ParseFilter`, plus two:
 
 - Kept: `tsum` (comma list), `build`, `from`, `to`, `coins` (`final` /
-  `medals`), `net=1`.
+  `medals`), `net=1`, and the coin and medal outlier ranges (`minCoins`,
+  `maxCoins`, `minMedals`, `maxMedals`), one at a time (below).
 - New: `skill` (comma list of integers; `-1` = unknown) and `items` (comma
   list of item masks; `-1` = unknown).
-- Ignored: `device`, the outlier bounds, `incomplete`, `tz` (days are UTC).
+- Ignored: `device`, the score range (there are no score bins),
+  `incomplete`, `tz` (days are UTC).
 - **Days**: a cell's day is the UTC day its rounds **started** (§1.1). A cell
   counts when its day's 00:00 UTC is ≥ `from` (rounded down to a UTC day) and
   < `to`.
@@ -780,22 +814,67 @@ over `medalsSecs`). Medals mode (`coins=medals`) and the `medals` set use only
   `stdCoins` (population variance from `Σsq/n − (Σ/n)²`), `first`, `last`,
   `daily`, `dailyTsums`, `mix`, and the `medals` set's totals and Tsums.
 - **Approximate**: `q1Coins`, `medianCoins`, `q3Coins`, `p90Coins` from the
-  bins. The nearest rank `1 + ⌊(n − 1)·k⌋` falls in a bin, and its `mid(b)`,
-  clamped to the group's exact min and max, is the answer. That is within 2 %
-  of the exact value, or exact under 100.
-- **Histogram**: `histBounds` from the exact min/max and the approximate
-  q1/q3, each bin's rounds put in the bucket holding `mid(b)`, clamped to its
-  Tsum's exact min and max.
-- **Not available** (null spreads, an empty histogram), since bins are kept
-  per skill but not per item set: the primary stat's when it is net coins
-  (`net=1`, not in medals mode); every stat's under an `items` filter. Medals
-  are never net, so the `medals` set keeps its spreads under `net=1`.
+  bins of the group's cells. A bin's rounds of one item cost (net coins; 0
+  otherwise) across the group stand at their average less that cost; in that
+  order, the nearest rank `1 + ⌊(n − 1)·k⌋` falls in one, and its value,
+  clamped to the group's min and max, is the answer. That is within 2 % of
+  the exact value, exact under 100; for net coins, whose bins of different
+  costs overlap, within about two bins of the coins before the cost.
+- **Histogram**: `histBounds` from the min/max and the approximate q1/q3,
+  each bin's rounds put in the bucket holding its value, clamped to its
+  Tsum's min and max.
 - `hours` is always `[]`.
-- An extra top-level `global: {approx: true, spreads: <bool>}` says whether
-  the primary stat's spreads were computed.
+
+**Outlier ranges.** The coin range applies to the primary coin stat as
+`queries.go` has it (base or final, net under `net=1`, base coins in medals
+mode); the medal range to the catalog's `medal: true` Tsums only. With both
+set, the coin range is applied and the medal range is ignored. A range cuts
+each cell by its bins of the range's figure: a bin is kept when its average
+(less the cell's items' cost, for net coins) is within the range, and a cell
+whose items are unknown has no net coins, so is left out by a net range. A
+medal range keeps a medal Tsum's `medal = 0` cell whole when 0 is within it,
+else leaves it out. A cell whose bins are all kept stays as it is. A cut cell
+becomes the sums of its kept bins:
+
+- **Exact** (given the range snapped to whole bins): its rounds, `secs`,
+  score, base, final and medals sums, so every count, sum, average and
+  `coinsPerSec`, `daily`, `dailyTsums` and `mix`.
+- **Approximate**: the range's own figure's min and max (the cell's own where
+  its lowest or highest bin is kept, else that bin's average) and its sum of
+  squares (from the bins' averages), so its `stdCoins`.
+- **The cell's**: the other figures' min and max, the score's, `first` and
+  `last`; these may be a left-out round's.
+- **Unknown**: the other figures' sums of squares, so their `stdCoins` is null.
+- **Spreads** only for the range's own figure: the primary stat's when the
+  range is of it (a coin range out of medals mode, a medal range in it), the
+  `medals` set's under a medal range. The others are null, and the histogram
+  empty, since one figure's bins cannot be cut by another's range.
+
+An extra top-level `global: {approx: true, spreads, range, ignored}`:
+`spreads` whether the primary stat's spreads were computed (false too when a
+part of format 1 has no bins for a cell), `range` the range applied
+(`'base'`, `'final'`, `'medals'` or null), `ignored` the ranges left out
+(`['medals']` or `[]`).
 
 A part that 404s (replaced since the manifest was read) makes the engine
 reload the manifest once and retry.
+
+### 6.3 The Tsum page (`tsum`)
+
+`id` is the Tsum; the other parameters as §6.2, `target` a number. The
+answer has `tsum.go: TsumDetail`'s fields, plus `global: {approx: true}`:
+
+- `summary`: `summary` with `tsum = id`.
+- `settings`: the skill level only (the cells' `skill`, `-1` left out), as
+  `{setting: 'skillLevel', key, rounds, avgCoins, maxCoins, coinsPerSec,
+  avgScore, first, last}`. `versions`, `devices` and `form` are `[]`: the
+  cells keep no versions, devices or rounds.
+- `field`: every Tsum in the same filter less `tsum`, as `tsum.go`.
+- `earn`: final coins (net under `net=1`) per second, and medals per second
+  over every round's seconds, of every Tsum in the filter.
+- `skillBins` and `target` (`{target, rounds, under, approx: true}`) from the
+  bins: each bin's rounds at its value as §6.2, clamped to the Tsum's min and
+  max; null and `[]` when the summary has no spreads.
 
 ## 7. The local side
 

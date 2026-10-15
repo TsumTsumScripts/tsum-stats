@@ -52,6 +52,21 @@ func roundStart(id string) time.Time {
 	return time.UnixMilli(ms).UTC()
 }
 
+// binEdge is the lowest whole value at least v that starts a bin (CONTRACT §5):
+// a range bound there keeps the same rounds whole bins do.
+func binEdge(v int) int {
+	bin := func(v int) int {
+		if v < 100 {
+			return v
+		}
+		return 100 + int(math.Floor(math.Log(float64(v)/100)/math.Log(1.02)))
+	}
+	for v >= 100 && bin(v) == bin(v-1) {
+		v++
+	}
+	return v
+}
+
 // globalParityRounds makes about 3,000 rounds the global site accepts, from
 // 2026-08-19 to an hour before now: each device's rounds one after another,
 // some across midnight, a few lasting hours (some of those across midnight
@@ -401,6 +416,8 @@ func TestGlobalParity(t *testing.T) {
 		Params   map[string]string `json:"params"`
 		Expected any               `json:"expected"`
 		Spreads  *spreads          `json:"spreads,omitempty"`
+		// Cut: an outlier range cuts cells, so a few figures are about (CONTRACT §6.2).
+		Cut bool `json:"cut,omitempty"`
 	}
 	var cases []testCase
 	roundtrip := func(v any) any {
@@ -475,11 +492,15 @@ func TestGlobalParity(t *testing.T) {
 		s := summarizeRounds(picked, f)
 		days := summarizeRounds(byStart, f)
 		s.Daily, s.DailyTsums = days.Daily, days.DailyTsums
-		// Bins are kept per skill level, not per item set: no spreads under an
-		// items filter, nor of net coins (medals are never net).
-		items := params["items"] != ""
-		sp := &spreads{Primary: !items && (params["net"] != "1" || params["coins"] == "medals"), Medals: !items}
-		cases = append(cases, testCase{Name: "summary " + name, Route: "summary", Params: params, Expected: roundtrip(s), Spreads: sp})
+		// Under an outlier range only the range's own figure has spreads: the
+		// bins of one figure are not cut by another's range. The coin range
+		// is applied when both are set.
+		coinRange := params["minCoins"] != "" || params["maxCoins"] != ""
+		medalRange := !coinRange && (params["minMedals"] != "" || params["maxMedals"] != "")
+		medalMode := params["coins"] == "medals"
+		sp := &spreads{Primary: (!coinRange || !medalMode) && (!medalRange || medalMode), Medals: !coinRange}
+		cases = append(cases, testCase{Name: "summary " + name, Route: "summary", Params: params, Expected: roundtrip(s), Spreads: sp,
+			Cut: coinRange || medalRange})
 	}
 	skillIn := func(levels ...int) func(Round) bool {
 		return func(r Round) bool { return slices.Contains(levels, paritySkill(r.Settings)) }
@@ -516,7 +537,7 @@ func TestGlobalParity(t *testing.T) {
 	summary("nothing matches", map[string]string{"from": "2030-01-01T00:00:00Z"}, nil, nil)
 	summary("unknown Tsum", map[string]string{"tsum": "nope"}, nil, nil)
 	summary("a Tsum the catalog lacks", map[string]string{"tsum": "newtsum"}, nil, nil)
-	summary("ignored parameters", map[string]string{"device": "pixel-7", "minCoins": "3000", "maxScore": "100", "incomplete": "1", "tz": "540"}, none, nil)
+	summary("ignored parameters", map[string]string{"device": "pixel-7", "minScore": "3000", "maxScore": "100", "incomplete": "1", "tz": "540"}, none, nil)
 	summary("everything filtered", map[string]string{"tsum": "elsa, mickeyplus", "build": "global", "coins": "final", "from": "2026-09-01T00:00:00Z"}, nil, nil)
 	summary("one skill level", map[string]string{"skill": "3"}, none, skillIn(3))
 	summary("skill levels and unknown", map[string]string{"skill": "2, 5,-1", "coins": "final"}, map[string]string{"coins": "final"}, skillIn(2, 5, -1))
@@ -527,6 +548,20 @@ func TestGlobalParity(t *testing.T) {
 	summary("item set, net", map[string]string{"items": "1", "net": "1"}, map[string]string{"net": "1"}, itemsIn(1))
 	summary("skill and items", map[string]string{"skill": "1,6", "items": "98", "from": "2026-09-15T00:00:00Z"},
 		map[string]string{"from": "2026-09-15T00:00:00Z"}, func(r Round) bool { return skillIn(1, 6)(r) && itemsIn(98)(r) })
+
+	// Outlier ranges. The global site keeps whole bins, by their rounds'
+	// average; a bound on a bin's edge keeps the same rounds as the server.
+	edge := func(v int) string { return strconv.Itoa(binEdge(v)) }
+	below := func(v int) string { return strconv.Itoa(binEdge(v) - 1) }
+	summary("coin range", map[string]string{"minCoins": edge(1500), "maxCoins": below(6000)}, nil, nil)
+	summary("coin range on a Tsum, final coins", map[string]string{"tsum": "mickey", "coins": "final", "maxCoins": below(5000)}, nil, nil)
+	summary("coin range with skill levels, jp", map[string]string{"build": "jp", "minCoins": edge(3000), "skill": "2,3"},
+		map[string]string{"build": "jp", "minCoins": edge(3000)}, skillIn(2, 3))
+	summary("coin range under 100", map[string]string{"maxCoins": "50"}, nil, nil)
+	summary("medal range", map[string]string{"minMedals": edge(150), "maxMedals": below(450)}, nil, nil)
+	summary("medal range in medal mode", map[string]string{"coins": "medals", "minMedals": edge(200)}, nil, nil)
+	summary("medal range keeping 0", map[string]string{"minMedals": "0", "maxMedals": below(300), "coins": "final"}, nil, nil)
+	summary("both ranges: the coins' only", map[string]string{"minCoins": edge(2000), "minMedals": "100"}, map[string]string{"minCoins": edge(2000)}, nil)
 
 	// The manifest's per-Tsum and site-wide counts: contributors over the
 	// rounds begun in the last 30 days, first sender's; devices seen (a round

@@ -2,9 +2,13 @@
   The Tsum page: everything about one Tsum. Its figures, how they changed with
   its skill level and the script's settings, where it ranks among your Tsums,
   what owning it says (level, skill, boxes to max), and its best rounds.
+  On the global site it is every contributor's rounds of it: by skill level
+  and items, ranked among every Tsum, by UTC day; no rounds, settings or
+  Tsum lists, so no best rounds, recent form or boxes to max.
 -->
 <script>
   import {onMount} from 'svelte';
+  import {isGlobal} from '../lib/global/client.js';
   import Avatar from '../components/Avatar.svelte';
   import Chart from '../components/Chart.svelte';
   import Panel from '../components/Panel.svelte';
@@ -23,6 +27,9 @@
 
   // initial: the link's params; onStateChange(state, {push}) writes the link.
   let {hidden, initial, onStateChange} = $props();
+  const globalSite = isGlobal();
+  // The global site's status: the contributors a Tsum needs before its figures are trusted.
+  let status = $state.raw(null);
 
   // id is the Tsum. days, coins, net, device and build mean what they do on the Stats page.
   const blank = () => ({id: '', days: 'all', coins: '', net: '', device: '', build: ''});
@@ -83,7 +90,12 @@
   function filterParams() {
     let from = '';
     const n = Number(filter.days);
-    if (n) {
+    // The global site's days are UTC ones, the day each round began.
+    if (n && globalSite) {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() - n + 1);
+      from = `${d.toISOString().slice(0, 10)}T00:00:00.000Z`;
+    } else if (n) {
       const d = new Date();
       d.setDate(d.getDate() - n + 1);
       from = new Date(`${isoDay(d)}T00:00:00`).toISOString();
@@ -123,8 +135,9 @@
     }
   }
 
-  /** The best rounds: by the primary stat, its rate or score. */
+  /** The best rounds: by the primary stat, its rate or score. The global site keeps no rounds. */
   async function loadBest() {
+    if (globalSite) return;
     const mine = ++seq.best;
     const top = filter.coins === 'medals' ? '-medals' : filter.coins === 'final' ? '-finalCoins' : '-baseCoins';
     const sort = {coins: top, rate: '-coinsPerSec', score: '-score'}[views.best] || top;
@@ -133,8 +146,9 @@
     if (mine === seq.best && res) best = res.items;
   }
 
-  /** The Tsum in the newest Tsum list for the build (any device). */
+  /** The Tsum in the newest Tsum list for the build (any device). The global site has no Tsum lists. */
   async function loadOwned() {
+    if (globalSite) return;
     const mine = ++seq.owned;
     const build = filter.build || 'global';
     const sources = await api('owned-sources').catch(() => []);
@@ -147,6 +161,7 @@
   }
 
   async function loadOptions() {
+    if (globalSite) status = await api('status').catch(() => null);
     [played, devices] = await Promise.all([api('tsums').catch(() => []), api('round-devices').catch(() => [])]);
     played = played.filter(t => t.tsum);
   }
@@ -220,6 +235,11 @@
     };
   });
 
+  // The global site: how many players sent rounds of it lately, and whether that is too few to stand for everyone.
+  const players = $derived(globalSite ? (played.find(t => t.tsum === filter.id)?.contributors ?? null) : null);
+  const fewPlayers = $derived(players !== null && status !== null && players < status.minContributors);
+  const whose = globalSite ? 'all' : 'your';
+
   const args = $derived(s && {
     skills: [detail.skillBins, s.histogram],
     daily: [s.daily, s.dailyTsums, ctx, views.daily],
@@ -227,7 +247,8 @@
     hours: [s.hours, views.hour],
     items: [s.mix, views.items],
   });
-  const dailySub = $derived({rate: `${basis} per second of play`, avg: `average ${basis} per round, with the day's lowest–highest band`, stack: `total ${basis} each day`}[views.daily]);
+  const dailySub = $derived({rate: `${basis} per second of play`, avg: `average ${basis} per round, with the day's lowest–highest band`, stack: `total ${basis} each day`}[views.daily]
+    + (globalSite ? ' · by the UTC day each round began' : ''));
   const builds = $derived(new Set((s?.mix ?? []).map(m => m.build)).size > 1 || Boolean(filter.build));
 
   // Best rounds show what the round made, before item costs.
@@ -270,11 +291,16 @@
           {/if}
           {#if standing?.vsAll !== null && standing?.vsAll !== undefined}
             <span class="fact" class:up={standing.vsAll > 0} class:down={standing.vsAll < 0}
-              title="Against all your Tsums together, {fmtRate(standing.all)} {unit}/s">
+              title="Against all {whose === 'your' ? 'your ' : ''}Tsums together, {fmtRate(standing.all)} {unit}/s">
               <b>{standing.vsAll > 0 ? '+' : ''}{pct(standing.vsAll)}</b> vs all Tsums
             </span>
           {/if}
-          {#if standing?.share}<span class="fact"><b>{pct(standing.share)}</b> of your rounds</span>{/if}
+          {#if standing?.share}<span class="fact"><b>{pct(standing.share)}</b> of {whose} rounds</span>{/if}
+          {#if players !== null}
+            <span class="fact" class:dim={fewPlayers} title="Contributors who sent rounds of it in the last 30 days{fewPlayers ? '. Too few players\' rounds to stand for everyone\'s yet' : ''}">
+              <b>{fmt(players)}</b> {players === 1 ? 'player' : 'players'}{fewPlayers ? ' · few' : ''}
+            </span>
+          {/if}
           {#if ownLine}
             {#if ownLine.skill}<span class="fact"><b>{ownLine.skill}</b>{#if ownLine.progress} · {ownLine.progress}{/if}</span>{/if}
             {#if ownLine.level}<span class="fact">{ownLine.level}</span>{/if}
@@ -325,7 +351,7 @@
 
   {#if !filter.id}
     <div class="panel">
-      <div class="panel-head"><div><h2>Your most played</h2><span class="sub">click one to see its page</span></div></div>
+      <div class="panel-head"><div><h2>{globalSite ? 'Most played' : 'Your most played'}</h2><span class="sub">click one to see its page</span></div></div>
       {#if played.length}
         <div class="tsum-grid">
           {#each played.slice(0, 24) as t (t.tsum)}
@@ -348,8 +374,8 @@
         {#if filter.days !== 'all'}<button type="button" class="btn" onclick={() => set({days: 'all'})}>Show all time</button>{/if}
       </div>
     {:else if s}
-      <Kpis t={s.totals} m={s.medals.totals} coins={filter.coins} {basis} noMedals />
-      <Insights {detail} own={owned?.own} {entry} {unit} {basis} {target} {setTarget} />
+      <Kpis t={s.totals} m={s.medals.totals} coins={filter.coins} {basis} noMedals approx={globalSite} />
+      <Insights {detail} own={owned?.own} {entry} {unit} {basis} {target} {setTarget} {whose} approx={globalSite} />
 
       {#if skills.length}
         <Panel title="By skill level" sub="the skill level set in the script for each round · change is against the level below" expandable={false}>
@@ -370,23 +396,26 @@
         <Chart draw={drawDaily} args={args?.daily} {unit} />
       </Panel>
 
-      <Panel title="{U} per round" sub="how many rounds ended with each amount of {basis}">
+      <Panel title="{U} per round" sub="how many rounds ended with each amount of {basis}{globalSite ? ' · ≈ from 2 % wide bins' : ''}">
         <Chart draw={drawHistogram} args={args?.hist} {unit} />
       </Panel>
 
       <div class="charts">
-        <Panel title="By items used" sub="every item set, best first">
+        <Panel class={globalSite ? 'wide' : ''} title="By items used" sub="every item set, best first">
           {#snippet tools()}
             <Seg sm label="Measure" value={views.items} onpick={v => setView('items', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
           {/snippet}
           <Chart draw={drawItems} args={args?.items} {unit} size="square" />
         </Panel>
-        <Panel title="By hour of day" sub="your time, across every day in the filter">
-          {#snippet tools()}
-            <Seg sm label="Measure" value={views.hour} onpick={v => setView('hour', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
-          {/snippet}
-          <Chart draw={drawHours} args={args?.hours} {unit} size="square" />
-        </Panel>
+        <!-- The global site's cells are whole days. -->
+        {#if !globalSite}
+          <Panel title="By hour of day" sub="your time, across every day in the filter">
+            {#snippet tools()}
+              <Seg sm label="Measure" value={views.hour} onpick={v => setView('hour', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
+            {/snippet}
+            <Chart draw={drawHours} args={args?.hours} {unit} size="square" />
+          </Panel>
+        {/if}
       </div>
 
       {#if filter.coins !== 'medals'}
@@ -417,6 +446,7 @@
         </Panel>
       {/if}
 
+      {#if !globalSite}
       <Panel title="Best rounds" sub="the top 10 in the filter">
         {#snippet tools()}
           <Seg sm label="Best by" value={views.best} onpick={v => setView('best', v)} options={[['coins', U], ['rate', `${U}/s`], ['score', 'Score']]} />
@@ -448,6 +478,7 @@
           </table>
         </div>
       </Panel>
+      {/if}
     {/if}
   {/if}
 </section>

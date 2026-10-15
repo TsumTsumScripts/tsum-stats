@@ -1,4 +1,4 @@
-// Step 1 of the hourly job: the day tables (cells, bins, contrib_cells).
+// Step 1 of the hourly job: the day tables (cells, cell_bins, contrib_cells).
 //
 // New rounds are added in from `pending`, where each upload left the rounds
 // it inserted, already added up as these tables keep them (ingest.ts:
@@ -50,21 +50,35 @@ const DAY_SOURCE = `(SELECT contributor, played_at, build, tsum, skill, items, d
 /** A pending sum its day's last full recompute already read (state skip: {day: seq}); `day` names its day. */
 const notSkipped = (day: string) => `p.seq > coalesce((SELECT value FROM state WHERE key = 'skip') ->> ('$."' || ${day} || '"'), 0)`;
 
-/** Merging two JSON bins objects: the new counts added to the old, key by key, without reading the old one through. */
-const mergeBins = (col: string) =>
-  `${col} = json_patch(${col}, (SELECT json_group_object(key, coalesce(bins.${col} ->> ('$."' || key || '"'), 0) + value) FROM json_each(excluded.${col})))`;
+/** The cell_bins columns: the key (the cells'), then a bins object per figure. */
+const BIN_KEY = ["build", "tsum", "skill", "items", "medal"];
+const BIN_KINDS = ["base", "final", "medals"];
+/** A bin's figures (CONTRACT §5), in order: rounds, secs, score, base, final, medals. */
+const FIGURES = 6;
 
-/** The bins rows of `source` where `where`, grouped by `day` (an expression) and the bins key. */
-const binsSelect = (day: string, source: string, where: string) => `SELECT ${day} AS day, build, tsum, skill,
-    json_group_object(b, n) FILTER (WHERE k = 0) AS base,
-    json_group_object(b, n) FILTER (WHERE k = 1) AS final,
-    json_group_object(b, n) FILTER (WHERE k = 2) AS medals
-  FROM (SELECT day, build, tsum, skill, k, CAST(v AS TEXT) AS b, count(*) AS n FROM (
-      SELECT ${day} AS day, build, tsum, skill, 0 AS k, bin_base AS v FROM ${source} WHERE ${where}
-      UNION ALL SELECT ${day}, build, tsum, skill, 1, bin_final FROM ${source} WHERE ${where}
-      UNION ALL SELECT ${day}, build, tsum, skill, 2, bin_medals FROM ${source} WHERE ${where} AND bin_medals IS NOT NULL)
-    GROUP BY day, build, tsum, skill, k, v ORDER BY day, build, tsum, skill, k, v)
-  WHERE true GROUP BY day, build, tsum, skill`;
+/**
+ * Merging two JSON bins objects: the new figures added to the old, bin by bin,
+ * without reading the old object through. A bin new to the row is taken as it is.
+ */
+const mergeBins = (col: string) => `${col} = json_patch(${col}, (SELECT json_group_object(key, json(CASE WHEN o IS NULL THEN value
+    ELSE json_array(${Array.from({ length: FIGURES }, (_, i) => `(o ->> ${i}) + (value ->> ${i})`).join(", ")}) END))
+  FROM (SELECT key, value, cell_bins.${col} -> ('$."' || key || '"') AS o FROM json_each(excluded.${col}))))`;
+
+/** The cell_bins rows of `source` where `where`, for day `day` (an expression): per cell, each bin's figures. */
+const binsSelect = (day: string, source: string, where: string) => {
+  const of = (k: number, v: string, also = "") =>
+    `SELECT build, tsum, skill, items, coalesce(medals > 0, 0) AS medal, ${k} AS k, ${v} AS v, duration, score, base, final, medals
+      FROM ${source} WHERE ${where}${also}`;
+  return `SELECT ${day} AS day, build, tsum, skill, items, medal,
+    json_group_object(b, json(f)) FILTER (WHERE k = 0) AS base,
+    json_group_object(b, json(f)) FILTER (WHERE k = 1) AS final,
+    json_group_object(b, json(f)) FILTER (WHERE k = 2) AS medals
+  FROM (SELECT build, tsum, skill, items, medal, k, CAST(v AS TEXT) AS b,
+      json_array(count(*), sum(duration), sum(score), sum(base), sum(final), coalesce(sum(medals), 0)) AS f
+    FROM (${of(0, "bin_base")} UNION ALL ${of(1, "bin_final")} UNION ALL ${of(2, "bin_medals", " AND bin_medals IS NOT NULL")})
+    GROUP BY build, tsum, skill, items, medal, k, v ORDER BY build, tsum, skill, items, medal, k, v)
+  WHERE true GROUP BY build, tsum, skill, items, medal`;
+};
 
 /** The contrib_cells rows of `source` where `where`: one per device first, so the devices come out sorted and counted. */
 const contribSelect = (day: string, source: string, where: string) => `SELECT day, contributor, build, tsum, sum(n) AS rounds,
@@ -95,12 +109,12 @@ const FOLD_CELLS = `INSERT INTO cells (day, ${cellNames.join(", ")})
   ON CONFLICT (day, ${cellNames.slice(0, CELLS_KEY).join(", ")}) DO UPDATE SET ${CELLS.slice(CELLS_KEY).map(([c, , how]) =>
     how === "+" ? `${c} = ${c} + excluded.${c}` : `${c} = coalesce(${how}(${c}, excluded.${c}), ${c}, excluded.${c})`).join(", ")}`;
 
-// Each upload's bins rows are merged straight into the day's, one after the
-// other (an upsert takes its rows in turn), so no sort of their counts is needed.
-const FOLD_BINS = `INSERT INTO bins (day, build, tsum, skill, base, final, medals)
-  SELECT e.value ->> 0, e.value ->> 1, e.value ->> 2, e.value ->> 3, e.value -> 4, e.value -> 5, e.value -> 6
-  FROM ${pendingOf("bins", "?2")}
-  ON CONFLICT (day, build, tsum, skill) DO UPDATE SET ${["base", "final", "medals"].map(mergeBins).join(", ")}`;
+// Each upload's cell_bins rows are merged straight into the day's, one after
+// the other (an upsert takes its rows in turn), so no sort of their figures is needed.
+const FOLD_BINS = `INSERT INTO cell_bins (day, ${BIN_KEY.join(", ")}, ${BIN_KINDS.join(", ")})
+  SELECT ${Array.from({ length: 6 }, (_, i) => `e.value ->> ${i}`).join(", ")}, e.value -> 6, e.value -> 7, e.value -> 8
+  FROM ${pendingOf("cell_bins", "?2")}
+  ON CONFLICT (day, ${BIN_KEY.join(", ")}) DO UPDATE SET ${BIN_KINDS.map(mergeBins).join(", ")}`;
 
 const deviceUnion = `SELECT value FROM json_each(contrib_cells.device_set) UNION SELECT value FROM json_each(excluded.device_set) ORDER BY 1`;
 /** Devices new to the row: usually none after its first upload of the day, so the set is merged only then. */
@@ -154,7 +168,7 @@ export interface Pending {
  * Step 1a: the pending rounds into the day tables, oldest upload first, up to
  * FOLD_ROUNDS a run. Who a round counts for is decided now, by its
  * contributor's status now: a banned contributor's rounds stay out of cells
- * and bins; an unlinked one's are no one's in contrib_cells.
+ * and cell_bins; an unlinked one's are no one's in contrib_cells.
  */
 export async function foldStep(job: Job): Promise<void> {
   const { run } = job;
@@ -214,15 +228,20 @@ const FULL_CELLS = `INSERT INTO cells (day, ${cellNames.join(", ")})
 const FULL_CELLS_GONE = `DELETE FROM cells WHERE day = ?5 AND (${cellNames.slice(0, CELLS_KEY).join(", ")}) NOT IN (
   SELECT build, tsum, skill, items, coalesce(medals > 0, 0) FROM ${DAY_SOURCE} WHERE ${FULL_PUBLIC})`;
 
-/** A bins object's counts in bin order, as a recompute writes them (a merged one has its newer bins last). */
-const inOrder = (col: string) =>
-  `(SELECT json_group_object(key, value) FROM (SELECT key, value FROM json_each(bins.${col}) ORDER BY CAST(key AS INTEGER)))`;
-const FULL_BINS = `INSERT INTO bins (day, build, tsum, skill, base, final, medals)
+/**
+ * A bins object as a recompute writes it: in bin order (a merged one has its
+ * newer bins last), and secs a REAL (an upload's JavaScript writes a whole
+ * sum as an integer).
+ */
+const inOrder = (col: string) => `(SELECT json_group_object(key, json_array(value ->> 0, (value ->> 1) + 0.0, ${
+  Array.from({ length: FIGURES - 2 }, (_, i) => `value ->> ${i + 2}`).join(", ")}))
+  FROM (SELECT key, value FROM json_each(cell_bins.${col}) ORDER BY CAST(key AS INTEGER)))`;
+const FULL_BINS = `INSERT INTO cell_bins (day, ${BIN_KEY.join(", ")}, ${BIN_KINDS.join(", ")})
   ${binsSelect("?5", DAY_SOURCE, FULL_PUBLIC)}
-  ON CONFLICT (day, build, tsum, skill) DO UPDATE SET base = excluded.base, final = excluded.final, medals = excluded.medals
-  WHERE (${["base", "final", "medals"].map(inOrder).join(", ")}) IS NOT (excluded.base, excluded.final, excluded.medals)`;
-const FULL_BINS_GONE = `DELETE FROM bins WHERE day = ?5 AND (build, tsum, skill) NOT IN (
-  SELECT build, tsum, skill FROM ${DAY_SOURCE} WHERE ${FULL_PUBLIC})`;
+  ON CONFLICT (day, ${BIN_KEY.join(", ")}) DO UPDATE SET ${BIN_KINDS.map(c => `${c} = excluded.${c}`).join(", ")}
+  WHERE (${BIN_KINDS.map(inOrder).join(", ")}) IS NOT (${BIN_KINDS.map(c => `excluded.${c}`).join(", ")})`;
+const FULL_BINS_GONE = `DELETE FROM cell_bins WHERE day = ?5 AND (${BIN_KEY.join(", ")}) NOT IN (
+  SELECT build, tsum, skill, items, coalesce(medals > 0, 0) FROM ${DAY_SOURCE} WHERE ${FULL_PUBLIC})`;
 
 const FULL_CONTRIB = `INSERT INTO contrib_cells (${CONTRIB_COLS.join(", ")})
   ${contribSelect("?5", DAY_SOURCE, FULL_NAMED)}

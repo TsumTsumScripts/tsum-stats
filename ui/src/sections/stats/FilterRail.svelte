@@ -1,6 +1,7 @@
 <!-- The Stats rail: filters and the jump menu. Narrow, it is a bar under the
      top bar whose filters drop down; wide, a sticky side column. On the global
-     site, skill levels and item sets take the place of devices and outliers. -->
+     site, skill levels and item sets take the place of devices, and the
+     outlier ranges are coins and medals, one at a time. -->
 <script>
   import Seg from '../../components/Seg.svelte';
   import TsumChip from '../../components/TsumChip.svelte';
@@ -48,6 +49,9 @@
   const setBound = k => (setters[k] ??= debounce(v => set({[k]: v}), 350));
   const boundsSet = $derived(outliers.reduce((n, [, , lo, hi]) => n + (filter[lo] !== '' || filter[hi] !== '' ? 1 : 0), 0));
   const clearOutliers = () => set(Object.fromEntries(outliers.flatMap(([, , lo, hi]) => [[lo, ''], [hi, '']])));
+  // The global site cuts by one range at a time (its bins are of one figure each): the others wait while one is set.
+  const rangeSet = stat => outliers.some(([s, , lo, hi]) => s === stat && (filter[lo] !== '' || filter[hi] !== ''));
+  const otherSet = stat => globalSite && outliers.some(([s]) => s !== stat && rangeSet(s));
 
   function jump(id) {
     open = false;
@@ -162,30 +166,36 @@
         <!-- On the global site a round counts on the UTC day it began, however long it lasted. -->
         <label class="field" title={globalSite ? 'A round counts on the UTC day it began' : undefined}>From{globalSite ? ' (UTC)' : ''} <input type="date" value={range.from} onchange={e => dates(e.target.value, range.to)}></label>
         <label class="field" title={globalSite ? 'A round counts on the UTC day it began' : undefined}>To{globalSite ? ' (UTC)' : ''} <input type="date" value={range.to} onchange={e => dates(range.from, e.target.value)}></label>
-        <!-- Every global round is complete, and its figures are summed per day: there are no rounds to leave out. -->
-        {#if !globalSite}
-          <div class="field outliers" title="Leave out rounds whose score, coins or medals fall outside these ranges">Outliers
-            <details class="devices">
-              <summary>{boundsSet ? `${boundsSet} ${boundsSet > 1 ? 'ranges' : 'range'} set` : 'None omitted'}{filter.incomplete ? ' · incomplete kept' : ''}</summary>
-              <div class="outlier-grid">
-                <span></span><span class="sub">Lowest</span><span class="sub">Highest</span>
-                {#each outliers as [stat, label, lo, hi, step] (stat)}
-                  <span>{label}</span>
-                  {#each [lo, hi] as k (k)}
-                    <input type="number" min="0" {step} inputmode="numeric" placeholder="Any" aria-label="{k.startsWith('min') ? 'Lowest' : 'Highest'} {stat}"
-                      value={filter[k]} oninput={e => setBound(k)(e.target.value)}>
-                  {/each}
+        <label class="field" title="Leave Tsums with fewer rounds in the filter out of the Tsum table and the efficiency chart. Every total still counts their rounds.">Min rounds per Tsum
+          <input type="number" min="0" step="10" inputmode="numeric" placeholder="Any" value={filter.minRounds} oninput={e => setBound('minRounds')(e.target.value)}></label>
+        <!-- Global rounds are kept as their sums per day and 2 % bins: a range keeps or leaves out whole bins. -->
+        <div class="field outliers" title="Leave out rounds whose {globalSite ? '' : 'score, '}coins or medals fall outside these ranges">Outliers
+          <details class="devices">
+            <summary>{boundsSet ? `${boundsSet} ${boundsSet > 1 ? 'ranges' : 'range'} set` : 'None omitted'}{filter.incomplete ? ' · incomplete kept' : ''}</summary>
+            <div class="outlier-grid">
+              <span></span><span class="sub">Lowest</span><span class="sub">Highest</span>
+              {#each outliers as [stat, label, lo, hi, step] (stat)}
+                <span>{label}</span>
+                {#each [lo, hi] as k (k)}
+                  <input type="number" min="0" {step} inputmode="numeric" placeholder="Any" aria-label="{k.startsWith('min') ? 'Lowest' : 'Highest'} {stat}"
+                    disabled={otherSet(stat)} title={otherSet(stat) ? 'One range at a time on the global site: clear the other first' : undefined}
+                    value={filter[k]} oninput={e => setBound(k)(e.target.value)}>
                 {/each}
-              </div>
-              <p class="sub outlier-note">Rounds outside a range are left out. Coins are {filter.net === '1' && filter.coins !== 'medals' ? 'net ' : ''}{filter.coins === 'final' ? 'final' : 'base'} coins;
-                the medal range only judges Tsums that earn medals.</p>
+              {/each}
+            </div>
+            <p class="sub outlier-note">Rounds outside a range are left out. Coins are {filter.net === '1' && filter.coins !== 'medals' ? 'net ' : ''}{filter.coins === 'final' ? 'final' : 'base'} coins;
+              the medal range only judges Tsums that earn medals.</p>
+            {#if globalSite}
+              <p class="sub outlier-note">Rounds are kept in 2 % wide bins, so a range keeps or leaves out whole bins, by their rounds' average.
+                The lowest, highest and spread are then estimates. One range at a time.</p>
+            {:else}
               <label class="outlier-check"><input type="checkbox" checked={filter.incomplete === '1'}
                 onchange={e => set({incomplete: e.target.checked ? '1' : ''})}> Include incomplete rounds</label>
               <p class="sub outlier-note">Incomplete rounds have no Tsum, or a score, coins, time or (for a Tsum that earns medals) medals that could not be read.</p>
-              {#if boundsSet}<button type="button" class="btn" onclick={clearOutliers}>Clear ranges</button>{/if}
-            </details>
-          </div>
-        {/if}
+            {/if}
+            {#if boundsSet}<button type="button" class="btn" onclick={clearOutliers}>Clear ranges</button>{/if}
+          </details>
+        </div>
         <!-- The two toggles share a row when there is room and stack when not. -->
         <div class="seg-fields span-all">
           <div class="field">Game
@@ -195,7 +205,7 @@
             <Seg label="Primary stat" value={filter.coins} onpick={v => set({coins: v})}
               options={[['', 'Base', 'coin'], ['final', 'Final', 'coin'], ['medals', '', 'medal', 'Medals']]} />
             {#if filter.coins !== 'medals'}
-              <label class="outlier-check" title="Subtract what each round's boost items cost. Rounds recorded before items were have no net coins.{globalSite ? ' The median and spreads are not kept per item set, so they are left out.' : ''}">
+              <label class="outlier-check" title="Subtract what each round's boost items cost. Rounds recorded before items were have no net coins.">
                 <input type="checkbox" checked={filter.net === '1'} onchange={e => set({net: e.target.checked ? '1' : ''})}> Less item costs</label>
             {/if}
           </div>

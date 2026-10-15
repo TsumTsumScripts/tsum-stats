@@ -215,10 +215,15 @@ still run. It is sized for Workers Free:
 into `global/site/` with `<meta name="tsum-global">`. `engine.js` follows the
 snapshot engine with cells in place of rounds, and reuses its `parseFilter`,
 `parseTime`, `sqlTime`, `itemCost`, `histBounds` and `bucketOf`. Counts, sums,
-averages, extremes, rates and the standard deviation add up exactly. The
-quartiles and P90 come from the bins and are marked ≈. It loads only the parts
-a date range touches, each file of a part the Worker split; a part replaced
-since the manifest was read (a 404) makes it read the manifest again, once.
+averages, extremes, rates and the standard deviation add up exactly. Each cell
+carries its bins (`cell_bins`, CONTRACT §5): its rounds by 2 % bins of base
+coins, final coins and medals, each bin with its rounds' sums. The quartiles,
+P90 and histogram come from them, marked ≈, and so do the outlier ranges:
+`cutCell` keeps the bins whose average is in the range and makes the cell
+their sums (CONTRACT §6.2). It answers the Tsum page too (`tsum`, §6.3). It
+loads only the parts a date range touches, all the files of a part the Worker
+split, matched up as one; a part replaced since the manifest was read (a 404)
+makes it read the manifest again, once.
 
 **Tests:**
 
@@ -247,7 +252,9 @@ since the manifest was read (a 404) makes it read the manifest again, once.
    once: `CONTRACT.md` §3.1 and §4.2, a new migration, `aggregate` in
    `global/src/ingest.ts` (an upload's own sums) and `CELLS` in
    `global/src/rollup.ts`, `CELL_COLUMNS` in `global/src/parts.ts`,
-   `decodePart` in the engine, and `global/test/reference.ts`.
+   `decodePart` in the engine, and `global/test/reference.ts`. A figure a
+   range must cut too needs it in the bins' figures as well (`binsSelect` and
+   `mergeBins` in `rollup.ts`, `cutCell` in the engine).
 
 A figure that cannot be added up from per-day sums (one that needs the order
 of the rounds, or the time of day) is approximate from the bins, or left off

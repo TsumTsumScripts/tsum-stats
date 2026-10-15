@@ -311,7 +311,7 @@
             <tbody>
               {#each view.shown as e (e.id)}
                 <tr style:--tsum={e.color}>
-                  <td class="who"><Avatar id={e.id} name={e.name} /><span class="names"><b>{e.name}</b>{#if e.alt}<span class="alt">{e.alt}</span>{/if}</span></td>
+                  <td class="who"><Avatar id={e.id} name={e.name} /><span class="names"><b>{#if played.has(e.id)}<a href={tsumPage(e.id)} title="{fmt(played.get(e.id))} rounds · its Tsum page">{e.name}</a>{:else}{e.name}{/if}</b>{#if e.alt}<span class="alt">{e.alt}</span>{/if}</span></td>
                   <td class="num">{played.has(e.id) ? fmt(played.get(e.id)) : '—'}</td>
                 </tr>
               {/each}
@@ -324,7 +324,7 @@
             <span class="portrait"><Avatar id={e.id} name={e.name} large /></span>
             <div class="name">{e.name}</div>
             {#if e.alt}<div class="alt">{e.alt}</div>{/if}
-            <div class="sub">{played.has(e.id) ? `${fmt(played.get(e.id))} rounds` : 'No rounds yet'}</div>
+            {#if played.has(e.id)}<a class="played-link" href={tsumPage(e.id)} title="Its Tsum page">{fmt(played.get(e.id))} rounds →</a>{:else}<div class="sub">No rounds yet</div>{/if}
           </div>
         {/each}
       {/if}

@@ -118,7 +118,7 @@ describe("recompute", () => {
     const [again] = await rollup(NOW, k.env);
     expect(again.recomputed).toEqual(["2026-10-14"]);
     expect(again.rendered).toEqual([]);
-    const syncs = k.n.writes.filter(w => /^(INSERT INTO|DELETE FROM) (cells|bins|contrib_cells)/.test(w.sql.trim()));
+    const syncs = k.n.writes.filter(w => /^(INSERT INTO|DELETE FROM) (cells|cell_bins|contrib_cells)/.test(w.sql.trim()));
     expect(syncs).toHaveLength(6);
     expect(syncs.map(w => w.rows)).toEqual([0, 0, 0, 0, 0, 0]);
     expect(await tables()).toEqual(before);
@@ -130,7 +130,7 @@ describe("recompute", () => {
     await upload(c.key, [{ ...moved[0], tsum: "donald" }]);
     await rollup();
     expect(await rows("SELECT tsum, rounds FROM cells ORDER BY tsum")).toEqual([{ tsum: "donald", rounds: 1 }, { tsum: "mickey", rounds: 20 }]);
-    expect(await rows("SELECT tsum FROM bins ORDER BY tsum")).toEqual([{ tsum: "donald" }, { tsum: "mickey" }]);
+    expect(await rows("SELECT DISTINCT tsum FROM cell_bins ORDER BY tsum")).toEqual([{ tsum: "donald" }, { tsum: "mickey" }]);
   });
 
   it("leaves a day whose rounds have left D1 as it is", async () => {
@@ -164,11 +164,11 @@ describe("render", () => {
       expect(p.sha).toBe(sha);
       expect(p.file).toBe(`day-${p.from}.${sha}.json`);
       const part = JSON.parse(new TextDecoder().decode(bytes)) as PartFile;
-      expect(part).toMatchObject({ kind: "tsum-global-part", format: 1, from: p.from, to: p.to });
+      expect(part).toMatchObject({ kind: "tsum-global-part", format: 2, from: p.from, to: p.to });
       expect(Object.keys(part.cells)).toEqual(["n", "day", "build", "tsum", "skill", "items", "medal", "rounds", "secs",
         "scoreSum", "scoreMin", "scoreMax", "first", "last", "baseSum", "baseSq", "baseMin", "baseMax", "finalSum", "finalSq",
         "finalMin", "finalMax", "medalsN", "medalsSum", "medalsSq", "medalsMin", "medalsMax", "medalsSecs"]);
-      expect(Object.keys(part.bins)).toEqual(["n", "day", "build", "tsum", "skill", "base", "final", "medals"]);
+      expect(Object.keys(part.bins)).toEqual(["n", "day", "build", "tsum", "skill", "items", "medal", "base", "final", "medals"]);
       const dayCells = cells.filter(c => c.day === p.from);
       sameRows(partRows(part.cells), dayCells, CELL_KEY);
       sameRows(partRows(part.bins), bins.filter(b => b.day === p.from), BIN_KEY);

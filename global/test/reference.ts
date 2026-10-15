@@ -49,18 +49,23 @@ export function reference(rounds: RoundRow[], hidden: Set<number>, anon: Set<num
         medals_min: minOf(m.map(r => r.medals!)), medals_max: maxOf(m.map(r => r.medals!)), medals_secs: sum(m.map(r => r.duration)),
       };
     });
-  const counts = (vs: number[]) => {
-    const o: Record<string, number> = {};
-    for (const v of vs) o[String(v)] = (o[String(v)] ?? 0) + 1;
+  // Each bin's figures (CONTRACT §5): rounds, secs, score, base, final, medals.
+  const figures = (rs: RoundRow[], binOf: (r: RoundRow) => number) => {
+    const o: Record<string, number[]> = {};
+    for (const r of rs) {
+      const f = (o[String(binOf(r))] ??= [0, 0, 0, 0, 0, 0]);
+      f[0]++; f[1] += r.duration; f[2] += r.score; f[3] += r.base; f[4] += r.final; f[5] += r.medals ?? 0;
+    }
     return o;
   };
-  const bins = [...group(pub, r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.skill])).entries()].map(([k, rs]) => {
-    const [day, build, tsum, skill] = JSON.parse(k);
-    return {
-      day, build, tsum, skill, base: counts(rs.map(r => bin(r.base))), final: counts(rs.map(r => bin(r.final))),
-      medals: counts(rs.filter(r => (r.medals ?? 0) > 0).map(r => bin(r.medals!))),
-    };
-  });
+  const bins = [...group(pub, r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.skill, r.items, (r.medals ?? 0) > 0 ? 1 : 0])).entries()]
+    .map(([k, rs]) => {
+      const [day, build, tsum, skill, items, medal] = JSON.parse(k);
+      return {
+        day, build, tsum, skill, items, medal, base: figures(rs, r => bin(r.base)), final: figures(rs, r => bin(r.final)),
+        medals: figures(rs.filter(r => (r.medals ?? 0) > 0), r => bin(r.medals!)),
+      };
+    });
   const named = rounds.filter(r => r.contributor !== 0 && !anon.has(r.contributor));
   const contrib = [...group(named, r => JSON.stringify([keyDay(r.key), r.contributor, r.build, r.tsum])).entries()].map(([k, rs]) => {
     const [day, contributor, build, tsum] = JSON.parse(k);
@@ -80,7 +85,9 @@ const order = (keys: string[]) => (a: Record<string, unknown>, b: Record<string,
   return 0;
 };
 export const CELL_KEY = ["day", "build", "tsum", "skill", "items", "medal"];
-export const BIN_KEY = ["day", "build", "tsum", "skill"];
+export const BIN_KEY = CELL_KEY;
+/** The bins objects: {bin: figures}, secs (figure 1) a REAL sum. */
+const BINS = new Set(["base", "final", "medals"]);
 export const CONTRIB_KEY = ["day", "contributor", "build", "tsum"];
 
 /** Rows equal, in any order: integers exactly, REAL sums to rounding. */
@@ -89,17 +96,29 @@ export function sameRows(got: Record<string, unknown>[], want: Record<string, un
   expect(g.map(r => key.map(k => r[k]))).toEqual(w.map(r => key.map(k => r[k])));
   g.forEach((row, i) => {
     for (const [col, v] of Object.entries(w[i])) {
-      if (REAL.has(col)) expect(row[col] as number, `${col} of ${JSON.stringify(key.map(k => row[k]))}`).toBeCloseTo(v as number, 6);
+      const at = `${col} of ${JSON.stringify(key.map(k => row[k]))}`;
+      if (REAL.has(col)) expect(row[col] as number, at).toBeCloseTo(v as number, 6);
+      else if (BINS.has(col)) sameBins(row[col] as Record<string, number[]>, v as Record<string, number[]>, at);
       else expect(row[col], `${col} of ${JSON.stringify(key.map(k => row[k]))}`).toEqual(v);
     }
   });
+}
+
+/** Two bins objects alike: the same bins, the same figures, secs to rounding. */
+function sameBins(got: Record<string, number[]>, want: Record<string, number[]>, at: string) {
+  const sorted = (o: Record<string, number[]>) => Object.keys(o).sort((a, b) => Number(a) - Number(b));
+  expect(sorted(got), at).toEqual(sorted(want));
+  for (const [b, f] of Object.entries(want)) {
+    expect(got[b].length, `${at}, bin ${b}`).toBe(f.length);
+    f.forEach((v, i) => (i === 1 ? expect(got[b][i], `${at}, bin ${b} secs`).toBeCloseTo(v, 6) : expect(got[b][i], `${at}, bin ${b}[${i}]`).toBe(v)));
+  }
 }
 
 /** The tables as D1 has them, bins parsed. */
 export async function tables() {
   return {
     cells: await rows("SELECT * FROM cells"),
-    bins: (await rows<Record<string, unknown> & { base: string; final: string; medals: string }>("SELECT * FROM bins"))
+    bins: (await rows<Record<string, unknown> & { base: string; final: string; medals: string }>("SELECT * FROM cell_bins"))
       .map((b): Record<string, unknown> => ({ ...b, base: JSON.parse(b.base), final: JSON.parse(b.final), medals: JSON.parse(b.medals) })),
     contrib: await rows("SELECT * FROM contrib_cells"),
   };

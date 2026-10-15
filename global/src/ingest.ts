@@ -66,22 +66,26 @@ const UPSERT_ROUNDS = `INSERT INTO rounds (key, contributor, ${FIGURES.join(", "
  */
 const RACED = "INSERT OR IGNORE INTO dirty_days (day) SELECT value FROM json_each(?1) WHERE changes() < ?2";
 
-const PENDING = "INSERT INTO pending (contributor, n, days, tsums, cells, bins, cc) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
+// `bins` is the old per-skill bins column, no longer written (migrations/0002_cell_bins.sql).
+const PENDING = "INSERT INTO pending (contributor, n, days, tsums, cells, bins, cell_bins, cc) VALUES (?1, ?2, ?3, ?4, ?5, '[]', ?6, ?7)";
 
 const row = (r: Round) => [
   r.key, r.playedAt, r.build, r.tsum, r.skill, r.items, r.version, r.settingsHash,
   r.duration, r.score, r.base, r.final, r.medals, r.binBase, r.binFinal, r.binMedals,
 ];
 
+/** A bin's figures (CONTRACT §5): its rounds and their seconds, score, base coins, final coins and medals. */
+export type BinFigures = [number, number, number, number, number, number];
+
 /**
  * New rounds added up as the day tables keep them (rollup.ts: CELLS), for
- * the hourly job: cells and bins rows of the catalog's Tsums (a Tsum it lacks
- * stays out of the public figures), and contrib_cells rows by device. A few
- * rows a batch, so the job reads a few rows for a hundred rounds.
+ * the hourly job: cells and cell_bins rows of the catalog's Tsums (a Tsum it
+ * lacks stays out of the public figures), and contrib_cells rows by device. A
+ * few rows a batch, so the job reads a few rows for a hundred rounds.
  */
 export function aggregate(rounds: Round[]) {
   const cells = new Map<string, (string | number | null)[]>();
-  const bins = new Map<string, [string, number, string, number, ...Record<string, number>[]]>();
+  const bins = new Map<string, [string, number, string, number, number, number, ...Record<string, BinFigures>[]]>();
   const cc = new Map<string, (string | number)[]>();
   const min = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.min(a, b));
   const max = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.max(a, b));
@@ -107,13 +111,15 @@ export function aggregate(rounds: Round[]) {
           c[24] = min(c[24] as number | null, m); c[25] = max(c[25] as number | null, m);
         }
       }
-      const bk = JSON.stringify([day, r.build, r.tsum, r.skill]);
-      let g = bins.get(bk);
-      if (!g) bins.set(bk, (g = [day, r.build, r.tsum, r.skill, {}, {}, {}]));
-      for (const [kind, b] of [[4, r.binBase], [5, r.binFinal], [6, r.binMedals]] as const) {
+      // The cell's bins: each of its rounds counted in the bin of its base
+      // coins, of its final coins and, when it earned any, of its medals.
+      let g = bins.get(k);
+      if (!g) bins.set(k, (g = [day, r.build, r.tsum, r.skill, r.items, medal, {}, {}, {}]));
+      for (const [kind, b] of [[6, r.binBase], [7, r.binFinal], [8, r.binMedals]] as const) {
         if (b === null) continue;
-        const o = g[kind] as Record<string, number>;
-        o[b] = (o[b] ?? 0) + 1;
+        const o = g[kind] as Record<string, BinFigures>;
+        const f = (o[b] ??= [0, 0, 0, 0, 0, 0]);
+        f[0]++; f[1] += r.duration; f[2] += r.score; f[3] += r.base; f[4] += r.final; f[5] += m ?? 0;
       }
     }
     const ck = JSON.stringify([day, r.build, r.tsum, r.device]);

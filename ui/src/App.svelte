@@ -24,12 +24,12 @@
   import Tsum from './sections/Tsum.svelte';
 
   // A published snapshot is read-only: nothing to set up, so no Help, Data or live devices.
-  // The global site is too, and keeps no rounds for a Tsum page.
+  // The global site is too; its Tsum page is answered from the cells and their bins.
   const snapshot = isSnapshot();
   const globalSite = isGlobal();
   const readOnly = snapshot || globalSite;
   const ROUTES = [['stats', 'Stats'], ['tsum', 'Tsum'], ['catalog', 'Catalog'], ['help', 'Help']]
-    .filter(([r]) => !(readOnly && r === 'help') && !(globalSite && r === 'tsum'));
+    .filter(([r]) => !(readOnly && r === 'help'));
   // The Tsum Tsum website, which the global site is part of.
   const WEBSITE = 'https://tsumtsum.gapscripts.app';
 
