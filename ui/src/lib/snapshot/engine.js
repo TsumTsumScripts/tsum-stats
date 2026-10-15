@@ -108,6 +108,30 @@ const coinCol = f => (f.medals ? 'medals' : rangeCol(f));
 /** v is within [lo, hi]; a null bound is open, a null v is outside a set one. */
 const within = (v, lo, hi) => (lo === null || (v !== null && v >= lo)) && (hi === null || (v !== null && v <= hi));
 
+// ---- The histogram's buckets (the global engine uses these too) ----
+
+/** The histogram's step: 1, 2 or 5 times a power of ten (summary.go: niceStep). */
+function niceStep(raw) {
+  if (raw <= 1) return 1;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  for (const m of [1, 2, 5, 10]) if (raw <= m * mag) return m * mag;
+  return 10 * mag;
+}
+
+/** The bucket width and the last bucket's start (summary.go: histBounds); null without coin figures. */
+export function histBounds(totals) {
+  if (totals.minCoins === null || totals.maxCoins === null) return null;
+  const lo = totals.minCoins;
+  let hi = totals.maxCoins;
+  if (totals.q1Coins !== null && totals.q3Coins !== null) {
+    hi = Math.min(hi, totals.q3Coins + Math.trunc((3 * (totals.q3Coins - totals.q1Coins)) / 2));
+  }
+  const width = niceStep((hi - lo) / 24);
+  return {width, limit: (Math.floor(hi / width) + 1) * width};
+}
+/** v's bucket: its floored multiple of the width, with everything from the limit up in the last. */
+export const bucketOf = (v, {width, limit}) => Math.min(Math.floor(v / width) * width, limit);
+
 // ---- The engine ----
 
 export function createEngine(loader) {
@@ -291,27 +315,6 @@ export function createEngine(loader) {
   // ---- Boost items ----
 
   const itemsOf = (sh, i) => (sh.items[i] === null ? -1 : sh.items[i]);
-
-  /** The histogram's step: 1, 2 or 5 times a power of ten (summary.go: niceStep). */
-  function niceStep(raw) {
-    if (raw <= 1) return 1;
-    const mag = 10 ** Math.floor(Math.log10(raw));
-    for (const m of [1, 2, 5, 10]) if (raw <= m * mag) return m * mag;
-    return 10 * mag;
-  }
-
-  /** The bucket width and the last bucket's start (summary.go: histBounds); null without coin figures. */
-  function histBounds(totals) {
-    if (totals.minCoins === null || totals.maxCoins === null) return null;
-    const lo = totals.minCoins;
-    let hi = totals.maxCoins;
-    if (totals.q1Coins !== null && totals.q3Coins !== null) {
-      hi = Math.min(hi, totals.q3Coins + Math.trunc((3 * (totals.q3Coins - totals.q1Coins)) / 2));
-    }
-    const width = niceStep((hi - lo) / 24);
-    return {width, limit: (Math.floor(hi / width) + 1) * width};
-  }
-  const bucketOf = (v, {width, limit}) => Math.min(Math.floor(v / width) * width, limit);
 
   function histogram(sel, c, totals) {
     const h = {width: 0, cap: null, bins: []};

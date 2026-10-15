@@ -1,0 +1,18 @@
+{
+  "name": "tsum-global",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "node -e \"const f=require('fs');f.mkdirSync('site',{recursive:true});f.existsSync('.dev.vars')||f.copyFileSync('.dev.vars.example','.dev.vars')\" && wrangler d1 migrations apply tsum-global --local",
+    "dev": "wrangler dev --test-scheduled",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.3.4",
+    "@cloudflare/workers-types": "5.20260930.2",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11",
+    "wrangler": "4.145.0"
+  }
+}

@@ -3,7 +3,7 @@
 **A local website for your own Tsum Tsum data: every round played, and which
 Tsums you own.** One program, `tsum-stats`, serves it on
 <http://127.0.0.1:8090>. Download the binary and run it; nothing is sent
-anywhere unless you publish a snapshot yourself.
+anywhere unless you publish a snapshot or join the global stats yourself.
 
 This is the manual. For how the program is built and how to change it, see
 [INTERNALS.md](INTERNALS.md).
@@ -14,6 +14,9 @@ This is the manual. For how the program is built and how to change it, see
   what it costs to max. See [The catalog](#the-catalog).
 - **Help.** How to get data in: the address to paste into the app's Script
   events, Record round stats, **Import from devices**, and the Tsum List chore.
+- **Contribute.** Optional: add your rounds to the global stats, figures
+  pooled from many players' rounds. See
+  [Contributing to the global stats](#contributing-to-the-global-stats).
 
 ## Running it
 
@@ -50,6 +53,7 @@ Databases made by 0.6 and earlier are migrated on first start.
 | `--import-dir DIR` | none. Repeatable |
 | `--scan-interval` | `10s` |
 | `--web-dir DIR` | none. Files here replace the built-in site's — see [Changing the site](#changing-the-site) |
+| `--global-url URL` | `https://tsum-stats.gapscripts.app`: the global stats site that contributing sends rounds to, and only once you join. A data folder contributes to one site, so a test site takes another `--dir`. `""` turns contributing off — see [Contributing to the global stats](#contributing-to-the-global-stats) |
 | `--adb PATH` | adb on `PATH`, else the Android SDK's, else Google's platform-tools |
 | `--device-storage DIR` | `/sdcard/Download/GeneralAutomationPlatform` |
 | `--starter DIR` | none. Also serves the service starter for that starter bundle at `/starter/` — see [The service starter](#the-service-starter) |
@@ -244,7 +248,11 @@ How it is put together:
 - **Filters and navigation stay on screen.** At 1180 px and wider they are a
   sticky side column with a jump menu. Narrower, they are a bar under the top
   bar: chips for the active filters, a *Filters* button that drops the form
-  down, and the jump menu. The top bar is sticky everywhere.
+  down, and the jump menu. The top bar is sticky everywhere. Its device chip
+  names the one device and what it is doing, or counts several (*2/3 online ·
+  1 playing*); click it for each device's status, script and when an offline
+  one was last seen. **Share a snapshot**, the theme and the service starter
+  are in its **⋯** menu.
 
 **Every Tsum has its own colour,** `color` in `ui/public/data/catalog.json`. Charts,
 legends, tables and the Catalog's cards all use it.
@@ -354,11 +362,13 @@ tsum-stats snapshot ./my-stats --devices keep --no-collection
 | `rounds-YYYY-MM.json` | One UTC month of rounds |
 | `owned-<n>.json` | One device's newest Tsum list for one game (with `--devices hide`, only the newest per game) |
 
-A month file is column by column: each figure is one array, repeated text
-(Tsum, build, device) is a small dictionary the columns index into, and the
-time is the gap in seconds after the round before. Rounds are in time order.
-`null` is a figure the script could not read. Settings, round ids and
-anything else the page does not show are left out.
+A month file is column by column: each figure is one array, repeated text is
+a small dictionary the columns index into, and the time is the gap in seconds
+after the round before. The dictionaries are the Tsum, build, skill type,
+script version, device, source (live or CSV) and each round's script settings
+as stored, which the Tsum page's *By script setting* reads, so a published
+page shows them. Rounds are in time order. `null` is a figure the script could
+not read. Round ids and anything else the page does not show are left out.
 
 **Why months.** A finished month never changes, so a host caches it for good,
 and a repo grows by the current month per publish, not by the whole history.
@@ -368,7 +378,7 @@ months a filter's date range touches: its default 7 days is one or two files.
 
 ### Sharing it on GitHub Pages
 
-The top bar's **Share** button publishes a snapshot to the player's own
+**Share a snapshot** in the top bar's **⋯** menu publishes a snapshot to the player's own
 GitHub Pages site, at `https://<account>.github.io/tsum-stats/`. It needs no
 git and no command line:
 
@@ -406,6 +416,120 @@ What it will and will not touch:
   `.gitignore` are always left alone.
 - Signing out, or deleting `github.json`, leaves the published page up: it is
   the player's repo, and removing it is done on github.com.
+
+## Contributing to the global stats
+
+**The global stats** at <https://tsum-stats.gapscripts.app> pool the rounds of
+every player who chooses to send them: coin efficiency for each Tsum by skill
+level, boost items and game, from far more rounds than one account plays. They
+are worked out again every hour. Nothing is sent until you join.
+
+**Joining.** Press **Contribute** in the top bar. The dialog says what is
+sent and what the global site keeps; tick *I agree…* and press **Join**. The
+first upload starts about two minutes later, so you can still back out. After
+that, Tsum Tsum Stats sends your new rounds about once an hour, in the
+background, while it runs. **Upload now** sends at once. The dialog shows your
+contributor number, the rounds sent and waiting, when rounds were last sent,
+when it last checked for new ones (every hourly pass, even with nothing to
+send), when the next upload is due, and the global site's own count of your
+rounds, devices and days.
+
+**What is sent** is each round's stats CSV row as the script writes it: the
+round id (which carries when the round began and a code for the device that
+played it), when it ended, the script version, skill type, Tsum, game, round
+time, score, base and final coins, medals, and every script setting (skill
+level, boost items and the rest), with this app's version. Only rounds that:
+
+- ended in the last 60 days, and at least 20 minutes ago (by then its CSV row
+  has usually replaced the live event's);
+- are complete: score, both coin figures and the round time, and medals for a
+  medal Tsum;
+- say their game, INTL or JP, directly or through the `jpVersion` setting.
+
+A round is sent once, and again only if its figures change, such as when a
+CSV import fills in what the live event lacked (`ts_global_sent` in the
+database records what was sent). A round the global site cannot take yet,
+because by its clock the round has not happened (this computer's or the
+device's clock is ahead), is sent again with the next upload.
+
+**Never sent**: device names, where a round came from (live or CSV), your
+Tsum lists, and the names of files and folders.
+
+**What the global site keeps:**
+
+- Your rounds, for good, under a contributor number with no name or account.
+  Numbers are given out in order as players join; yours is not published, and
+  the dialog shows your own totals.
+- What the public page shows of them: figures added up over the rounds of the
+  same day, Tsum, game, skill level and boost items (counts, totals, best and
+  lowest, the first and last end time), and how many contributors (in all and
+  per Tsum) and devices sent rounds in the last 30 days. Where only you, or a
+  few players, send a Tsum, those figures can come close to your own rounds:
+  a group of one round shows that round's score, coins and end time. The page
+  marks such Tsums *few players*.
+- A hashed form of each round's device code. A round id ends with a code for
+  the device that played it; the site keeps only a keyed hash of it, to tell
+  devices apart and to count a round sent twice only once. The first sender
+  keeps it: a round you send that another player already sent (from the same
+  CSV files) counts once, under them.
+- When you join, a hashed form of your internet address, for about a day, to
+  limit how many joins one address makes.
+- Rounds of a Tsum newer than the global site: kept, and counted as yours, but
+  in no public figure until the site is updated to know that Tsum.
+- Nothing of the rounds it turns away, which are counted and not sent again:
+  a Tsum name that is not one, settings past their limits, figures out of
+  range, a round that started more than 60 days ago, or one that starts less
+  than 40 s after the device's previous round in the same upload. A round is
+  never turned away for its length: some Tsums' rounds last hours.
+
+Each contributor may add 5,000 rounds a UTC day, and the site has a daily
+total for everyone. Past either, uploads wait until 00:00 UTC, and the dialog
+says when they carry on. Any other trouble reaching the site shows in the
+dialog as an error, and the next hourly upload tries again.
+
+**Stop or unlink:**
+
+- **Stop contributing** stops the uploads and keeps your key. **Join again**
+  carries on under the same number.
+- **Stop and unlink my rounds** also forgets the key and asks the global site
+  to take your number off every round you sent, which it does over the
+  following hours (a day or more if you have sent many rounds). An upload in
+  progress finishes first. The rounds stay in the global figures, with their
+  hashed device codes, and cannot be taken out of them. It cannot be undone:
+  joining again makes you a new contributor, and rounds already sent are not
+  sent again.
+
+**The key** is in `global.json` in the data folder, readable only by you. It
+is sent only to the site it came from, and the state the page reads never
+contains it. `--global-url` picks the site (default
+`https://tsum-stats.gapscripts.app`): it must be `https`, or plain `http` to
+this computer for a local test copy. A data folder contributes to one site,
+so joining another while a key for the first is saved is refused: start a
+test copy with its own `--dir` too. `""` turns contributing off.
+
+### The global page
+
+The global site is this program's Stats page and Catalog, read-only, over
+everyone's rounds, and in the *Midnight Felt* theme until you pick another:
+
+- **Days are UTC days, and a round counts on the day it started.** Here a
+  round counts on the day it ended, in your time zone, so day totals and date
+  ranges differ a little where rounds cross midnight. The From and To fields
+  say UTC.
+- **The quartiles, median and P90 are approximate**, marked ≈. They come from
+  bins 2 % wide, so each is within 2 % of the exact figure, and exact under
+  100. Every count, total, average, best and rate is exact. With *Less item
+  costs* (on coins) or an items filter, the spreads and the histogram are not
+  available: the bins are kept per skill level, not per item set.
+- **Filters:** Tsums, game, dates, primary stat and *Less item costs*, as
+  here, plus **skill level** and **items used**. No device, outlier or
+  incomplete-round filters.
+- **Players.** The Tsums table's Players column counts the contributors who
+  sent rounds of that Tsum in the last 30 days. Under 3, the row is dimmed and
+  marked *few players*.
+- **Not there:** the Rounds table, By hour of day, the Tsum page, Help, and
+  anything about one player's collection. The Catalog lists every Tsum with
+  its global rounds.
 
 ## Changing the site
 
@@ -449,7 +573,7 @@ export before adding the new version to `supports`.
 ## Themes
 
 **A theme is a CSS file in `themes/` that overrides the colour and font
-tokens on `:root`, and nothing else.** The top bar's Theme menu lists them.
+tokens on `:root`, and nothing else.** The Theme picker in the top bar's **⋯** menu lists them.
 The choice is saved in the browser (`localStorage`, `tsum-stats.theme`) and
 applied in `index.html` before the page draws.
 
@@ -533,3 +657,4 @@ a list, coloured by `--fav`. The shape is drawn by its `::before`.
 - The program's own **Help** section walks through getting data in, with
   screenshots.
 - [INTERNALS.md](INTERNALS.md) — how it is built, and how to change it.
+- [global/README.md](../global/README.md) — the global stats site's Worker.

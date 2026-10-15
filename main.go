@@ -66,6 +66,9 @@ func main() {
 	flags.StringVar(&cfg.DeviceStorage, "device-storage", stats.DefaultDeviceStorage, "the automation app's storage folder on the device")
 	flags.StringVar(&cfg.WebDir, "web-dir", "",
 		"serve files in this folder in place of the built-in site's; created with a README when missing")
+	flags.StringVar(&cfg.GlobalURL, "global-url", stats.DefaultGlobalURL,
+		"the global stats site that Contribute sends rounds to, once you join (\"\" turns contributing off); "+
+			"a data folder contributes to one site, so use another --dir for a test site")
 
 	var starterDir string
 	var st *starter.Starter

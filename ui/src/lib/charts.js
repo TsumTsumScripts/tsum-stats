@@ -2,7 +2,8 @@
 // and returns the legend items for Legend.svelte ({id?, label, color, value?}).
 // Chart.svelte calls them again when the data, the box size or the theme changes.
 // A Tsum is always drawn in its own colour, with its portrait where there is room.
-// ctx, passed to the Tsum charts: {nameOf(id), colorOf(id), onPick(id, event)}.
+// ctx, passed to the Tsum charts: {nameOf(id), colorOf(id), onPick(id, event)}; on the global
+// site also approx (its median, quartiles and P90 are estimates) and noSpreads (why they are missing).
 import * as d3 from 'd3';
 import {IMAGE_URL, css, fmt, fmtRate, initials, itemsLabel, otherColor, pct} from './util.js';
 import {b, dim, hideTip, showTip, sw} from './ui.svelte.js';
@@ -218,11 +219,14 @@ const METRICS = {
   max: {get: t => t.maxCoins, fmt, name: () => `best ${U}`},
 };
 
+/** '≈ ' before an estimated spread figure, else nothing. */
+const ap = ctx => (ctx?.approx ? '≈ ' : '');
+
 const tsumTip = (t, ctx) => [
   [sw(ctx.colorOf(t.tsum)), b(ctx.nameOf(t.tsum) || 'Not identified')],
   [`${fmt(t.rounds)} rounds`],
   [b(fmtRate(t.coinsPerSec)), ` ${U}/s · ${fmt(t.coinsPerSec === null ? null : t.coinsPerSec * 3600)} ${U}/h`],
-  ['Average ', b(fmt(t.avgCoins)), ` · median ${fmt(t.medianCoins)}`],
+  ['Average ', b(fmt(t.avgCoins)), ` · median ${ap(ctx)}${fmt(t.medianCoins)}`],
   [`Lowest ${fmt(t.minCoins)} · highest ${fmt(t.maxCoins)}`],
 ];
 
@@ -247,7 +251,7 @@ function drawRate(container, tsums, ctx, metric) {
   const f = frame(container, {top: 4, right: 52, bottom: 24, left}, rows.length * ROW_H + 28);
   f.margin = left;
   const {g, inner} = f;
-  if (!rows.length) return empty(f);
+  if (!rows.length) return empty(f, (metric === 'median' && ctx.noSpreads) || undefined);
   const y = d3.scaleBand().domain(rows.map(t => t.tsum)).range([0, Math.min(inner.h, rows.length * ROW_H)]).padding(0.2);
   const x = d3.scaleLinear().domain([0, d3.max(rows, m.get)]).nice().range([0, inner.w]);
   g.append('g').attr('class', 'grid').attr('transform', `translate(0,${y.range()[1]})`)
@@ -261,7 +265,7 @@ function drawRate(container, tsums, ctx, metric) {
   bars.append('rect').attr('height', y.bandwidth()).attr('width', t => Math.max(2, x(m.get(t))))
     .attr('rx', Math.min(4, y.bandwidth() / 2)).attr('fill', t => ctx.colorOf(t.tsum));
   bars.append('text').attr('x', t => x(m.get(t)) + 6).attr('y', y.bandwidth() / 2).attr('dy', '0.35em').attr('class', 'value-label')
-    .text(t => m.fmt(m.get(t)));
+    .text(t => (metric === 'median' ? ap(ctx) : '') + m.fmt(m.get(t)));
   return [];
 }
 
@@ -271,7 +275,7 @@ function drawBox(container, tsums, ctx) {
   const f = frame(container, {top: 4, right: 16, bottom: 24, left}, rows.length * ROW_H + 28);
   f.margin = left;
   const {g, inner} = f;
-  if (!rows.length) return empty(f);
+  if (!rows.length) return empty(f, ctx.noSpreads || undefined);
   const y = d3.scaleBand().domain(rows.map(t => t.tsum)).range([0, Math.min(inner.h, rows.length * ROW_H)]).padding(0.28);
   // The scale stops a little past the highest 90th percentile, so one freak
   // round does not squash every box; a highest round beyond it is an arrow.
@@ -283,7 +287,7 @@ function drawBox(container, tsums, ctx) {
   tsumAxis(f, rows, y, ctx);
   const ink = css('--ink'), well = css('--well');
   const box = g.append('g').selectAll('g').data(rows).join('g').attr('transform', t => `translate(0,${y(t.tsum)})`);
-  hoverable(box, t => [...tsumTip(t, ctx), [`Middle half ${fmt(t.q1Coins)}–${fmt(t.q3Coins)} · 90th percentile ${fmt(t.p90Coins)}`]],
+  hoverable(box, t => [...tsumTip(t, ctx), [`Middle half ${ap(ctx)}${fmt(t.q1Coins)}–${fmt(t.q3Coins)} · 90th percentile ${ap(ctx)}${fmt(t.p90Coins)}`]],
     t => t.tsum && (e => ctx.onPick(t.tsum, e)));
   const mid = y.bandwidth() / 2;
   box.append('rect').attr('width', inner.w).attr('height', y.bandwidth()).attr('fill', 'transparent');
@@ -527,7 +531,7 @@ export function drawItems(container, mix, metric) {
 export function drawHistogram(container, hist, totals, ctx) {
   const f = frame(container, {top: 34, right: 16, bottom: 26, left: 44});
   const {g, inner} = f;
-  if (!hist.bins.length) return empty(f);
+  if (!hist.bins.length) return empty(f, ctx?.noSpreads || undefined);
   const w = hist.width;
   const top = topKeys(hist.bins.map(bn => bn.tsum), id => d3.sum(hist.bins.filter(bn => bn.tsum === id), bn => bn.rounds), 7, ctx);
   const byBin = d3.rollup(hist.bins, bs => {
@@ -567,7 +571,8 @@ export function drawHistogram(container, hist, totals, ctx) {
     row = px - lastX < 80 ? row + 1 : 0;
     lastX = px;
     g.append('line').attr('x1', px).attr('x2', px).attr('y1', -18 + row * 12).attr('y2', inner.h).attr('class', 'ref-line').style('pointer-events', 'none');
-    g.append('text').attr('class', 'ref-label').attr('x', px + 4).attr('y', -22 + row * 12).attr('text-anchor', 'start').text(`${name} ${compact.format(v)}`);
+    g.append('text').attr('class', 'ref-label').attr('x', px + 4).attr('y', -22 + row * 12).attr('text-anchor', 'start')
+      .text(`${name} ${name === 'avg' ? '' : ap(ctx)}${compact.format(v)}`);
   }
   return keyLegend(top);
 }

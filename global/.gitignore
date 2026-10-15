@@ -1,0 +1,8 @@
+node_modules/
+.wrangler/
+# The page, built by `vite build --mode global` in ../ui (deploy.sh does it).
+site/
+# Local secrets for `wrangler dev`; .dev.vars.example has throwaway ones.
+.dev.vars
+# Written by the Go parity test for the vitest parity suite.
+test/.parity/

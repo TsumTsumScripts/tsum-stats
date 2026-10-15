@@ -2,9 +2,13 @@
   The Stats section: the filter rail, KPI tiles, charts, the per-Tsum table and
   the rounds table. The server filters, sorts, pages and aggregates, so the
   page never holds more than one page of rounds however many there are.
+  On the global site there are no rounds, only their sums per UTC day (the
+  day each round began): no rounds table or hours, and filters by skill level
+  and items instead of devices.
 -->
 <script>
   import {onMount, tick} from 'svelte';
+  import {isGlobal} from '../lib/global/client.js';
   import {isSnapshot} from '../lib/snapshot/client.js';
   import {SvelteSet} from 'svelte/reactivity';
   import Chart from '../components/Chart.svelte';
@@ -14,7 +18,7 @@
   import Seg from '../components/Seg.svelte';
   import TsumCell from '../components/TsumCell.svelte';
   import {drawCompare, drawDaily, drawEfficiency, drawHistogram, drawHours, drawItems, drawShare} from '../lib/charts.js';
-  import {expand, shared} from '../lib/ui.svelte.js';
+  import {expand, shared, toast} from '../lib/ui.svelte.js';
   import {
     api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsCost, itemsLabel, loadPref, pct, savePref, tsumColor, tsumName,
   } from '../lib/util.js';
@@ -25,6 +29,7 @@
 
   // initial: the link's params; onStateChange(filter, {push}) writes the link.
   let {hidden, initial, onStateChange} = $props();
+  const globalSite = isGlobal();
 
   // coins is the primary stat: '' base coins (before the coin bonus), 'final' final
   // coins, 'medals' medals (the server then keeps only rounds that earned medals).
@@ -33,8 +38,9 @@
   // device is a comma list of device names; empty is every device.
   // days is the time range: '7' or '30' (rolling, up to today), 'all', or '' for the from/to dates.
   // min/max Score, Coins and Medals are the outlier ranges (OUTLIERS); incomplete '1' keeps rounds with an unread figure.
+  // On the global site, skill and items are comma lists of skill levels and item masks (-1: not recorded).
   const blank = () => ({tsum: '', device: '', days: '7', from: '', to: '', ...Object.fromEntries(OUTLIER_KEYS.map(k => [k, ''])),
-    incomplete: '', build: '', coins: '', net: '', sort: '-playedAt', page: 1, perPage: 50});
+    incomplete: '', build: '', coins: '', net: '', sort: '-playedAt', page: 1, perPage: 50, ...(globalSite ? {skill: '', items: ''} : {})});
   /** The outlier ranges: a stat, its link keys and the input step. */
   const OUTLIERS = [['score', 'Score', 'minScore', 'maxScore', 1000], ['coins', 'Coins', 'minCoins', 'maxCoins', 100], ['medals', 'Medals', 'minMedals', 'maxMedals', 10]];
   const OUTLIER_KEYS = OUTLIERS.flatMap(([, , lo, hi]) => [lo, hi]);
@@ -42,6 +48,8 @@
   /** A filter from the link's params; a link with dates but no days keeps its dates. */
   function fromParams(p) {
     const s = {...blank(), ...p};
+    // Every global round is complete and has no device, so those filters do not apply.
+    if (globalSite) Object.assign(s, {device: '', incomplete: '', ...Object.fromEntries(OUTLIER_KEYS.map(k => [k, '']))});
     if ((p.from || p.to) && !p.days) s.days = '';
     s.page = Number(s.page) || 1;
     s.perPage = Number(s.perPage) || 50;
@@ -52,14 +60,19 @@
   const basisName = (coins, net) => (coins === 'medals' ? 'medals' : `${net ? 'net ' : ''}${coins === 'final' ? 'final' : 'base'} coins`);
 
   // Local calendar days → UTC instants, so "From Sep 3" means the viewer's Sep 3.
-  const localDayStart = day => (day ? new Date(`${day}T00:00:00`).toISOString() : '');
+  // The global site's figures are per UTC day (the day a round began), so there a day is a UTC one.
+  const dayStart = day => new Date(`${day}T00:00:00${globalSite ? 'Z' : ''}`);
+  const addDays = (d, n) => (globalSite ? d.setUTCDate(d.getUTCDate() + n) : d.setDate(d.getDate() + n));
+  const localDayStart = day => (day ? dayStart(day).toISOString() : '');
   function localDayEnd(day) {
     if (!day) return '';
-    const d = new Date(`${day}T00:00:00`);
-    d.setDate(d.getDate() + 1);
+    const d = dayStart(day);
+    addDays(d, 1);
     return d.toISOString();
   }
-  const isoDay = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const isoDay = d => (globalSite ? d.toISOString().slice(0, 10)
+    : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+  const utc = globalSite ? ' UTC' : '';
 
   // "-score" ↔ [{id: 'score', desc: true}]
   const toSorting = sort => [{id: sort.replace(/^-/, ''), desc: sort.startsWith('-')}];
@@ -77,6 +90,10 @@
   const filter = $state(blank());
   /** Devices that have played a round: {device, rounds}. */
   let playedDevices = $state([]);
+  // The global site's status: its skill levels and the contributors a Tsum needs before its figures are trusted.
+  let status = $state.raw(null);
+  // The global site's item sets, for the items filter: [{items, rounds}] from the last summary without one.
+  let itemSets = $state.raw([]);
   let summary = $state.raw(null);
   let summaryLoad = Promise.resolve();
   const seq = {summary: 0, rounds: 0};
@@ -98,6 +115,8 @@
   const colorOf = id => tsumColor(catalog, id);
   const picked = $derived(listOf(filter.tsum));
   const pickedDevices = $derived(listOf(filter.device));
+  const pickedSkills = $derived(globalSite ? listOf(filter.skill) : []);
+  const pickedItems = $derived(globalSite ? listOf(filter.items) : []);
   const unit = $derived(filter.coins === 'medals' ? 'medals' : 'coins');
   const U = $derived(cap(unit));
   // Item costs come off coins only; in Medals mode the switch waits, unsent.
@@ -124,7 +143,7 @@
     const n = Number(filter.days);
     if (!n) return {from: filter.from, to: filter.to};
     const from = new Date();
-    from.setDate(from.getDate() - n + 1);
+    addDays(from, -n + 1);
     return {from: isoDay(from), to: ''};
   });
 
@@ -132,6 +151,7 @@
     tsum: filter.tsum, device: filter.device, build: filter.build, coins: filter.coins, net: net ? '1' : '', incomplete: filter.incomplete,
     ...Object.fromEntries(OUTLIER_KEYS.map(k => [k, filter[k]])),
     from: localDayStart(range.from), to: localDayEnd(range.to),
+    ...(globalSite ? {skill: filter.skill, items: filter.items} : {}),
   });
 
   /**
@@ -156,9 +176,13 @@
       out.push({label: pickedDevices.length > 2 ? `${pickedDevices.length} devices` : pickedDevices.join(', '), clear: () => set({device: ''})});
     }
     if (filter.build) out.push({label: buildLabel(filter.build), clear: () => set({build: ''})});
-    if (Number(filter.days)) out.push({label: `Last ${filter.days} days`, clear: () => set({days: 'all'})});
+    if (pickedSkills.length) out.push({label: `Skill ${pickedSkills.map(skillName).join(', ')}`, clear: () => set({skill: ''})});
+    if (pickedItems.length) {
+      out.push({label: pickedItems.length > 2 ? `${pickedItems.length} item sets` : pickedItems.map(m => itemsLabel(Number(m))).join(', '), clear: () => set({items: ''})});
+    }
+    if (Number(filter.days)) out.push({label: `Last ${filter.days} days${utc}`, clear: () => set({days: 'all'})});
     else if (filter.days !== 'all' && (filter.from || filter.to)) {
-      out.push({label: `${filter.from || '…'} → ${filter.to || 'today'}`, clear: () => set({days: 'all', from: '', to: ''})});
+      out.push({label: `${filter.from || '…'} → ${filter.to || 'today'}${utc}`, clear: () => set({days: 'all', from: '', to: ''})});
     }
     if (filter.coins) out.push({label: cap(basisName(filter.coins)), clear: () => set({coins: ''})});
     if (net) out.push({label: 'Less item costs', clear: () => set({net: ''})});
@@ -174,9 +198,9 @@
     return out;
   });
 
-  /** The Tsum page for the one focused Tsum, with the filters it understands. */
+  /** The Tsum page for the one focused Tsum, with the filters it understands; the global site has none. */
   const pageLink = $derived.by(() => {
-    if (picked.length !== 1) return null;
+    if (picked.length !== 1 || globalSite) return null;
     // The page's ranges are rolling or all time; dates fall back to all time.
     const days = Number(filter.days) ? filter.days : 'all';
     const q = Object.entries({id: picked[0], days, coins: filter.coins, net: filter.net, device: pickedDevices.length === 1 ? filter.device : '', build: filter.build});
@@ -193,17 +217,25 @@
   async function fetchSummary() {
     const mine = ++seq.summary;
     loading = true;
+    const params = filterParams();
     try {
-      const s = await api('summary', {...filterParams(), tz: -new Date().getTimezoneOffset()});
-      if (mine === seq.summary) summary = s;
+      const s = await api('summary', {...params, tz: -new Date().getTimezoneOffset()});
+      if (mine !== seq.summary) return;
+      summary = s;
+      // The items filter offers the item sets the rest of the filter has.
+      if (globalSite && !params.items) itemSets = itemSetsOf(s.mix);
     } catch (e) {
       if (mine === seq.summary) roundsNote = `Could not load: ${e.message}`;
+      // The global site has no rounds table to say so under.
+      if (mine === seq.summary && globalSite) toast(roundsNote, 6000);
     } finally {
       if (mine === seq.summary) loading = false;
     }
   }
 
   async function loadRounds() {
+    // The global site keeps no rounds.
+    if (globalSite) return;
     const mine = ++seq.rounds;
     try {
       const res = await api('rounds', {...filterParams(), sort: filter.sort, page: filter.page, perPage: filter.perPage});
@@ -221,9 +253,30 @@
   }
 
   async function loadTsumOptions() {
+    if (globalSite) status = await api('status');
     playedDevices = await api('round-devices');
     played = (await api('tsums')).filter(t => t.tsum);
   }
+
+  // ---- The global site's filters and flags ----
+
+  const skillName = s => (Number(s) < 0 ? 'not recorded' : String(s));
+  /** Rounds per item set in a summary's mix, most played first. */
+  function itemSetsOf(mix) {
+    const by = new Map();
+    for (const m of mix) by.set(m.items, (by.get(m.items) ?? 0) + m.rounds);
+    return [...by].map(([items, rounds]) => ({items, rounds})).sort((a, b) => b.rounds - a.rounds);
+  }
+  // A picked item set the last summary did not have is still offered, so it can be unticked.
+  const itemChoices = $derived([...itemSets,
+    ...pickedItems.filter(m => !itemSets.some(s => String(s.items) === m)).map(m => ({items: Number(m), rounds: null}))]);
+  // Contributors per Tsum; one with fewer than status.minContributors is flagged "few players".
+  const playersOf = $derived(new Map(played.map(t => [t.tsum, t.contributors ?? null])));
+  const fewPlayers = r => globalSite && status && r.players !== null && r.players < status.minContributors;
+  /** Why the global site's spreads are missing, when they are: its bins are kept per skill level, not per item set. */
+  const noSpreads = $derived(summary?.global && !summary.global.spreads ? (pickedItems.length ? 'with an items filter' : 'with item costs taken off') : '');
+  // The charts mark the global site's spreads as estimates, or say why they are missing.
+  const spreadCtx = $derived(summary?.global ? {...ctx, approx: true, noSpreads: noSpreads && `No spreads ${noSpreads}: the bins are not kept per item set`} : ctx);
 
   /** The played Tsum whose English or JP name (or id) is text, or ''. */
   function matchTsum(text) {
@@ -242,7 +295,7 @@
     const medalTotal = s.medals.tsums.reduce((n, t) => n + (t.coins ?? 0), 0);
     const medalsOf = new Map(s.medals.tsums.map(t => [t.tsum, {...t, share: medalTotal ? (t.coins ?? 0) / medalTotal : null}]));
     return s.tsums.map(t => ({...t, name: nameOf(t.tsum) || 'Not identified', share: total ? (t.coins ?? 0) / total : null,
-      m: medalsOf.get(t.tsum)}));
+      m: medalsOf.get(t.tsum), players: playersOf.get(t.tsum) ?? null}));
   });
 
   const effSub = $derived(summary && {
@@ -255,19 +308,20 @@
     : 'top 8 Tsums, the rest as Other'));
   const dailySub = $derived(summary && {
     stack: `total ${basis}, top 7 Tsums`, rate: `${basis} per second of play`, avg: `average ${basis} per round, with the day's lowest–highest band`,
-  }[views.daily]);
-  const histSub = $derived(summary && `how many rounds ended with each amount of ${basis}, by Tsum`);
+  }[views.daily] + (globalSite ? ' · by the UTC day each round began' : ''));
+  const histSub = $derived(summary && (noSpreads ? `not available ${noSpreads}: the bins behind it are kept per skill level, not per item set`
+    : `how many rounds ended with each amount of ${basis}, by Tsum${summary.global ? ' · ≈ from 2 % wide bins' : ''}`));
 
   // Each chart's draw arguments; null until there is a summary.
   const byRounds = $derived(summary ? [...summary.tsums].sort((a, c) => c.rounds - a.rounds) : []);
   const args = $derived(summary && {
     compare: picked.length > 1 ? [summary.dailyTsums, picked, ctx, views.compare] : null,
-    eff: [views.eff, byRounds, ctx, views.effMetric],
+    eff: [views.eff, byRounds, spreadCtx, views.effMetric],
     daily: [summary.daily, summary.dailyTsums, ctx, views.daily],
     share: [views.share, views.share === 'sunburst' ? summary.mix : summary.tsums, ctx, views.shareMetric],
     hours: [summary.hours, views.hour],
     items: [summary.mix, views.items],
-    hist: [summary.histogram, summary.totals, ctx],
+    hist: [summary.histogram, summary.totals, spreadCtx],
   });
 
   // ---- Tables ----
@@ -282,22 +336,27 @@
   const medal = (id, header, get, format = fmt, meta = {}) =>
     num(id, header, r => (r.m ? get(r.m) : null), format, {meta: {show: coinMode, ...meta}});
 
+  // The global site's quartiles and P90 are estimates from its bins.
+  const approxName = label => (globalSite ? `≈ ${label}` : label);
+  const approxTitle = title => (globalSite ? `${title ? `${title}. ` : ''}Approximate: within 2 % of the exact figure` : title || undefined);
+
   const tsumColumns = [
     {id: 'pick', header: '', enableSorting: false, enableHiding: false, meta: {cls: 'pick'}, snippet: pickCell},
     {id: 'tsum', header: 'Tsum', accessorFn: r => r.name, snippet: tsumCell, sortDescFirst: false, enableHiding: false, meta: {search: true}},
     num('rounds', 'Rounds', r => r.rounds),
+    num('players', 'Players', r => r.players, fmt, {meta: {show: () => globalSite, title: 'Contributors who sent rounds of this Tsum in the last 30 days'}}),
     num('share', () => `${U.slice(0, -1)} share`, r => r.share, pct, {meta: {title: "This Tsum's part of the primary stat in the filter"}}),
     num('coins', () => `Total ${unit}`, r => r.coins, fmt, {meta: {cls: 'coin'}}),
     num('coinsPerSec', () => `${U}/s`, r => r.coinsPerSec, fmtRate, {meta: {cls: 'coin', title: 'Per second of play'}}),
     num('coinsPerHour', () => `${U}/h`, r => (r.coinsPerSec === null ? null : r.coinsPerSec * 3600)),
     num('avgCoins', 'Average', r => r.avgCoins),
-    num('medianCoins', 'Median', r => r.medianCoins),
+    num('medianCoins', approxName('Median'), r => r.medianCoins, fmt, {meta: {title: approxTitle('')}}),
     num('minCoins', 'Lowest', r => r.minCoins),
     num('maxCoins', 'Highest', r => r.maxCoins),
     num('stdCoins', 'Std dev', r => r.stdCoins, fmt, {meta: {title: 'How far rounds usually land from the average'}}),
-    num('q1Coins', 'Q1', r => r.q1Coins, fmt, {meta: {hidden: true, title: 'A quarter of rounds made fewer coins'}}),
-    num('q3Coins', 'Q3', r => r.q3Coins, fmt, {meta: {hidden: true, title: 'A quarter of rounds made more coins'}}),
-    num('p90Coins', 'P90', r => r.p90Coins, fmt, {meta: {hidden: true, title: 'One round in ten made more coins'}}),
+    num('q1Coins', approxName('Q1'), r => r.q1Coins, fmt, {meta: {hidden: true, title: approxTitle('A quarter of rounds made fewer coins')}}),
+    num('q3Coins', approxName('Q3'), r => r.q3Coins, fmt, {meta: {hidden: true, title: approxTitle('A quarter of rounds made more coins')}}),
+    num('p90Coins', approxName('P90'), r => r.p90Coins, fmt, {meta: {hidden: true, title: approxTitle('One round in ten made more coins')}}),
     num('avgBaseCoins', 'Avg base coins', r => r.avgBaseCoins, fmt, {meta: {hidden: true, title: 'Before the coin bonus'}}),
     num('avgFinalCoins', 'Avg final coins', r => r.avgFinalCoins, fmt, {meta: {hidden: true, title: 'After the coin bonus'}}),
     num('avgSeconds', 'Avg time', r => r.avgSeconds, fmtDuration),
@@ -309,13 +368,13 @@
     medal('medalsPerSec', 'Medals/s', m => m.coinsPerSec, fmtRate, {cls: 'medal', hidden: true, title: 'Medals per second of play, in rounds that earned medals'}),
     medal('medalsPerHour', 'Medals/h', m => (m.coinsPerSec === null ? null : m.coinsPerSec * 3600), fmt, {cls: 'medal'}),
     medal('avgMedals', 'Avg medals', m => m.avgCoins, fmt, {cls: 'medal', title: 'Average of the rounds that earned medals'}),
-    medal('medianMedals', 'Median medals', m => m.medianCoins, fmt, {hidden: true}),
+    medal('medianMedals', approxName('Median medals'), m => m.medianCoins, fmt, {hidden: true, title: approxTitle('')}),
     medal('minMedals', 'Lowest medals', m => m.minCoins, fmt, {hidden: true}),
     medal('maxMedals', 'Highest medals', m => m.maxCoins, fmt, {hidden: true}),
     medal('stdMedals', 'Medals std dev', m => m.stdCoins, fmt, {hidden: true}),
-    medal('q1Medals', 'Medals Q1', m => m.q1Coins, fmt, {hidden: true}),
-    medal('q3Medals', 'Medals Q3', m => m.q3Coins, fmt, {hidden: true}),
-    medal('p90Medals', 'Medals P90', m => m.p90Coins, fmt, {hidden: true}),
+    medal('q1Medals', approxName('Medals Q1'), m => m.q1Coins, fmt, {hidden: true, title: approxTitle('')}),
+    medal('q3Medals', approxName('Medals Q3'), m => m.q3Coins, fmt, {hidden: true, title: approxTitle('')}),
+    medal('p90Medals', approxName('Medals P90'), m => m.p90Coins, fmt, {hidden: true, title: approxTitle('')}),
   ];
 
   /** A round's coins in the Primary stat, less its items' cost when net; null when unknown. */
@@ -394,6 +453,7 @@
 
 {#snippet tsumCell(r)}
   <TsumCell id={r.tsum} name={r.tsum ? nameOf(r.tsum) : 'Not identified'} color={colorOf(r.tsum)} onpick={r.tsum ? e => focusOn(r.tsum, e) : null} />
+  {#if fewPlayers(r)}<span class="sub few-flag" title="Too few players' rounds to stand for everyone's yet">few players</span>{/if}
 {/snippet}
 {#snippet roundTsumCell(r)}
   <TsumCell id={r.tsum} name={r.tsum ? tsumName(catalog, r.tsum, r.build || filter.build || 'global') : 'Not identified'} color={colorOf(r.tsum)}
@@ -417,6 +477,7 @@
 
 <section id="stats" class="stats-layout" class:loading {hidden}>
   <FilterRail {filter} {range} {chips} outliers={OUTLIERS} {picked} {played} {playedDevices} {pickedDevices} comparing={picked.length > 1}
+    skills={status?.skills ?? []} {pickedSkills} {itemChoices} {pickedItems}
     {set} reset={() => set({...blank(), coins: filter.coins, net: filter.net})} {addTsum} {dropTsum} {matchTsum} {nameOf} {colorOf} bind:open={railOpen} />
 
   <div class="stack stats-main">
@@ -425,13 +486,14 @@
     {/if}
 
     <div id="s-overview" class="anchor">
-      {#if summary}<Kpis t={summary.totals} m={summary.medals.totals} coins={filter.coins} {basis} />{/if}
+      {#if summary}<Kpis t={summary.totals} m={summary.medals.totals} coins={filter.coins} {basis} approx={Boolean(summary.global)}
+        missing={noSpreads && `no median ${noSpreads}`} />{/if}
     </div>
 
     <Panel id="s-compare" class="anchor" title="Head to head" sub="the Tsums in the filter side by side · the best in each row is marked"
       hidden={picked.length < 2}>
       {#if summary && picked.length > 1}
-        <HeadToHead rows={tsumRows} {picked} coins={filter.coins} {nameOf} {colorOf} {focusOn} {dropTsum} />
+        <HeadToHead rows={tsumRows} {picked} coins={filter.coins} {nameOf} {colorOf} {focusOn} {dropTsum} approx={Boolean(summary.global)} />
       {/if}
       <div class="panel-head versus-head">
         <div><h3>Per day</h3></div>
@@ -474,13 +536,16 @@
     </Panel>
 
     <div class="charts anchor" id="s-when">
-      <Panel title="By hour of day" sub="your time, across every day in the filter">
-        {#snippet tools()}
-          <Seg sm label="Measure" value={views.hour} onpick={v => setView('hour', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
-        {/snippet}
-        <Chart draw={drawHours} args={args?.hours} {unit} size="square" />
-      </Panel>
-      <Panel title="By items used" sub="every item set, best first">
+      <!-- The global site's cells are whole days, and bots play around the clock anyway. -->
+      {#if !globalSite}
+        <Panel title="By hour of day" sub="your time, across every day in the filter">
+          {#snippet tools()}
+            <Seg sm label="Measure" value={views.hour} onpick={v => setView('hour', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
+          {/snippet}
+          <Chart draw={drawHours} args={args?.hours} {unit} size="square" />
+        </Panel>
+      {/if}
+      <Panel class={globalSite ? 'wide' : ''} title="By items used" sub="every item set, best first">
         {#snippet tools()}
           <Seg sm label="Measure" value={views.items} onpick={v => setView('items', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
         {/snippet}
@@ -500,14 +565,16 @@
         </button>
       {/snippet}
       <DataTable columns={tsumColumns} rows={tsumRows} key="tsums" search="Search Tsums" pageSize={25} pageSizes={[10, 25, 50, 100]}
-        sorting={[{id: 'coinsPerSec', desc: true}]} countLabel={n => `${fmt(n)} Tsums`}>
+        sorting={[{id: 'coinsPerSec', desc: true}]} countLabel={n => `${fmt(n)} Tsums`} rowClass={r => (fewPlayers(r) ? 'few' : null)}>
         {#snippet empty()}No Tsums match these filters.{/snippet}
       </DataTable>
     </Panel>
 
-    <Panel id="s-rounds" class="anchor" title="Rounds" sub={roundsNote}>
-      <DataTable columns={roundColumns} rows={rounds.rows} total={rounds.total} page={rounds.page} key="rounds" pageSizes={[25, 50, 100, 200]}
-        manual={roundsManual} rowClass={r => (rounds.fresh.has(r.id) ? 'fresh' : null)} countLabel={n => `${fmt(n)} rounds`} empty={roundsEmpty} />
-    </Panel>
+    {#if !globalSite}
+      <Panel id="s-rounds" class="anchor" title="Rounds" sub={roundsNote}>
+        <DataTable columns={roundColumns} rows={rounds.rows} total={rounds.total} page={rounds.page} key="rounds" pageSizes={[25, 50, 100, 200]}
+          manual={roundsManual} rowClass={r => (rounds.fresh.has(r.id) ? 'fresh' : null)} countLabel={n => `${fmt(n)} rounds`} empty={roundsEmpty} />
+      </Panel>
+    {/if}
   </div>
 </section>

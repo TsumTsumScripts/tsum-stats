@@ -1,7 +1,10 @@
 <!-- The Catalog: every Tsum the chosen build has, marked with what the
-     player's latest Tsum List export says they own, from any device or one. -->
+     player's latest Tsum List export says they own, from any device or one.
+     The global site is no one's collection: there it is the roster, with the
+     rounds every contributor has played of each Tsum. -->
 <script>
   import {onMount} from 'svelte';
+  import {isGlobal} from '../lib/global/client.js';
   import {isSnapshot} from '../lib/snapshot/client.js';
   import Avatar from '../components/Avatar.svelte';
   import Seg from '../components/Seg.svelte';
@@ -11,13 +14,14 @@
   import {api, debounce, fmt, loadPref, savePref, tsumColor} from '../lib/util.js';
 
   let {hidden, initial, onStateChange} = $props();
+  const globalSite = isGlobal();
 
   // Levels show out of the game's top level, not the Tsum's current cap.
   const MAX_LEVEL = 50;
   const blank = () => ({build: 'global', device: '', owned: 'all', q: ''});
 
-  // Sort keys, their labels and the direction a first click gives.
-  const SORTS = {
+  // Sort keys, their labels and the direction a first click gives. The global site sorts by name or rounds played.
+  const SORTS = globalSite ? {name: {label: 'Name', dir: 'asc'}, rounds: {label: 'Rounds played', dir: 'desc'}} : {
     name: {label: 'Name', dir: 'asc'},
     order: {label: 'Date acquired', dir: 'asc'},
     level: {label: 'Level', dir: 'desc'},
@@ -103,7 +107,8 @@
   });
 
   const list = $derived(lists[listKey]);
-  const loaded = $derived(sources !== undefined && listKey in lists);
+  // The global site has no Tsum lists to wait for.
+  const loaded = $derived(globalSite || (sources !== undefined && listKey in lists));
 
   // The menu: a device is named once, with its build added only when it has a list for both.
   const deviceName = d => d || 'Unknown device';
@@ -151,7 +156,8 @@
       (filter.owned === 'all' || (filter.owned === 'owned') === Boolean(e.own)) &&
       (!q || e.search.includes(q) || e.id.includes(q)));
     const collator = new Intl.Collator(first === 'jp' ? 'ja' : undefined);
-    const value = (e, key) => (key === 'name' ? e.name : key === 'left' ? e.left?.boxes ?? null : e.own?.[key] ?? null);
+    const value = (e, key) => (key === 'name' ? e.name : key === 'left' ? e.left?.boxes ?? null
+      : key === 'rounds' ? played.get(e.id) ?? null : e.own?.[key] ?? null);
     // A Tsum with no figure for a key goes last whichever way it sorts.
     const compare = ({key, dir}) => (a, b) => {
       const x = value(a, key), y = value(b, key);
@@ -166,7 +172,8 @@
     return {
       shown,
       totals: maxOutTotals(shown),
-      count: list ? `Owned ${fmt(ownedCount)} / ${fmt(entries.length)}` : `${fmt(entries.length)} Tsums`,
+      count: list ? `Owned ${fmt(ownedCount)} / ${fmt(entries.length)}`
+        : globalSite ? `${fmt(entries.filter(e => played.has(e.id)).length)} of ${fmt(entries.length)} Tsums played` : `${fmt(entries.length)} Tsums`,
       progress: entries.length ? (ownedCount / entries.length) * 100 : 0,
       source: list ? `From ${list.file}${when ? ` · exported ${dateFmt.format(when)}` : ''}` : 'No Tsum list imported yet',
     };
@@ -192,7 +199,7 @@
     Object.assign(filter, p);
     if (filter.build !== 'jp') filter.build = 'global';
     onStateChange({...filter});
-    loadSources();
+    if (!globalSite) loadSources();
     loadPlayed();
   });
 
@@ -245,14 +252,19 @@
 <section id="catalog" class="stack" {hidden}>
   <div class="panel">
     <div class="cat-controls">
-      <!-- A labelled box, not a pill: a device may be named INTL or JP, like the game's builds. -->
-      <label class="cat-device" title="Whose Tsum list to show: each device's newest export">
-        <span>Device</span>
-        <select value={listKey} onchange={e => pick(e.target.value)} disabled={!options.length}>
-          {#each options as o (o.value)}<option value={o.value}>{o.label}</option>{:else}<option value={listKey}>No Tsum lists yet</option>{/each}
-        </select>
-      </label>
-      <Seg label="Owned" value={filter.owned} onpick={v => set({owned: v})} options={[['all', 'All'], ['owned', 'Owned'], ['missing', 'Missing']]} />
+      {#if globalSite}
+        <!-- No device's list: the build picks the roster. -->
+        <Seg label="Game build" value={filter.build} onpick={v => set({build: v})} options={[['global', 'INTL'], ['jp', 'JP']]} />
+      {:else}
+        <!-- A labelled box, not a pill: a device may be named INTL or JP, like the game's builds. -->
+        <label class="cat-device" title="Whose Tsum list to show: each device's newest export">
+          <span>Device</span>
+          <select value={listKey} onchange={e => pick(e.target.value)} disabled={!options.length}>
+            {#each options as o (o.value)}<option value={o.value}>{o.label}</option>{:else}<option value={listKey}>No Tsum lists yet</option>{/each}
+          </select>
+        </label>
+        <Seg label="Owned" value={filter.owned} onpick={v => set({owned: v})} options={[['all', 'All'], ['owned', 'Owned'], ['missing', 'Missing']]} />
+      {/if}
       <input class="search" type="search" placeholder="Search Tsums" autocomplete="off" value={filter.q} oninput={e => setQuery(e.target.value)}>
       <Seg label="Tsum names" value={prefs.names} onpick={v => setPrefs({names: v})} options={[['en', 'Eng'], ['jp', 'JP'], ['all', 'All']]} />
       <Seg label="Layout" value={prefs.view} onpick={v => setPrefs({view: v})} options={[['card', 'Cards'], ['list', 'List']]} />
@@ -272,12 +284,52 @@
     </div>
     <div class="cat-summary" style="margin-top:14px">
       <h2>{view.count}</h2>
-      <div class="progress"><div style:width="{view.progress}%"></div></div>
-      <span class="sub">{view.source}</span>
+      {#if !globalSite}
+        <div class="progress"><div style:width="{view.progress}%"></div></div>
+        <span class="sub">{view.source}</span>
+      {/if}
     </div>
   </div>
 
-  {#if loaded}
+  {#if globalSite && loaded}
+    <!-- The roster, with what every contributor has played of each Tsum. -->
+    <div class="grid" class:list={prefs.view === 'list'}>
+      {#if !view.shown.length}
+        <div class="panel empty-state" style="grid-column:1/-1">No Tsums match.</div>
+      {:else if prefs.view === 'list'}
+        <div class="panel list-wrap">
+          <table class="tsum-list">
+            <thead>
+              <tr>
+                {#each [['Tsum', 'name'], ['Rounds', 'rounds']] as [label, key] (key)}
+                  <th class:num={key === 'rounds'} aria-sort={ariaSort(key)} title="Click to sort, Shift-click to add a sort">
+                    <button type="button" onclick={e => toggleSort(key, e.shiftKey)}>{label}{#if sortArrow(key)}<span class="arrow">{sortArrow(key)}</span>{/if}</button>
+                  </th>
+                {/each}
+              </tr>
+            </thead>
+            <tbody>
+              {#each view.shown as e (e.id)}
+                <tr style:--tsum={e.color}>
+                  <td class="who"><Avatar id={e.id} name={e.name} /><span class="names"><b>{e.name}</b>{#if e.alt}<span class="alt">{e.alt}</span>{/if}</span></td>
+                  <td class="num">{played.has(e.id) ? fmt(played.get(e.id)) : '—'}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {:else}
+        {#each view.shown as e (e.id)}
+          <div class="panel card" style:--tsum={e.color}>
+            <span class="portrait"><Avatar id={e.id} name={e.name} large /></span>
+            <div class="name">{e.name}</div>
+            {#if e.alt}<div class="alt">{e.alt}</div>{/if}
+            <div class="sub">{played.has(e.id) ? `${fmt(played.get(e.id))} rounds` : 'No rounds yet'}</div>
+          </div>
+        {/each}
+      {/if}
+    </div>
+  {:else if loaded}
     <MaxOut build={filter.build} totals={view.totals} shown={view.shown.length} />
     <div class="grid" class:list={prefs.view === 'list'}>
       {#if !list}{@render emptyState()}{/if}

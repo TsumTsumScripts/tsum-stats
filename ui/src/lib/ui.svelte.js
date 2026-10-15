@@ -1,5 +1,6 @@
 // Page-wide state shared by components: the catalog and devices, the chart
 // tooltip, toasts, the one expanded panel, and the theme.
+import {isGlobal} from './global/client.js';
 import {api, loadPref, savePref} from './util.js';
 
 /** Loaded once by App before any section shows. */
@@ -37,8 +38,9 @@ export const expand = $state({open: null});
 // ---- Theme ----
 // A theme is a themes/*.css file of token overrides; there is always one.
 // index.html applies the saved one (else the default) before the page draws, so it never flashes.
+// The global site defaults to the Tsum Tsum website's own look.
 const THEME_KEY = 'tsum-stats.theme';
-export const DEFAULT_THEME = 'halloween.css';
+export const DEFAULT_THEME = isGlobal() ? 'midnight-felt.css' : 'halloween.css';
 export const theme = $state({list: [], current: loadPref(THEME_KEY, '') || DEFAULT_THEME, version: 0});
 
 const themeLink = () => document.getElementById('theme-css');

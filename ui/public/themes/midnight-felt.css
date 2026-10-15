@@ -215,3 +215,26 @@
 :root .callout, :root .addr-box { border: 2.5px dashed var(--m-fill); }
 :root .tip { border: 2px dashed var(--seam); }
 :root .tsum-list th, :root .tsum-list td { border-color: var(--hairline); }
+
+/* The top bar: a band of the panels' felt across the whole page, stitched
+   along its foot and cut with pinking shears, so it is sewn on like the
+   patches rather than laid over them. */
+:root .topbar { background: transparent; border-bottom: 0; backdrop-filter: none; -webkit-backdrop-filter: none; padding-bottom: 20px; }
+:root .topbar::before {
+  content: ''; position: absolute; z-index: -1; top: 0; bottom: 0; left: 50%; width: 100vw; transform: translateX(-50%); pointer-events: none;
+  background-color: var(--panel);
+  background-image: repeating-linear-gradient(90deg, var(--seam) 0 12px, transparent 12px 20px), var(--weave);
+  background-size: 100% 2.5px, auto, auto; background-position: 0 calc(100% - 9px), 0 0, 0 0; background-repeat: repeat-x, repeat, repeat;
+}
+:root .topbar::after {
+  content: ''; position: absolute; z-index: -1; left: 50%; width: 100vw; transform: translateX(-50%); bottom: -9px; height: 10px; pointer-events: none;
+  background: linear-gradient(135deg, var(--panel) 50%, transparent 50%) 0 0 / 18px 10px repeat-x,
+              linear-gradient(225deg, var(--panel) 50%, transparent 50%) 0 0 / 18px 10px repeat-x;
+  filter: drop-shadow(0 4px 0 var(--rim)) drop-shadow(0 8px 10px var(--cast));
+}
+:root #contribute-btn { --pf: var(--j-fill); --pe: var(--j-edge); --pt: var(--j-thread); --pi: var(--j-ink);
+  background: var(--pf); color: var(--pi); border: 2px dashed var(--pt); box-shadow: 0 4px 0 var(--pe); }
+:root #starter-btn { --pf: var(--g-fill); --pe: var(--g-edge); --pt: var(--g-thread); --pi: var(--g-ink); }
+/* What the device chip and the ⋯ menu open: a small felt patch. */
+:root .dropdown-panel { border: 2.5px dashed var(--seam); border-radius: 18px 24px 20px 26px;
+  background-color: var(--panel); background-image: var(--weave); box-shadow: 0 5px 0 var(--rim), 0 14px 26px var(--cast); }

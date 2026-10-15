@@ -1,0 +1,81 @@
+// The global Tsum Tsum Stats site: the page, the upload API and the hourly
+// rollup, as CONTRACT.md describes them. It lives on the personal Cloudflare
+// account only; CLOUDFLARE-SETUP.md creates the resources and deploy.sh
+// checks the token against account_id before it builds anything.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tsum-global",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // Pinned on purpose: a token for any other account fails the deploy.
+  "account_id": "4e1503d021e5fc7f42355e245834e75b",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+
+  // A stable upload address: every tsum-stats binary has it built in.
+  "routes": [{ "pattern": "tsum-stats.gapscripts.app", "custom_domain": true }],
+
+  // The page, built by `vite build --mode global` in ../ui. It routes by hash
+  // (#/stats), so an unknown path is a plain 404 rather than index.html. Only
+  // /api and /data reach the Worker first: /data/global/* is answered from R2,
+  // the rest of /data (the catalog) falls through to these files.
+  "assets": {
+    "directory": "./site",
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+    "run_worker_first": ["/api/*", "/data/*"]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tsum-global",
+      // The id `wrangler d1 create tsum-global` prints. Local dev and tests ignore it.
+      "database_id": "e87f3cd1-76bf-4ecc-8e6c-5be980a68e20",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // data/global/: the published files (public). archive/: raw rounds (never served).
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "tsum-global" }],
+
+  // The hourly job (src/job.ts).
+  "triggers": { "crons": ["5 * * * *"] },
+
+  // `npm run dev`: this computer only, off gap-companion's local server (:8787)
+  // and its inspector (:9229).
+  "dev": { "ip": "127.0.0.1", "port": 8788, "inspector_port": 9230 },
+
+  // Secrets (not here): DEVICE_KEY re-keys device tags and addresses, ADMIN_KEY
+  // opens /api/v1/admin/*. Locally they come from .dev.vars.
+  "vars": {
+    // Accepted rounds per contributor per UTC day.
+    "QUOTA_PER_CONTRIBUTOR": "5000",
+    // Rows D1 may write (insert, change or delete) per UTC day, for everything
+    // the Worker does (D1 Free writes 100k a day). Uploads and joins stop at
+    // this less JOB_RESERVE_ROWS; the hourly job spends the rest.
+    "BUDGET_ROWS_PER_DAY": "90000",
+    "JOB_RESERVE_ROWS": "25000",
+    // Rows D1 may read per UTC day before the job puts off the work that can
+    // wait: full recomputes, the archive, unlinks (D1 Free reads 5M a day).
+    "READ_BUDGET_PER_DAY": "4000000",
+    // Archived days stay in D1 (a delete is a row written) until it holds more rounds than this.
+    "RETAIN_ROWS": "3000000",
+    // How old a round may be; a day older than this + 1 is final and moves to the archive.
+    "ACCEPT_DAYS": "60",
+    // Dirty days one run recomputes in full at most.
+    "ROLLUP_DAYS_PER_RUN": "8",
+    // About how many rounds one run re-files (or deletes) per unlinking contributor, a whole day at a time.
+    "UNLINK_CHUNK": "5000",
+    // A run stops issuing new work at this many D1 queries or R2 operations (Free allows 50).
+    "RUN_QUERY_BUDGET": "45",
+    "RUN_R2_BUDGET": "40",
+    // Bytes of parts and archive files one run carries from D1 to R2: its CPU goes on them (Free allows 10 ms).
+    "RUN_BYTES": "2000000",
+    // The largest value the Worker has D1 build (D1 refuses one over 2,000,000 bytes); bigger files are split.
+    "VALUE_MAX_BYTES": "1500000",
+    // Below this many contributors the page flags a Tsum "few players".
+    "MIN_CONTRIBUTORS": "3"
+  }
+}
