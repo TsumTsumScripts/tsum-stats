@@ -64,9 +64,11 @@ started*:
         </ol>
         <p style={{lineHeight: 1.7, fontSize: 17, marginTop: 18}}>
           Each round's figures are sent, with its Tsum, game, skill level, boost items, script version and settings. Device
-          names, your Tsum List and file names never are. Your rounds are kept under a random contributor number, with no
-          name or account, and never shown on their own. You can stop at any time, or unlink your rounds so they no longer
-          carry your number. Rounds already sent stay in the figures.
+          names, your Tsum List and file names never are. Your rounds are kept under a contributor number with no name or
+          account, and the number is not published. The page shows figures added up over rounds of the same day, Tsum and
+          settings, so a Tsum only a few players send can show figures close to their own; the page marks it "few players".
+          You can stop at any time, or unlink your rounds so they no longer carry your number. Rounds already sent stay in
+          the figures.
         </p>
         <div style={{display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 18}}>
           <Patch as="a" href={globalStats} tone="marigold" className="fbtn">Open the global stats</Patch>

@@ -28,7 +28,9 @@ directly with no new contract.
 
 - `records` is 1–250 objects, each **a stats CSV row keyed by its header**,
   every value a **string** (an empty cell is `""`). `client` is optional (the
-  script does not send it).
+  script does not send it). The Worker takes up to 250; the forwarder sends at
+  most 100 (§7.2) and the script 50, which keeps one request's CPU well under
+  Workers Free's 10 ms.
 - **Base columns** (`csv.go: statsBaseColumns`): `id`, `datetime`,
   `script_version`, `skill_type`, `tsum`, `build`, `duration_seconds`,
   `score`, `base_coins`, `final_coins`, `medals`.
@@ -72,13 +74,28 @@ checked in this order:
 | `id` | not a UUIDv7 as above, or `datetime` unreadable, or `played_at` more than 10 minutes **before** the id's start time (clock skew). There is no limit on how long after the start a round may end |
 | `old` | the id's start time is more than **60 days** (`ACCEPT_DAYS`) before now, or its start day is on or before a day already archived (§3.4; such a day is final even if `ACCEPT_DAYS` grows) |
 | `future` | the id's start time or `played_at` is more than 10 minutes after now |
-| `tsum` | `tsum` is not an `id` in `ui/public/data/catalog.json` |
+| `tsum` | `tsum` is not a Tsum id at all: not `/^[A-Za-z0-9_.-]{1,48}$/` |
+| `settings` | the settings are past their bounds: more than 64 setting columns with a value, a setting name over 64 characters, a value over 256 characters, or the canonical settings JSON over 4,096 bytes (UTF-8). Empty cells do not count |
 | `build` | `build` is not `global`/`jp`, and the settings have no boolean `jpVersion` (true → `jp`, false → `global`) |
 | `incomplete` | `score`, `base_coins`, `final_coins` or `duration_seconds` is null, or `medals` is null for a catalog `medal: true` Tsum |
 | `duration` | `duration_seconds` is 0 or less (no rate can be made of it). There is **no upper limit**: rounds of some Tsums last hours |
 | `range` | `score` outside 0–200,000,000, `base_coins` 0–50,000, `final_coins` 0–1,500,000, `medals` 0–2,000 |
 | `repeat` | the same key twice in one batch (the first, in batch order, is kept) |
 | `pace` | within the batch, a round from the same device starting less than 40 s after the device's previous kept round (sorted by key) |
+
+**`future` is the one reason that can pass later** (the sender's clock is
+ahead of the site's): the reply names those records in `retry` (§2.2), and
+the forwarder sends them again. Every other rejection is final for that
+record as sent; only a change to the record sends it again.
+
+**A Tsum the catalog lacks.** The Worker bundles `ui/public/data/catalog.json`
+at deploy. A well-formed id it does not have (a Tsum newer than the deploy)
+is **accepted**: stored, archived, counted in `contrib_cells`, `recent` and
+the contributor's counters, but left out of every public table and file
+(`cells`, `bins`, the parts, the manifest) until a deploy's catalog has it.
+Then `POST /api/v1/admin/rebuild` brings in its days still in D1 (an archived
+day needs `restore` first). Its medals may be null: `incomplete` applies the
+medals rule only to the catalog's `medal: true` Tsums.
 
 Derived from an accepted record:
 
@@ -96,12 +113,18 @@ Derived from an accepted record:
   `settings` row with that hash (inserted once).
 - **bins** (§5): `bin(base)`, `bin(final)`, and `bin(medals)` when medals > 0
   (else null).
+- **known**: whether the bundled catalog has the Tsum; only then do its rounds
+  reach the public figures.
 
 ## 2. The Worker's HTTP API
 
-Host `https://tsum-stats.gapscripts.app`. JSON in and out
-(`Content-Type: application/json`); every reply has `ok`. A request body may
-be gzipped (`Content-Encoding: gzip`) and is at most 1 MiB after inflating.
+Host `https://tsum-stats.gapscripts.app`. JSON in and out; every reply has
+`ok`. **Every `POST` under `/api/` must say `Content-Type: application/json`**
+(parameters such as `charset` allowed), or it is refused with 415, after the
+route and method are checked and before the key is: a page on another site
+can send a form or `text/plain` without asking first (CORS), and so could
+otherwise join, or spend its visitors' joins. A request body may be gzipped
+(`Content-Encoding: gzip`) and is at most 1 MiB after inflating.
 
 | Route | Auth | Does |
 |:--|:--|:--|
@@ -123,30 +146,50 @@ admin key is the `ADMIN_KEY` secret, compared in constant time.
 | Status | code | When |
 |:--|:--|:--|
 | 400 | `bad-request` | Unreadable JSON, wrong `schema`, `records` not 1–250 objects |
-| 401 | `unauthorized` | No key, or one that matches no active/banned contributor |
+| 401 | `unauthorized` | No key, or one that matches no active/banned contributor; or, for an upload, the contributor unlinked while the upload was on the way (checked in the upload's own batch) |
 | 404 | `not-found` | No such route |
 | 405 | `method` | Wrong method |
 | 413 | `too-large` | Body over 1 MiB |
+| 415 | `content-type` | A `POST` that is not `application/json` |
 | 429 | `quota` | The contributor's daily quota (`QUOTA_PER_CONTRIBUTOR`, 5,000 rounds) would be passed; `Retry-After` = seconds to the next 00:00 UTC |
-| 429 | `join-limit` | More than 5 joins today from this address; `Retry-After` as for quota |
+| 429 | `join-limit` | More than 5 joins today from this address (§2.1); `Retry-After` as for quota |
 | 500 | `internal` | A fault, or the `DEVICE_KEY` secret is not set (no key or device hash is ever made without it) |
-| 503 | `budget` | Today's write budget (`BUDGET_ROWS_PER_DAY`, 80,000) would be passed; `Retry-After` as for quota |
+| 503 | `budget` | Today's write budget (§2.6) would be passed; `Retry-After` as for quota |
 
-A 429/503 refuses the **whole batch**; nothing is stored.
+A 401, 429 or 503 refuses the **whole batch**; nothing is stored. Only
+`quota`, `join-limit` and `budget` ask the sender to wait (`Retry-After`);
+the forwarder treats any other refusal, and any reply that is not the
+Worker's JSON (a platform error page), as a plain failure (§7.2).
 
 ### 2.1 `POST /api/v1/join`
 
 Body `{}` or `{"client": "tsum-stats/0.25"}`. Reply **201**
 `{"ok": true, "id": 17, "key": "<43 chars base64url of 32 random bytes>"}`.
-The key is shown once; only its hash is kept. Joins are limited per address:
-`join_limits` keyed by `HMAC(DEVICE_KEY, CF-Connecting-IP)` hex and the day.
+The key is shown once; only its hash is kept. Ids are given out in order and
+never twice, even after the newest contributor's row is deleted (`state`
+`contributor_seq`): archive files and merges name contributors by id.
+
+Joins are limited to 5 a UTC day per address: `join_limits` keyed by
+`HMAC(DEVICE_KEY, address)` hex and the day, where the address is
+`CF-Connecting-IP` read as:
+
+- an IPv4 address, as sent;
+- an IPv6 address, by its **/64** (a host is usually handed a whole /64),
+  written as its first four groups zero-padded plus `::/64`, e.g.
+  `2001:0db8:0001:0002::/64`;
+- an IPv4-mapped IPv6 address (`::ffff:a.b.c.d`), as the IPv4 address.
+
+The limit and the budget (§2.6: a join is 4 rows, refused past the uploads'
+cap) are checked inside the batch that counts the join, so a refused join
+(`429 join-limit`, `503 budget`) writes nothing. `join_limits` rows are
+deleted at the first run after 00:00 UTC.
 
 ### 2.2 `POST /api/v1/rounds`
 
 Reply **200**:
 
 ```json
-{"ok": true, "accepted": 240, "unchanged": 5, "duplicates": 3, "rejected": {"pace": 2}}
+{"ok": true, "accepted": 240, "unchanged": 5, "duplicates": 3, "rejected": {"pace": 2, "future": 1}, "retry": ["0192…"]}
 ```
 
 - `accepted`: rows inserted, or this contributor's rows whose figures changed.
@@ -155,21 +198,48 @@ Reply **200**:
 - `duplicates`: rows another contributor sent first. Never changed; counted in
   this contributor's `dup_rounds`.
 - `rejected`: §1.2 reasons with counts; only reasons that occurred.
+- `retry`: the record ids, exactly as sent, of the records rejected for a
+  reason that can pass later (`future`). Always there, possibly `[]`.
 
 `ok: true` means "do not send these again" (the script moves its cursor on
-it), even when rows were rejected. A **banned** contributor gets the same
+it), even when rows were rejected, **except the records named in `retry`**,
+which the sender sends again later. A **banned** contributor gets the same
 answers; their rounds are stored but left out of the public figures.
 
-The rows D1 already has are read first, so a refusal stores nothing and an
-unchanged re-send writes no rounds. Then, in one D1 batch: the rounds (insert,
-or update figures for this contributor's changed rows), the settings,
-`devices` (per device with a round that passed the checks, duplicates and
-unchanged rows included, so a player's second install shows up: insert or
-widen first/last seen; `rounds` adds newly inserted rows), `contributors`
-(last seen; `day_rounds` adds accepted rows, `rounds_total` inserted rows,
-`dup_rounds` duplicates), `budget` (rows written today), and `dirty_days`
-(the start days of accepted rows, §1.1; a start day never moves, since it
-comes from the key). The quota counts accepted rows; the budget counts rounds rows written.
+The rows D1 already has of the batch are read first: its rounds, its settings
+hashes and this contributor's `devices` rows for its devices, so an unchanged
+re-send writes no rounds and the writes can be counted before they run. Then
+**one D1 batch** (one transaction) makes three checks, any of which rolls the
+whole batch back: the contributor is still `active` or `banned` (else 401:
+it unlinked after its key was checked, and nothing may land under its id
+again), its quota (`429 quota`, on accepted rows) and today's budget
+(`503 budget`, §2.6). The same batch writes:
+
+- `settings`: the batch's new settings objects (each new row is 2 rows
+  written, for the UNIQUE index);
+- `rounds`: inserts, and this contributor's changed rows (one statement; the
+  settings ids are looked up as one map for the batch's hashes);
+- `pending`: one row for the batch's newly inserted rounds, added up as the
+  day tables keep them (`ingest.ts: aggregate`): their `cells` and `bins`
+  rows (the catalog's Tsums only), their `contrib_cells` rows by device,
+  their start days, and `{tsum: the newest of those days}`. The hourly job
+  adds these in (§3.2, step 1a) without reading `rounds`;
+- `dirty_days`: the start days of this contributor's **changed** rows (a
+  changed round is recomputed, never added on top: a minimum cannot be taken
+  back), and, when another upload stored one of this batch's new rounds a
+  moment earlier (the insert wrote fewer rows than expected), the batch's
+  days, so its `pending` sums are never counted twice (§3.2: `skip`). A start
+  day never moves, since it comes from the key;
+- `devices`: per device with a round that passed the checks (duplicates and
+  unchanged rows included, so a player's second install shows up): insert or
+  widen first/last seen; `rounds` adds newly inserted rows. A row is written
+  only when something changes;
+- `contributors`: last seen; `day_rounds` adds accepted rows (the quota),
+  `rounds_total` inserted rows, `dup_rounds` duplicates;
+- `budget`: the rows the batch writes (§2.6).
+
+The quota counts accepted rows; the budget counts every row written. A batch
+of 250 records takes about 15 D1 statements in all.
 
 ### 2.3 `GET /api/v1/me`
 
@@ -179,49 +249,131 @@ comes from the key). The quota counts accepted rows; the budget counts rounds ro
  "today": {"rounds": 800, "quota": 5000}}
 ```
 
-`rounds` is `rounds_total`; `devices` counts the contributor's `devices`
-rows; `first`/`last` are the days of its earliest and latest `contrib_cells`
-row (null before the first rollup), kept as `state` `span:<id>`, which each
-rollup only widens (reading `contrib_cells` by contributor would scan the
-whole table). A banned contributor sees `"status": "active"`.
+`rounds` is `rounds_total` (a Tsum the catalog lacks included); `devices`
+counts the contributor's `devices` rows; `first`/`last` are the days of its
+earliest and latest `contrib_cells` row (null before the first rollup), kept
+as `state` `span:<id>`, which each rollup only widens (reading
+`contrib_cells` by contributor would scan the whole table). A banned
+contributor sees `"status": "active"`.
 
 ### 2.4 `POST /api/v1/me/unlink`
 
-Reply `{"ok": true}`. At once: `key_hash` is cleared (the key stops working),
-the contributor's `devices` and `contrib_cells` rows are deleted, and its
-status becomes `unlinking` (or stays marked banned: `unlinking-banned`). The
-hourly job then re-files its rounds under contributor **0** in chunks
-(`UNLINK_CHUNK`, 5,000 rows a run) and renames its archive files; a banned
-contributor's rounds are deleted instead. When none are left, its row is
-deleted. Unlinked rounds stay in the public figures and keep their device
-hash (de-duplication needs it).
+Reply `{"ok": true}`. Never refused: leaving always works, and its writes are
+counted like any others (§2.6). **At once**, in one batch:
+
+- `key_hash` is cleared (the key stops working), and the status becomes
+  `unlinking` (or `unlinking-banned` for a banned contributor);
+- its `devices` rows are deleted, its `contrib_cells` within its span, its
+  `span:<id>` and its `recent` rows; `state` `people` is dropped (§3.2,
+  step 6);
+- `state` `unlink:<id>` = `{days: [[day, about its rounds there], …], ids:
+  [it, and every id merged into it]}`: every `contrib_cells` day it ever had
+  (read within its span, however long ago) and the days of its rounds still
+  in `pending`; the ids by a walk of `merged:*`.
+
+An upload whose key was checked before the unlink and whose batch lands after
+it gets 401 and stores nothing (§2.2).
+
+**The hourly job then finishes it** (§3.2, step 3), day by day, about
+`UNLINK_CHUNK` (5,000) rounds a run in whole days, within the day's write and
+read budgets:
+
+- for a day archived, or being archived (on or before `archived_through` + 1),
+  each id's files (`c<id>.json`, `c<id>.<k>.json`) are renamed to
+  `u<hex>.json`, or to **`b<hex>.json` for a banned contributor**, and the
+  `"contributor"` in each becomes null;
+- for a day with rounds in D1, they are re-filed under contributor **0** (one
+  `UPDATE` on the day's key range and contributor), or **deleted** for a
+  banned contributor (whose rounds were never public, and must not become so
+  by leaving);
+- no day is marked dirty: neither changes a public figure.
+
+When no day is left it deletes the contributor row (and any `devices` row
+left), `unlink:<id>` and `merged:<from>` for the merged ids; for a banned
+contributor it writes `state` `gone:<id>` = `"banned"` for it and each merged
+id, so a file that still names one is never restored as anyone's. Unlinked
+rounds stay in the public figures and keep their device hash (de-duplication
+needs it). A banned contributor's rounds of days not yet archived are deleted,
+so never archived; its files already archived are kept as `b` files, and
+never restored.
 
 ### 2.5 Admin
 
-All `POST` with a JSON body, reply `{"ok": true, ...}`:
+All `POST` with a JSON body, reply `{"ok": true, ...}`. Their writes are
+counted in the day's budget (§2.6).
 
-- `ban {id}` / `unban {id}`: status `banned` ↔ `active`; marks every day the
-  contributor has rounds in D1 dirty. Reply `{id, status, days}`.
-- `merge {from, into}`: moves `from`'s rounds, devices, contrib_cells and
-  counters to `into`, deletes `from`; marks their days dirty. `contrib_cells`
-  of days already archived are added up (`devices` = the larger); archive
-  files are not renamed: `state` `merged:<from>` makes a restore file
-  `c<from>.json`'s rounds under `into`. Refuses `from = into` (400).
+- `ban {id}` / `unban {id}`: status `banned` ↔ `active`; marks dirty the days
+  the contributor has rounds in D1 (its `contrib_cells` days within its span
+  after `dropped_through`, and its `pending` days), and drops `state`
+  `people`. Never refused for the budget, so moderation never waits for a
+  budget a bad contributor may have spent. Reply `{id, status, days}`.
+- `merge {from, into}`: moves `from` to `into`: its rounds (found by those
+  days' key ranges, not by a scan of the whole table), its `pending` rows,
+  `contrib_cells` (archived days too: rows of the same key add up, and
+  `devices` is the exact count of the union of their `device_set`), devices,
+  counters, span and `recent` rows; deletes `from`; marks its days dirty; drops
+  `state` `people`; sets `state` `merged:<from>` = `into`, so a restore files
+  `c<from>.json`'s rounds under `into` (archive files are not renamed).
+  Refuses `from = into` (400). Refused with `503 budget` when it would take
+  the day past `BUDGET_ROWS_PER_DAY`.
 - ban, unban and merge refuse a contributor being unlinked or id 0 (400) and
   an unknown id (404).
-- `rebuild {from?, to?}`: marks the days (default: every day with rounds in
-  D1) dirty, at most 400. Reply `{from, to, days}`.
-- `restore {day}`: reads that day's archive files back into `rounds` (§3.4),
-  for a day on or before `archived_through` only (else 400). It works within
-  one invocation's budget, so a big day takes several calls: reply
-  `{day, done, files, left, rounds}`, progress kept in `state`
-  `restore:<day>`. After the last file the day is marked dirty; once
-  recomputed its rounds leave D1 again, with no files rewritten.
+- `rebuild {from?, to?}`: marks the days (default: from the oldest round in D1
+  to today) dirty, at most 400 (else 400). A day whose rounds have left D1 is
+  left as it is when its turn comes. Reply `{from, to, days}`.
+- `restore {day}`: for a day on or before `archived_through` only (else 400).
+  A day archived but not yet dropped (its rounds still in D1) is only marked
+  dirty: `{day, done: true, files: 0, left: 0, rounds: 0}`. Otherwise its
+  archive files come back into `rounds` (§3.4), a file at a time, each
+  checked against the day's write budget less `JOB_RESERVE_ROWS` / 5; within
+  one invocation's budget, so a big day takes several calls: reply `{day,
+  done, files, left, rounds}`, progress kept in `state` `restore:<day>`.
+  After the last file the day is marked dirty and added to `state`
+  `restored`; once recomputed its rounds leave D1 again, with no files
+  rewritten.
 - `rollup {}`: runs the hourly job now (also how tests trigger it); the reply
-  is the run's report.
+  is the run's report: `{folded, recomputed, rendered, unlinked, archived,
+  dropped, compacted, manifest, more, queries, r2, read, written, bytes,
+  errors}`. `folded` counts the rounds added in from `pending`;
+  `recomputed` the days recomputed in full; `rendered` the files published;
+  `read`/`written` the rows D1 read and wrote; `bytes` what it put to R2;
+  `errors` the steps that failed, as `"<step>: <message>"`; `more: true`
+  means work is left for the next run.
 
 `GET /api/v1/admin/contributors` → `{"ok": true, "contributors": [{id,
 status, createdAt, lastSeen, client, rounds, duplicates, devices}]}`.
+
+### 2.6 The daily write budget
+
+D1 Free writes 100,000 rows a day and refuses every query for the rest of the
+UTC day past it. **One budget, `budget.rows` for the UTC day, counts every row
+D1 writes or deletes** (`meta.rows_written`) for anything the Worker does:
+uploads, joins, unlinks, the admin routes, restores and the hourly job.
+`budget.reads` adds up the rows read, roughly.
+
+- `BUDGET_ROWS_PER_DAY` (90,000): the day's cap for everything.
+- `JOB_RESERVE_ROWS` (25,000): the part of it uploads and joins never take.
+  **An upload or a join is refused (`503 budget`) when its writes would take
+  the day past `BUDGET_ROWS_PER_DAY − JOB_RESERVE_ROWS`** (65,000), counting
+  everything already written that day, the job's included.
+- The check and the count are statements of the same D1 batch as the writes
+  (a batch is one transaction): a refusal statement inserts into `refusals`,
+  whose `CHECK` constraints (`quota`, `budget`, `join_limit`, `unlinked`) abort
+  the whole batch, and an upsert reserves the batch's expected rows. So
+  requests running at once cannot both pass a limit. After the batch the day
+  is corrected to what D1 says it wrote.
+- Admin `merge` is refused past `BUDGET_ROWS_PER_DAY`. Ban, unban, rebuild
+  and unlink are never refused, only counted.
+- The hourly job spends from the reserve. Adding new rounds in (step 1a) may
+  go to `BUDGET_ROWS_PER_DAY`; every other step keeps a margin of
+  `JOB_RESERVE_ROWS` / 5 and puts off what does not fit (a recompute, an
+  unlink's next day, archive work, a drop, a compaction) to the next run, or
+  the next day. Each run records what it wrote at its end, whatever happened.
+- `READ_BUDGET_PER_DAY` (4,000,000, under Free's 5 million): past it the job
+  puts off the work that reads a lot (full recomputes, unlinks, the archive,
+  drops).
+
+Budget rows older than 7 days are deleted at the first run after 00:00 UTC.
 
 ## 3. Storage
 
@@ -272,8 +424,31 @@ CREATE TABLE rounds (
   bin_medals INTEGER                     -- NULL unless medals > 0
 ) WITHOUT ROWID;
 
+-- Days to recompute in full from their rounds: a ban, a changed round, a rebuild, a restore.
 CREATE TABLE dirty_days (day TEXT PRIMARY KEY) WITHOUT ROWID;
-CREATE TABLE budget (day TEXT PRIMARY KEY, rows INTEGER NOT NULL) WITHOUT ROWID;
+
+-- New rounds waiting to be added into the day tables, one row per upload batch,
+-- added up by the upload as the day tables keep them.
+CREATE TABLE pending (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT,
+  contributor INTEGER NOT NULL,
+  n INTEGER NOT NULL,                    -- rounds
+  days TEXT NOT NULL,                    -- the start days they fall on
+  tsums TEXT NOT NULL,                   -- {tsum: the newest of those days with a round of it}
+  cells TEXT NOT NULL,                   -- the cells rows they add to (the catalog's Tsums only)
+  bins TEXT NOT NULL,                    -- the bins rows they add to: [day, build, tsum, skill, {base}, {final}, {medals}]
+  cc TEXT NOT NULL                       -- [day, build, tsum, device, rounds, secs, base, final, medals]
+);
+
+-- What D1 wrote (rows inserted, changed or deleted) and read per UTC day, for everything (§2.6).
+CREATE TABLE budget (day TEXT PRIMARY KEY, rows INTEGER NOT NULL, reads INTEGER NOT NULL DEFAULT 0) WITHOUT ROWID;
+-- Never holds a row: a batch inserts into it only to stop itself, and D1 rolls the whole batch back.
+CREATE TABLE refusals (
+  quota INTEGER CONSTRAINT quota CHECK (quota IS NULL),
+  budget INTEGER CONSTRAINT budget CHECK (budget IS NULL),
+  join_limit INTEGER CONSTRAINT join_limit CHECK (join_limit IS NULL),
+  unlinked INTEGER CONSTRAINT unlinked CHECK (unlinked IS NULL)
+);
 CREATE TABLE join_limits (ip_hash TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL,
   PRIMARY KEY (ip_hash, day)) WITHOUT ROWID;
 CREATE TABLE state (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -299,11 +474,27 @@ CREATE TABLE bins (
   PRIMARY KEY (day, build, tsum, skill)
 ) WITHOUT ROWID;
 
+-- A final day's rounds on their way to the archive: its files' arrays as text,
+-- one row per contributor per share of the day (in key order), until the files are written.
+CREATE TABLE archive_parts (
+  day TEXT NOT NULL, contributor INTEGER NOT NULL, part INTEGER NOT NULL,
+  n INTEGER NOT NULL, bytes INTEGER NOT NULL, last TEXT NOT NULL,   -- rounds, their length as text, the last key
+  key TEXT NOT NULL, played_at TEXT NOT NULL, build TEXT NOT NULL, tsum TEXT NOT NULL, skill TEXT NOT NULL,
+  items TEXT NOT NULL, version TEXT NOT NULL, settings TEXT NOT NULL, duration TEXT NOT NULL, score TEXT NOT NULL,
+  base TEXT NOT NULL, final TEXT NOT NULL, medals TEXT NOT NULL,
+  PRIMARY KEY (day, contributor, part)
+) WITHOUT ROWID;
+
+-- Private: the newest day each contributor sent a round of each Tsum, for the manifest's counts of people.
+CREATE TABLE recent (contributor INTEGER NOT NULL, tsum TEXT NOT NULL, day TEXT NOT NULL,
+  PRIMARY KEY (contributor, tsum)) WITHOUT ROWID;
+
 -- Private, kept forever: what each contributor sent.
 CREATE TABLE contrib_cells (
   day TEXT NOT NULL, contributor INTEGER NOT NULL, build INTEGER NOT NULL, tsum TEXT NOT NULL,
   rounds INTEGER NOT NULL, secs REAL NOT NULL, base_sum INTEGER NOT NULL, final_sum INTEGER NOT NULL,
   medals_sum INTEGER NOT NULL, devices INTEGER NOT NULL,
+  device_set TEXT NOT NULL DEFAULT '[]',                    -- JSON: the distinct device hashes, sorted
   PRIMARY KEY (day, contributor, build, tsum)
 ) WITHOUT ROWID;
 ```
@@ -312,61 +503,122 @@ A cell's figures are over its rounds: `secs` their durations; `score_*`,
 `base_*`, `final_*` every round's (`*_sq` is the exact integer sum of squares,
 kept as REAL). The `medals_*` columns are over the rounds whose medals were
 read (not null): `medals_n` counts them, `medals_secs` adds their durations.
-A `bins` object's keys are bin numbers (§5) as text; `medals` is `{}` when no
-round earned any.
+A `bins` object's keys are bin numbers (§5) as text, in any order; `medals`
+is `{}` when no round earned any. `cells` and `bins` hold the catalog's Tsums
+only (§1.2); `contrib_cells` every Tsum. The day tables are kept for good,
+archived days' too.
 
 `rounds` has no secondary index on purpose: one row written per round. Every
-scan of `rounds` is a key range (§1.1) or a `contributor` scan run in chunks
-by the hourly job.
+scan of `rounds` is a key range (§1.1); none reads it by contributor.
 
 ### 3.2 Hourly job (cron `5 * * * *`, and `POST /api/v1/admin/rollup`)
 
-In order, each step bounded so a run fits Workers Free:
+Each step is bounded so a run fits Workers Free:
 
-- **CPU.** 10 ms: the Worker passes SQL-built strings to R2 and never parses
-  rows in bulk.
+- **CPU.** 10 ms: D1 builds every part and archive file, and the Worker hands
+  the string to R2 without parsing it. A run carries about `RUN_BYTES`
+  (2,000,000) from D1 to R2 at most (the first file always goes).
 - **Queries.** 50 D1 queries per invocation: a run stops issuing new work at
-  **45 queries or 40 R2 operations** (`RUN_QUERY_BUDGET`, `RUN_R2_BUDGET`) and
-  leaves the rest for the next run. Each step records its progress in D1
-  (`dirty_days`, `state`), so a run cut short loses nothing.
+  **45 queries or 40 R2 operations** (`RUN_QUERY_BUDGET`, `RUN_R2_BUDGET`),
+  holding back what step 6 needs, and leaves the rest for the next run.
+- **Values.** D1 refuses a value over 2,000,000 bytes, so the Worker never
+  asks it to build one over `VALUE_MAX_BYTES` (1,500,000): parts, archive
+  files and settings files are sized first and split.
+- **The day's budget** (§2.6).
+
+Each step records its progress in D1 (`pending`, `dirty_days`, `state`), so a
+run cut short loses nothing. **Each step is isolated**: one that fails is
+logged, added to the report's `errors`, and the steps after it and step 6
+still run; the next run tries it again.
 
 The steps:
 
-1. **Recompute dirty days**, oldest first, at most `ROLLUP_DAYS_PER_RUN` (8).
-   For each day, over its key range (§1.1, the rounds that started that day): `cells` from rounds
-   whose contributor's status is not `banned`/`unlinking-banned`; `bins` the
-   same way; `contrib_cells` from every round **except contributor 0's and
-   those of contributors being unlinked** (§2.4 deleted theirs), with
-   `devices` = distinct device hashes. Upsert only changed rows; delete rows
-   the day no longer has. Remove the day from `dirty_days`.
-2. **Render** each recomputed day's **part file** (§4.2) to R2. A replaced
-   part goes to `state` `trash` and is deleted by a run at least 15 minutes
-   later (never while a pointer names it again), since a manifest a viewer or
-   the edge still holds (max-age 300) may name it.
-3. **Unlink**: per `unlinking` contributor, re-file up to `UNLINK_CHUNK`
-   rounds to contributor 0 (marking their days dirty); per
-   `unlinking-banned`, delete them instead. Rename its archive files
-   (`c<id>.json` → `u<hex>.json`, R2 copy then delete). Delete the
-   contributor row when nothing is left.
-4. **Archive and drop** (§3.4) each day older than `ACCEPT_DAYS + 1` days that
-   still has rounds in D1.
-5. **Compact**: a calendar month whose days are all older than
-   `ACCEPT_DAYS + 1` and whose parts are all days gets one month part (§4.2)
-   when its JSON is under 1.9 MB; its day parts are deleted.
-6. **Manifest** (§4.1), when a part changed, a day was recomputed or an
-   unlink finished (its counts of contributors and devices move with those),
-   or it is missing.
+1. **The day tables** (`cells`, `bins`, `contrib_cells`):
+   1. **Fold** the `pending` sums in, oldest upload first, up to 25,000 rounds
+      a run, in one batch. Who a round counts for is decided by its
+      contributor's status at fold time: a banned one's (`banned`,
+      `unlinking-banned`, or gone as `gone:<id>` = `"banned"`) stay out of
+      `cells` and `bins`; those of contributor 0 or of one `unlinking`,
+      `unlinking-banned` or no longer there stay out of `contrib_cells`,
+      `span:<id>` and `recent`. Bins objects are merged per upload without a
+      sort; a `contrib_cells` row's `device_set` is merged only when a new
+      device appears. A day's sums already read by a full recompute are not
+      added again: `state` `skip` = `{day: seq}`. The fold may spend to the
+      full `BUDGET_ROWS_PER_DAY`.
+   2. **Recompute** the claimed dirty days in full, oldest first, at most
+      `ROLLUP_DAYS_PER_RUN` (8), within the run's queries and
+      `READ_BUDGET_PER_DAY`. Only a ban, an unban, a changed round, a merge, a
+      rebuild or a restore makes a day dirty. Over the day's key range (§1.1):
+      `cells` and `bins` from rounds of the catalog's Tsums whose contributor
+      is not `banned`/`unlinking-banned`; `contrib_cells` from every round
+      **except contributor 0's and those of contributors being unlinked**,
+      with `devices` = distinct device hashes (`device_set`). It upserts only
+      changed rows and deletes rows the day no longer has, in SQL, widens
+      spans and `recent`, and marks the day in `skip`. A day whose rounds have
+      left D1 (and were not restored) keeps its tables as they are.
+2. **Render** the part (§4.2) of each day whose tables changed (`state`
+   `render` keeps the days still to do), oldest first. A replaced file goes
+   to `state` `trash` (step 6).
+3. **Unlink** (§2.4), day by day, about `UNLINK_CHUNK` rounds a run per
+   contributor in whole days.
+   - 3b. A **restored** day's rounds leave D1 again once it is recomputed.
+4. **Archive** (§3.4) each day older than `ACCEPT_DAYS` + 1 days, in order:
+   **stage** it into `archive_parts` a share at a time (at most 0.8 ·
+   `VALUE_MAX_BYTES` / 190 rounds a statement, each share starting after the
+   last key staged, so the day is read once), then put its files together
+   from the pieces, as many a run as `RUN_BYTES` and the R2 budget allow,
+   without reading the rounds again. Once all its files are written the day
+   is `archived_through`, goes into `state` `held` and its pieces are deleted.
+   Nothing is deleted from `rounds` here.
+   - 4b. **Drop** archived days from D1, oldest first, only while the held
+     days and the open days' public rounds add up to more than `RETAIN_ROWS`
+     (3,000,000), and the day's budget has room (each deleted round is a row
+     written): `dropped_through`. A small deployment never pays for deletes.
+5. **Compact**: the oldest calendar month whose days are all archived and
+   still published one by one becomes one month part (§4.2) when its day
+   parts' files add up to less than `VALUE_MAX_BYTES`; its day parts go to the
+   trash. A bigger month, or one whose render fails, gets `state`
+   `nocompact:<month>` and stays in day parts. One a run.
+6. **Finish and the manifest** (§4.1): the run's state writes, then the
+   manifest, when a part pointer changed, the counts of people may have moved
+   (`recent` changed, an unlink finished, the first manifest of a UTC day, or
+   a ban, merge or unlink dropped `state` `people`), the catalog changed, the
+   manifest in R2 is older than `state` `parts_at` (its put failed), or it is
+   missing. The manifest is put with `customMetadata` `at` = the run's time in
+   ms. A trashed file is deleted only once the manifest in R2 was written
+   after the file was thrown away, at least 15 minutes ago (past its max-age
+   of 300 and a reload), and never while a pointer names it again. The run's
+   rows read and written go into the day's budget, whatever happened.
+
+The counts of people (`state` `people`) are made again only when they can
+have moved: from `recent` (the newest day per contributor and Tsum), the
+catalog's Tsums only, banned contributors left out at that time; and
+`devices` seen in the last 30 days. The rounds per Tsum and per skill level
+(`state` `totals`) move with the changed pointers' old and new summaries, and
+are made afresh with each day's first manifest.
+
+`state` keys the job keeps (`job.ts` lists them too): `recompute` (claimed
+days), `skip`, `render`, `part:<from>` (a part's pointer: `{from, to, rounds,
+first, last, tsums: {tsum: rounds}, skills: {skill: rounds}, bytes, files:
+[{file, sha, rounds, bytes}]}`), `parts_at`, `totals` (`{tsums, skills}`),
+`people` (`{contributors, devices, tsums: {tsum: contributors}, catalog}`),
+`trash` (`[[R2 key, ms]]`), `archived_through`, `dropped_through`, `held`
+(`[[day, rounds]]`), `archive` (the day in progress), `restored` (`[[day,
+rounds]]`), `restore:<day>`, `settings_archived`, `span:<id>`,
+`unlink:<id>`, `merged:<id>`, `gone:<id>`, `nocompact:<month>`,
+`contributor_seq`.
 
 ### 3.3 R2 layout (bucket `tsum-global`)
 
 | Key | Public | Holds |
 |:--|:--|:--|
 | `data/global/manifest.json` | yes | §4.1 |
-| `data/global/day-YYYY-MM-DD.<sha8>.json` | yes | One day's part |
+| `data/global/day-YYYY-MM-DD.<sha8>.json` | yes | One day's part, or one file of it (§4.2) |
 | `data/global/month-YYYY-MM.<sha8>.json` | yes | One compacted month's part |
-| `archive/YYYY-MM/YYYY-MM-DD/c<id>.json` | no | One contributor's rounds for one day |
-| `archive/YYYY-MM/YYYY-MM-DD/u<hex>.json` | no | Unlinked rounds for one day, 5,000 a file |
-| `archive/settings/<firstId>-<lastId>.json` | no | Settings rows, written once per new range |
+| `archive/YYYY-MM/YYYY-MM-DD/c<id>.json` | no | One contributor's rounds for one day, and `c<id>.<k>.json` (k ≥ 1) when they are too big for one file |
+| `archive/YYYY-MM/YYYY-MM-DD/u<hex>.json` | no | Unlinked rounds for one day, files sized by bytes |
+| `archive/YYYY-MM/YYYY-MM-DD/b<hex>.json` | no | A banned contributor's files once it unlinked: kept for good, never restored |
+| `archive/settings/<firstId>-<lastId>.json` | no | Settings rows, written once per new range, sized by bytes |
 
 `<sha8>` is the first 8 hex digits of the file's SHA-256. Only
 `data/global/*` is served; the Worker answers `/data/global/<name>` from
@@ -382,14 +634,25 @@ manifest with `public, max-age=300`, both `application/json`.
  "base": [3000], "final": [4500], "medals": [null]}
 ```
 
-`contributor` is null in a `u<hex>.json` file. `<hex>` is the first 16 hex
-digits of an HMAC (`DEVICE_KEY`) of what the file holds, so it names no one and
-a re-run writes the same file. A contributor being unlinked when its day is
-archived goes straight to a `u` file. Every settings id an archived
-round names is in some `archive/settings/*.json`
+`contributor` is null in a `u` or `b` file. `<hex>` is the first 16 hex digits
+of an HMAC (`DEVICE_KEY`) of what the file holds, so it names no one and a
+re-run writes the same file. Each file is at most 0.8 · `VALUE_MAX_BYTES`
+(always at least one round). Whose a file is, when it is written: `c<id>`
+for a contributor `active` or `banned`, or one merged into another; `b` for
+one `unlinking-banned` or gone banned; `u` for contributor 0, or one being
+unlinked or no longer there. Every settings id an archived round names is in
+some `archive/settings/*.json`
 (`{"kind": "tsum-global-settings", "format": 1, "settings": [{"id", "hash", "json"}]}`).
-A day is deleted from D1 only after each of its files is written and its row
-count matches.
+
+A day counts as archived (`archived_through`) once all its files are written,
+from its staged pieces; its rows leave D1 later, if ever (§3.2, step 4b:
+`dropped_through`). Every later change to an archived day (an unlink, a
+merge) is carried to its files too.
+
+A restore files each file's rounds under: `u` → 0; `b` → never;
+`c<id>` → `id`, following `merged:*`; never for a gone-banned id or one merged
+into it; 0 for a contributor being unlinked or no longer there; never for one
+`unlinking-banned`. A round D1 already has is left alone.
 
 ## 4. Published files (the page reads these)
 
@@ -408,11 +671,16 @@ count matches.
 }
 ```
 
-- `rounds`, `first`, `last` (sqlTime UTC): over the public cells.
-- `contributors`: distinct contributors (not 0, not banned) with rounds in
-  the last 30 days, from `contrib_cells`; `devices`: distinct device hashes of
-  `devices` rows seen in the last 30 days.
-- `parts`: `[from, to)` days, sorted by `from`, never overlapping.
+- `rounds`, `first`, `last` (sqlTime UTC): over the public cells, from the
+  part pointers.
+- `contributors`: distinct contributors (not 0, not banned) with rounds of the
+  catalog's Tsums begun in the last 30 days (today and the 29 before), from
+  `recent`; `devices`: distinct device hashes of `devices` rows seen (a round
+  ended) in the last 30 days. Both exact as of their last refresh, which
+  happens whenever they can move (§3.2, step 6).
+- `parts`: `[from, to)` days, sorted by `from`. A part may list **several
+  files for the same `[from, to)`** (§4.2), one entry each, in the part's
+  order, each with its own `rounds` and `sha`; different ranges never overlap.
 - `tsums`: every Tsum in the public cells, most rounds first; `contributors`
   as above but per Tsum.
 - `medalTsums`: the catalog's `medal: true` ids. `skills`: the distinct
@@ -438,9 +706,17 @@ month files:
 ```
 
 Each array holds one value per row (`n` rows), in the `cells` table's column
-meanings (§3.1). Rows are in no particular order. A part is built in one SQL
-statement (`json_object` over `json_group_array` of one ordered subquery), so
-its arrays line up.
+meanings (§3.1). Rows are in no particular order, and a bins object may list
+its bins in any order. A file is built in one SQL statement (`json_object`
+over `json_group_array` of one ordered subquery), so its arrays line up.
+
+**A part too long for one value.** D1 first adds up how long the part's file
+would be. A part over `VALUE_MAX_BYTES` (1,500,000) is published as several
+files for the same `[from, to)`, each holding a share of the part's `cells`
+rows and, apart from those, a share of its `bins` rows, about half the limit
+each. The files together hold the part's rows, each row once, and the page
+adds up every file the manifest lists (§6). Their `rounds` add up to the
+part's.
 
 ## 5. Bins
 
@@ -453,7 +729,8 @@ mid(b) = b < 100 ? b : round(100 · 1.02^(b − 99.5))
 ```
 
 Values under 100 are exact; above, a bin is 2 % wide. The Worker computes
-bins at ingest (JavaScript `Math.log`), so the page only ever uses `low`/`mid`.
+bins at ingest (JavaScript `Math.log`; a restore the same in SQL), so the page
+only ever uses `low`/`mid`.
 
 ## 6. The page in global mode
 
@@ -463,7 +740,8 @@ route to `ui/src/lib/global/engine.js` in a Web Worker, reading
 `data/global/` relative to the page. The engine reads files through a
 loader, `json(name, {fresh}) → Promise`: `fresh` asks past any cache (for the
 manifest's reload), and a missing file rejects with an error whose `status`
-is 404.
+is 404. For a filter it reads every file the manifest lists for the days it
+can touch, several for one part included, and adds them up.
 
 ### 6.1 Routes
 
@@ -526,30 +804,53 @@ reload the manifest once and retry.
 `{"url": "https://tsum-stats.gapscripts.app", "id": 17, "key": "…", "enabled": true, "joinedAt": "…", "sent": 12345, "lastUpload": "…", "lastError": "", "retryAt": ""}`
 
 `url` is the site the key came from: a key is used only while `--global-url`
-names that site, and is never sent anywhere else.
+names that site, and is never sent anywhere else. It is also the site
+`ts_global_sent` records uploads to, so it **stays after an unlink or a
+refused key** (`{"url": "…"}`, or `{"url": "…", "lastError": "…"}`).
+
+**A data folder contributes to one site.** A join while a key for another
+site is saved is refused, with an error naming that site and suggesting
+`--global-url <it>`, or another `--dir` for a test site: that key is the only
+way to unlink the rounds sent there, so it is never replaced. Joining a
+different site with no key saved first empties `ts_global_sent` (its rounds
+were sent to the other site). Leave for a site that has no key here changes
+nothing. `lastError` is shown only for its own site (or when `url` is `""`).
 
 ### 7.2 The forwarder
 
 - It runs while `enabled`: first 2 minutes after start or a join, then every
   hour plus 0–10 minutes of jitter, and on **Upload now**.
-- **Rounds it picks.** From `ts_rounds`: complete rounds (`completeSQL`), with
-  `build` `global`/`jp` or a `jpVersion` setting, `played_at` within the last
-  60 days and at least 20 minutes ago. The fingerprint is the record's
+- **Rounds it picks.** From `ts_rounds`: complete rounds (`completeSQL`); for
+  a catalog `medal: true` Tsum, also a medals figure (the flags come from the
+  catalog built into the binary, `data/catalog.json`: §1.2's `incomplete`
+  rule); with `build` `global`/`jp` or a `jpVersion` setting; `played_at`
+  within the last 60 days and at least 20 minutes ago. A Tsum the catalog
+  lacks is sent like any other (§1.2). The fingerprint is the record's
   FNV-1a 64 over its canonical JSON. It sends rows with no `ts_global_sent`
-  row or a different fingerprint, oldest first, 250 at a time (fewer when
-  their JSON passes 768 KiB, to stay under the 1 MiB body limit), and stops
-  at the first refusal.
+  row or a different fingerprint, oldest first, **at most 100 a request**
+  (`GlobalBatchRows`; fewer when their JSON passes 768 KiB, to stay under
+  the 1 MiB body limit), and stops at the first refusal.
 - **Never sent**: `device`, `source`, the Tsum lists, paths.
-- **After `ok: true`**: every row in the batch goes into
+- **After `ok: true`**: every row in the batch **except those the reply names
+  in `retry`** goes into
   `ts_global_sent(round_id TEXT PRIMARY KEY, hash INTEGER NOT NULL, sent_at TEXT NOT NULL)`
-  (including rejected rows, which a change of figures sends again).
-- **On refusals.** 429/503: `retryAt` = now + `Retry-After` (an hour when
-  it has none), and the pass stops; until then a pass only fetches
-  `/api/v1/me`, and Upload now is refused. 401 (from any route but unlink):
-  the key is forgotten, `enabled` is off and `lastError` says to join again.
-  Anything else: `lastError`, and the next hourly pass.
-- A new join starts `sent` at 0 but keeps `ts_global_sent`: rounds sent under
-  an earlier id are in the global figures already.
+  (other rejected rows included, which a change of figures sends again);
+  `sent` and `pending` count only those. The cursor still moves past the
+  `retry` rows, so each is offered once a pass until the site takes it. A
+  reply with no `retry` (an older Worker) records every row.
+- **On refusals.** Only the Worker's own daily limits, read from the JSON
+  `error`: **429 `quota` or `join-limit`, and 503 `budget`**. Then `retryAt`
+  = now + `Retry-After` (an hour when it has none), and the pass stops; until
+  then a pass only fetches `/api/v1/me`, and Upload now is refused. **401
+  with the Worker's body** (`{"ok": false, "error": "unauthorized"}`, from
+  any route but unlink): the key is forgotten, `enabled` is off and
+  `lastError` says to join again. **Anything else** (another 4xx or 5xx, a
+  429 or 503 that is not one of those codes, a 401 page that is not the
+  Worker's, an unreadable reply, or a 2xx without `ok: true`): `lastError`,
+  the key is kept, and the next hourly pass tries again.
+- A new join of the **same site** starts `sent` at 0 but keeps
+  `ts_global_sent`: rounds sent under an earlier id are in the global figures
+  already. A join of another site empties it (§7.1).
 
 ### 7.3 Local routes (`server.go`)
 
@@ -561,13 +862,19 @@ names that site, and is never sent anywhere else.
   `running` is true while a pass uploads.
 - `POST /api/stats/global/join`: joins (or re-enables a saved key) and fetches
   `me`; the first pass follows 2 minutes later (§7.2), so a player can still
-  back out before anything is sent.
+  back out before anything is sent. Refused while a key for another site is
+  saved (§7.1).
 - `POST /api/stats/global/run`: a pass now.
 - `POST /api/stats/global/leave` `{unlink: bool}`: stops, keeping the key so a
-  join resumes the same id; with `unlink`, calls `/api/v1/me/unlink` and then
-  forgets the key (a 401 there counts as unlinked already; an unreachable site
+  join resumes the same id. With `unlink`: uploads stop at once; it waits for
+  the batch in flight to be answered (up to 90 s, longer than the HTTP
+  client's 60 s timeout; past that it errors and keeps the key), and no pass
+  and no join start meanwhile, and a stopped pass skips its `/me` fetch. Then
+  it calls `/api/v1/me/unlink` and forgets the key (the Worker's 401 there
+  counts as unlinked already; an unreachable site, or any other refusal,
   keeps the key, so unlinking can be tried again).
 - Realtime topic `ts/global`: the `GET` state after every change.
 - Flag `--global-url` (default `https://tsum-stats.gapscripts.app`): `https`,
   or `http` to this computer (a local `wrangler dev`); empty turns contributing
-  off.
+  off. A data folder contributes to one site, so a test site takes another
+  `--dir`.

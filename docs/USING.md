@@ -53,7 +53,7 @@ Databases made by 0.6 and earlier are migrated on first start.
 | `--import-dir DIR` | none. Repeatable |
 | `--scan-interval` | `10s` |
 | `--web-dir DIR` | none. Files here replace the built-in site's — see [Changing the site](#changing-the-site) |
-| `--global-url URL` | `https://tsum-stats.gapscripts.app`: the global stats site that contributing sends rounds to, and only once you join. `""` turns contributing off — see [Contributing to the global stats](#contributing-to-the-global-stats) |
+| `--global-url URL` | `https://tsum-stats.gapscripts.app`: the global stats site that contributing sends rounds to, and only once you join. A data folder contributes to one site, so a test site takes another `--dir`. `""` turns contributing off — see [Contributing to the global stats](#contributing-to-the-global-stats) |
 | `--adb PATH` | adb on `PATH`, else the Android SDK's, else Google's platform-tools |
 | `--device-storage DIR` | `/sdcard/Download/GeneralAutomationPlatform` |
 | `--starter DIR` | none. Also serves the service starter for that starter bundle at `/starter/` — see [The service starter](#the-service-starter) |
@@ -429,9 +429,10 @@ contributor number, the rounds sent and waiting, the last upload, and the
 global site's own count of your rounds, devices and days.
 
 **What is sent** is each round's stats CSV row as the script writes it: the
-round id, when it ended, the script version, skill type, Tsum, game, round
+round id (which carries when the round began and a code for the device that
+played it), when it ended, the script version, skill type, Tsum, game, round
 time, score, base and final coins, medals, and every script setting (skill
-level, boost items and the rest). Only rounds that:
+level, boost items and the rest), with this app's version. Only rounds that:
 
 - ended in the last 60 days, and at least 20 minutes ago (by then its CSV row
   has usually replaced the live event's);
@@ -441,46 +442,64 @@ level, boost items and the rest). Only rounds that:
 
 A round is sent once, and again only if its figures change, such as when a
 CSV import fills in what the live event lacked (`ts_global_sent` in the
-database records what was sent).
+database records what was sent). A round the global site cannot take yet,
+because by its clock the round has not happened (this computer's or the
+device's clock is ahead), is sent again with the next upload.
 
 **Never sent**: device names, where a round came from (live or CSV), your
 Tsum lists, and the names of files and folders.
 
 **What the global site keeps:**
 
-- Your rounds, recorded under a random contributor number, with no name or
-  account, and kept. They are never shown on their own: the page shows only
-  figures pooled from everyone's rounds. The dialog shows your own totals.
+- Your rounds, for good, under a contributor number with no name or account.
+  Numbers are given out in order as players join; yours is not published, and
+  the dialog shows your own totals.
+- What the public page shows of them: figures added up over the rounds of the
+  same day, Tsum, game, skill level and boost items (counts, totals, best and
+  lowest, the first and last end time), and how many contributors (in all and
+  per Tsum) and devices sent rounds in the last 30 days. Where only you, or a
+  few players, send a Tsum, those figures can come close to your own rounds:
+  a group of one round shows that round's score, coins and end time. The page
+  marks such Tsums *few players*.
 - A hashed form of each round's device code. A round id ends with a code for
   the device that played it; the site keeps only a keyed hash of it, to tell
   devices apart and to count a round sent twice only once. The first sender
   keeps it: a round you send that another player already sent (from the same
   CSV files) counts once, under them.
+- When you join, a hashed form of your internet address, for about a day, to
+  limit how many joins one address makes.
+- Rounds of a Tsum newer than the global site: kept, and counted as yours, but
+  in no public figure until the site is updated to know that Tsum.
 - Nothing of the rounds it turns away, which are counted and not sent again:
-  an unknown Tsum, figures out of range, a round that started more than 60
-  days ago, or one that starts less than 40 s after the device's previous
-  round in the same upload. A round is never turned away for its length: some
-  Tsums' rounds last hours.
+  a Tsum name that is not one, settings past their limits, figures out of
+  range, a round that started more than 60 days ago, or one that starts less
+  than 40 s after the device's previous round in the same upload. A round is
+  never turned away for its length: some Tsums' rounds last hours.
 
 Each contributor may add 5,000 rounds a UTC day, and the site has a daily
 total for everyone. Past either, uploads wait until 00:00 UTC, and the dialog
-says when they carry on.
+says when they carry on. Any other trouble reaching the site shows in the
+dialog as an error, and the next hourly upload tries again.
 
 **Stop or unlink:**
 
 - **Stop contributing** stops the uploads and keeps your key. **Join again**
   carries on under the same number.
 - **Stop and unlink my rounds** also forgets the key and asks the global site
-  to take your number off every round you sent, which it does over the next
-  few hours. The rounds stay in the global figures, with their hashed device
-  codes, and cannot be taken out of them. It cannot be undone: joining again
-  makes you a new contributor, and rounds already sent are not sent again.
+  to take your number off every round you sent, which it does over the
+  following hours (a day or more if you have sent many rounds). An upload in
+  progress finishes first. The rounds stay in the global figures, with their
+  hashed device codes, and cannot be taken out of them. It cannot be undone:
+  joining again makes you a new contributor, and rounds already sent are not
+  sent again.
 
 **The key** is in `global.json` in the data folder, readable only by you. It
 is sent only to the site it came from, and the state the page reads never
 contains it. `--global-url` picks the site (default
 `https://tsum-stats.gapscripts.app`): it must be `https`, or plain `http` to
-this computer for a local test copy. `""` turns contributing off.
+this computer for a local test copy. A data folder contributes to one site,
+so joining another while a key for the first is saved is refused: start a
+test copy with its own `--dir` too. `""` turns contributing off.
 
 ### The global page
 

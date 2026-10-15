@@ -156,40 +156,60 @@ It has three parts, all in this repo:
 | The page in global mode | `ui/src/lib/global/` (`engine.js`, `worker.js`, `client.js`), `ui/src/components/GlobalNote.svelte`, and `isGlobal()` in the sections | Answers `api()` in a Web Worker from the published files, and hides what they cannot answer |
 
 **`global/CONTRACT.md` is the one description all three are built
-against**: the upload format and its checks, the API, the D1 schema, the
-hourly job, the R2 layout, the published files, the bins, the page's routes
-and the forwarder. Change a shape there first, then each side; the code cites
-its sections.
+against**: the upload format and its checks, the API, the write budget, the
+D1 schema, the hourly job, the R2 layout, the published files, the bins, the
+page's routes and the forwarder. Change a shape there first, then each side;
+the code cites its sections.
 
 **The rounds' path.** The forwarder sends each complete round from the last
 60 days as the stats CSV row the script writes (`GlobalRecord`: no device
 name, source or Tsum list), in the Tsum script's own upload format,
-`gap.round-stats/1`, 250 to a batch, oldest first. It keeps each sent round's
-fingerprint in `ts_global_sent`, so only new or changed rounds go again. The
-Worker re-keys each round: the id's start time and random bits, then an HMAC
-(the `DEVICE_KEY` secret) of its device tag. So the same round from two
-players still collides, the first sender keeps it, and the hardware tag is
-never kept. `rounds` holds one row per round.
+`gap.round-stats/1`, 100 to a batch, oldest first. It keeps each sent round's
+fingerprint in `ts_global_sent`, so only new or changed rounds go again, and
+the rounds the Worker names in its reply's `retry` (turned away as `future`,
+a clock ahead of the site's) go again on the next pass. The Worker re-keys
+each round: the id's start time and random bits, then an HMAC (the
+`DEVICE_KEY` secret) of its device tag. So the same round from two players
+still collides, the first sender keeps it, and the hardware tag is never
+kept. `rounds` holds one row per round. A Tsum the Worker's catalog (the
+`catalog.json` it was deployed with) lacks is stored and counted as its
+sender's, but stays out of every public figure until a deploy knows it and
+`rebuild` brings its days in. Only the Worker's own daily limits (`429
+quota`/`join-limit`, `503 budget`) make the forwarder wait for `Retry-After`;
+anything else is an error the next hourly pass tries again.
 
 **Days.** On the global site a round's day is the UTC day it **started**, read
 from its key; the local site files it under the day it ended, in the viewer's
 time zone. Rounds of some Tsums last hours, so nothing is turned away for its
 length, and the two sites' per-day figures differ where rounds cross midnight.
 
-**The rollup.** Every hour (cron `5 * * * *`) the job recomputes each dirty
-day from one key-range scan: `cells` (sums per day × build × Tsum × skill ×
-items × medals > 0), `bins` (histogram bins 2 % wide) and the private
-`contrib_cells`. It renders the day's part file, finishes unlinks, moves days
-older than 61 days to the R2 archive and drops them from D1, compacts final
-months into one part, and writes the manifest. It is sized for Workers Free:
+**The rollup.** Each upload adds up its own new rounds as the day tables keep
+them, into one `pending` row. Every hour (cron `5 * * * *`) the job folds
+those into `cells` (sums per day × build × Tsum × skill × items × medals >
+0), `bins` (histogram bins 2 % wide) and the private `contrib_cells`, and
+recomputes a day in full from its key range only when something else changed
+it (a ban, a changed round, a merge, a rebuild, a restore). It renders the
+changed days' part files, finishes unlinks day by day, archives days older
+than 61 days to R2 (dropping them from D1 only once it holds more than
+`RETAIN_ROWS` rounds), compacts final months into one part, and writes the
+manifest. Each step runs on its own: one that fails is reported, and the rest
+still run. It is sized for Workers Free:
 
-- D1 builds every JSON string, so the Worker's CPU stays within 10 ms
-  however big a day is.
+- D1 builds every JSON string, and never one over `VALUE_MAX_BYTES` (a part
+  too long for one value is published as several files), so the Worker's CPU
+  stays within 10 ms however big a day is.
 - `Run` (`global/src/run.ts`) makes a run stop starting new work at 45 D1
-  queries or 40 R2 operations (Free allows 50). Each step records its progress
-  in `dirty_days` and `state`, and the next run carries on.
-- Uploads are bounded too: 5,000 rounds per contributor and 80,000 rounds
-  written per UTC day in all, refused before anything is written.
+  queries or 40 R2 operations (Free allows 50), or about 2 MB carried to R2.
+  Each step records its progress in `pending`, `dirty_days` and `state`, and
+  the next run carries on.
+- **One write budget counts every row D1 writes or deletes**, uploads and the
+  job alike (90,000 a UTC day; Free writes 100,000). Uploads and joins stop
+  at 65,000, the rest is the job's, and the checks are statements of the
+  batch they guard. Each contributor may add 5,000 rounds a day.
+  `global/CLOUDFLARE-SETUP.md` works out what that carries: roughly 45,000 to
+  60,000 rounds a day at first for 20 to 100 players sending 8 hours a day,
+  about half that once D1 holds `RETAIN_ROWS` rounds and every archived round
+  is also a delete.
 
 **The page.** `npm run build:global` (`vite build --mode global`) builds `ui/`
 into `global/site/` with `<meta name="tsum-global">`. `engine.js` follows the
@@ -197,8 +217,8 @@ snapshot engine with cells in place of rounds, and reuses its `parseFilter`,
 `parseTime`, `sqlTime`, `itemCost`, `histBounds` and `bucketOf`. Counts, sums,
 averages, extremes, rates and the standard deviation add up exactly. The
 quartiles and P90 come from the bins and are marked ≈. It loads only the parts
-a date range touches; a part replaced since the manifest was read (a 404)
-makes it read the manifest again, once.
+a date range touches, each file of a part the Worker split; a part replaced
+since the manifest was read (a 404) makes it read the manifest again, once.
 
 **Tests:**
 
@@ -208,12 +228,15 @@ makes it read the manifest again, once.
   snapshot engine over the same rounds.
 - `go test ./internal/stats -run TestGlobal`: the forwarder against a fake
   Worker, and `TestGlobalParity` end to end. Three players' rounds go through
-  the forwarder's batching, then (in `global/test/parity.test.ts`, in
-  Miniflare) the Worker's checks and hourly job, then the page's engine over
-  the files it publishes. Every exact figure must match `Summarize` over the
-  same rounds dated by their start, and the quartiles and P90 the right bin's
-  middle. It runs again once the days are archived and compacted. It needs
-  Node and `npm ci` in `global/`, and skips without them.
+  the forwarder's passes (100 to a batch), then (in
+  `global/test/parity.test.ts`, in Miniflare) the Worker's checks and hourly
+  job, then the page's engine over the files it publishes. Every exact figure
+  must match `Summarize` over the same rounds dated by their start, and the
+  quartiles and P90 the right bin's middle. Rounds of a Tsum the catalog lacks
+  must stay out of every figure, and rounds the site names in `retry` must go
+  with the next pass. It runs again with every day part split into several
+  files, and once the days are archived and compacted. It needs Node and
+  `npm ci` in `global/`, and skips without them.
 
 **Changing a query.** A figure lives in three places, changed in this order:
 
@@ -221,7 +244,8 @@ makes it read the manifest again, once.
 2. `ui/src/lib/snapshot/engine.js`, held to it by `TestSnapshotParity`.
 3. `ui/src/lib/global/engine.js`, held to it by `TestGlobalParity`. When the
    figure needs a sum the cells lack, add a cell column first, everywhere at
-   once: `CONTRACT.md` §3.1 and §4.2, a new migration, `CELLS` in
+   once: `CONTRACT.md` §3.1 and §4.2, a new migration, `aggregate` in
+   `global/src/ingest.ts` (an upload's own sums) and `CELLS` in
    `global/src/rollup.ts`, `CELL_COLUMNS` in `global/src/parts.ts`,
    `decodePart` in the engine, and `global/test/reference.ts`.
 
@@ -239,7 +263,10 @@ building the site needs nothing else. The generator also assigns each Tsum its
 chart colour, keeping one once given and handing a new Tsum the next free slot;
 a Tsum the catalog does not know falls back to a hue derived from its id. Box
 counts come from a box-count file, and without it the counts already in the
-catalog are kept.
+catalog are kept. The global site's Worker bundles this file when it is
+deployed: rounds of a Tsum it lacks are kept but stay out of the global
+figures until a deploy carries a catalog that has it, then a `rebuild` brings
+them in (`global/CLOUDFLARE-SETUP.md`, *After launch*).
 
 ## Building and shipping
 
