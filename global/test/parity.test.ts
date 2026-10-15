@@ -2,21 +2,25 @@
 // `go test ./internal/stats` (TestGlobalParity), which writes
 // test/.parity/fixture.json: each player's uploads as the forwarder made them,
 // and per case the route, the page's parameters and Summarize's answer for
-// the same rounds in UTC days. The uploads go through the Worker, its hourly
-// job (run by POST /api/v1/admin/rollup) publishes the parts, and the page's
-// global engine answers from them, as served at /data/global/. Without the
+// the same rounds in UTC days. The uploads go through the Worker, each pass on
+// the clock the fixture gives it, its hourly job (run by POST
+// /api/v1/admin/rollup) publishes the parts, and the page's global engine
+// answers from them, as served at /data/global/: whole, then with every day
+// part split into several files, then archived and compacted. Without the
 // fixture there is nothing to run.
 /// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
 import { createGlobalEngine } from "../../ui/src/lib/global/engine.js";
 import type { Report } from "../src/job";
-import { DAY_MS, admin, call, json } from "./helpers";
+import { ADMIN, DAY_MS, call, env, json } from "./helpers";
 
 interface Totals {
   accepted: number;
   unchanged: number;
   duplicates: number;
   rejected: Record<string, number>;
+  /** The record ids the replies named in retry, sorted. */
+  retry: string[];
 }
 
 interface Case {
@@ -30,8 +34,8 @@ interface Case {
 
 interface Fixture {
   now: number;
-  /** Each player's passes, in order; a pass is its batches. */
-  players: { passes: Record<string, unknown>[][]; me: Record<string, unknown> }[];
+  /** Each player's passes, in order (a pass is its batches), and the Worker's clock at each, ms. */
+  players: { passes: Record<string, unknown>[][]; passAt: number[]; me: Record<string, unknown> }[];
   /** What the Worker should answer, added up over every player's batches, per pass. */
   uploads: Totals[];
   cases: Case[];
@@ -139,12 +143,16 @@ async function compare(nowMs: number, cases: Case[]): Promise<string[]> {
 
 const pick = (o: any, like: any) => Object.fromEntries(Object.keys(like).map(k => [k, o[k]]));
 
+/** An admin route, under the Worker's vars e. */
+const admin = (action: string, body: unknown, nowMs: number, e = env) => call("/api/v1/admin/" + action, { body, key: ADMIN, now: nowMs, env: e });
+
 /** The hourly job through the admin route, run again while it says more is left; its last report. */
-async function rollup(nowMs: number, runs = 50): Promise<Report> {
+async function rollup(nowMs: number, runs = 50, e = env): Promise<Report> {
   for (let i = 1; ; i++) {
-    const res = await admin("rollup", {}, nowMs);
+    const res = await admin("rollup", {}, nowMs, e);
     const r = await json<Report & { ok: boolean }>(res);
     expect(res.status, JSON.stringify(r)).toBe(200);
+    expect(r.errors, "a step failed").toEqual([]);
     if (!r.more || i >= runs) return r;
   }
 }
@@ -162,18 +170,20 @@ describe.skipIf(!fixtures[FIXTURE])("the global site against the server", () => 
       keys.push((await json<{ key: string }>(res)).key);
     }
     for (let p = 0; p < fx.uploads.length; p++) {
-      const sum: Totals = { accepted: 0, unchanged: 0, duplicates: 0, rejected: {} };
+      const sum: Totals = { accepted: 0, unchanged: 0, duplicates: 0, rejected: {}, retry: [] };
       for (let i = 0; i < fx.players.length; i++) {
         for (const batch of fx.players[i].passes[p]) {
-          const res = await call("/api/v1/rounds", { body: batch, key: keys[i], now });
+          const res = await call("/api/v1/rounds", { body: batch, key: keys[i], now: fx.players[i].passAt[p] });
           const body = await json<Totals & { ok: boolean }>(res);
           expect(res.status, JSON.stringify(body)).toBe(200);
           sum.accepted += body.accepted;
           sum.unchanged += body.unchanged;
           sum.duplicates += body.duplicates;
           for (const [why, n] of Object.entries(body.rejected)) sum.rejected[why] = (sum.rejected[why] ?? 0) + n;
+          sum.retry.push(...body.retry);
         }
       }
+      sum.retry.sort();
       expect(sum, `pass ${p + 1}`).toEqual(fx.uploads[p]);
       expect((await rollup(now)).more, "the rollup did not finish").toBe(false);
     }
@@ -183,6 +193,17 @@ describe.skipIf(!fixtures[FIXTURE])("the global site against the server", () => 
 
     const live = await compare(now, fx.cases);
     expect(live.join("\n"), `${fx.cases.length - live.length}/${fx.cases.length} cases match`).toBe("");
+
+    // Every day recomputed in full and published again under a value limit
+    // small enough that each day part takes several files (CONTRACT §4.2).
+    const small = { ...env, VALUE_MAX_BYTES: "6000" };
+    expect((await admin("rebuild", {}, now, small)).status).toBe(200);
+    expect((await rollup(now, 200, small)).more, "the rebuild did not finish").toBe(false);
+    const split = await json<{ parts: { from: string; to: string; file: string }[] }>(call("/data/global/manifest.json", { now }));
+    const days = new Set(split.parts.map(p => p.from));
+    expect(split.parts.length, "day parts in several files").toBeGreaterThan(2 * days.size);
+    const splitLive = await compare(now, fx.cases);
+    expect(splitLive.join("\n"), `${fx.cases.length - splitLive.length}/${fx.cases.length} cases match with split parts`).toBe("");
 
     // A hundred days on, every day is archived and each month compacted into one part.
     const later = now + 100 * DAY_MS;

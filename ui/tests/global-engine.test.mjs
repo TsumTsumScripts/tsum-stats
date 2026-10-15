@@ -110,20 +110,37 @@ function partOf(from, to, rounds) {
 const nextDay = day => dayOf(Date.parse(`${day}T00:00:00Z`) / 1000 + DAY);
 
 /**
- * The published files: August compacted into a month part, every later day
- * its own part, and the manifest. Returns {files: name → JSON text, manifest}.
+ * A part as the Worker publishes one too long for one D1 value: n files for
+ * the same days, each a share of its cells rows and, apart from those, a
+ * share of its bins rows (CONTRACT §4.2).
  */
-function publish(rounds, {skipDays = []} = {}) {
+function sharesOf(part, n) {
+  const share = (cols, k) => {
+    const size = Math.ceil(cols.n / n), lo = Math.min(cols.n, k * size), hi = Math.min(cols.n, lo + size);
+    return Object.fromEntries(Object.entries(cols).map(([key, v]) => [key, key === 'n' ? hi - lo : v.slice(lo, hi)]));
+  };
+  return Array.from({length: n}, (_, k) => ({...part, cells: share(part.cells, k), bins: share(part.bins, k)}));
+}
+
+/**
+ * The published files: August compacted into a month part, every later day
+ * its own part (in `split` files each), and the manifest. Returns
+ * {files: name → JSON text, manifest}.
+ */
+function publish(rounds, {skipDays = [], split = 1} = {}) {
   const files = new Map();
   const parts = [];
   const put = (kind, from, to, label) => {
     const rs = rounds.filter(r => dayOf(r.playedAt) >= from && dayOf(r.playedAt) < to);
     if (!rs.length) return;
-    const text = JSON.stringify(partOf(from, to, rs));
-    const sha = sha8(text);
-    const file = `${kind}-${label}.${sha}.json`;
-    files.set(file, text);
-    parts.push({from, to, file, rounds: rs.length, sha});
+    const whole = partOf(from, to, rs);
+    for (const p of kind === 'day' && split > 1 ? sharesOf(whole, split) : [whole]) {
+      const text = JSON.stringify(p);
+      const sha = sha8(text);
+      const file = `${kind}-${label}.${sha}.json`;
+      files.set(file, text);
+      parts.push({from, to, file, rounds: p.cells.rounds.reduce((n, x) => n + x, 0), sha});
+    }
   };
   put('month', '2026-08-01', '2026-09-01', '2026-08');
   for (let day = '2026-09-01'; day <= '2026-10-14'; day = nextDay(day)) {
@@ -423,6 +440,24 @@ test('only the parts a range touches are read, once', async () => {
   await engine.call('summary', {from: '2026-08-20T00:00:00Z', to: '2026-08-21T00:00:00Z'});
   assert.equal(log.at(-1).name, manifest.parts.find(p => p.from === '2026-08-01').file, 'August is the month part');
   assert.equal(log.length, 3);
+});
+
+test('a part published as several files adds up as one', async t => {
+  const split = publish(ROUNDS, {split: 3});
+  const days = manifest.parts.filter(p => p.file.startsWith('day-'));
+  assert.equal(split.manifest.parts.length, manifest.parts.length + 2 * days.length, 'each day part in three files');
+  for (const p of days) {
+    const shares = split.manifest.parts.filter(s => s.from === p.from);
+    assert.ok(shares.every(s => s.to === p.to), `${p.from}: the same days`);
+    assert.equal(shares.reduce((n, s) => n + s.rounds, 0), p.rounds, `${p.from}: the files' rounds add up`);
+  }
+  const log = [];
+  const engine = createGlobalEngine(loaderOf(split.files, log));
+  const cases = [{}, {coins: 'medals'}, {tsum: 'stitch,mickey', coins: 'final', skill: '2,-1'}, {from: '2026-09-12T00:00:00Z', to: '2026-09-13T00:00:00Z'}];
+  for (const q of cases) await t.test(JSON.stringify(q), () => check(engine, q));
+  // Each of a day's files is read, once.
+  const files = split.manifest.parts.filter(p => p.from === '2026-09-12').map(p => p.file);
+  assert.deepEqual(log.filter(l => files.includes(l.name)).map(l => l.name).sort(), [...files].sort());
 });
 
 test('a part replaced since the manifest was read: the manifest is read again, once', async () => {

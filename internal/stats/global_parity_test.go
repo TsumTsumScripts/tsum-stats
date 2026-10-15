@@ -150,14 +150,38 @@ func paritySkill(settings string) int {
 	return -1
 }
 
+// workerCatalog is the Tsum ids the Worker is built with (global/src/catalog.ts).
+func workerCatalog(t *testing.T) map[string]bool {
+	var catalog struct {
+		Tsums []struct {
+			ID string `json:"id"`
+		} `json:"tsums"`
+	}
+	data, err := os.ReadFile("../../ui/public/data/catalog.json")
+	if err == nil {
+		err = json.Unmarshal(data, &catalog)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, c := range catalog.Tsums {
+		ids[c.ID] = true
+	}
+	return ids
+}
+
 // TestGlobalParity holds the global site to the server's own answers, end to
-// end: three players' rounds go through the forwarder as it uploads them,
-// then (global/test/parity.test.ts, in Miniflare) the Worker's checks and
-// hourly job, and the page's global engine over the files it publishes. Every
-// exact figure must match Summarize over the same rounds in UTC days, a
-// round's day being the one it began (CONTRACT §1.1); the quartiles and P90
-// come within a bin. It runs again once the days are archived and compacted
-// into month parts.
+// end: three players' rounds go through the forwarder as it uploads them (in
+// batches of GlobalBatchRows), then (global/test/parity.test.ts, in
+// Miniflare) the Worker's checks and hourly job, and the page's global engine
+// over the files it publishes. Every exact figure must match Summarize over
+// the same rounds in UTC days, a round's day being the one it began (CONTRACT
+// §1.1); the quartiles and P90 come within a bin. On the way: rounds the
+// Worker turns away, rounds of a Tsum its catalog lacks (stored, never in the
+// public figures), rounds the site names in retry and takes on the next pass,
+// and parts too long for one file. It runs again once the days are archived
+// and compacted into month parts.
 func TestGlobalParity(t *testing.T) {
 	if _, err := exec.LookPath("node"); err != nil {
 		t.Skip("node is not installed")
@@ -211,20 +235,65 @@ func TestGlobalParity(t *testing.T) {
 	}
 	addRounds(t, apps[2],
 		bad("not-a-uuid", 50*time.Hour, func(*Round) {}),
-		bad("", 51*time.Hour, func(r *Round) { r.Tsum = "nope" }),
+		// Not a Tsum id at all (a well-formed one the catalog lacks is kept: below).
+		bad("", 51*time.Hour, func(r *Round) { r.Tsum = "no pe" }),
 		bad("", 52*time.Hour, func(r *Round) { d := 0.0; r.Duration = &d }),
 		bad("", 53*time.Hour, func(r *Round) { b := int64(99999); r.BaseCoins = &b }),
 		// It ends 11 minutes before it began: more than clock skew.
 		bad("", 54*time.Hour, func(r *Round) { r.ID = uuid7(now.Add(-54*time.Hour+11*time.Minute), 54, "0bad0bad0bad") }),
 	)
+	// Rounds of a Tsum newer than the Worker's catalog, from the third player's
+	// first device, its medals unread: stored and counted as that player's
+	// (CONTRACT §1.2), but in no public figure, so not in the union.
+	newTsum := map[string]bool{}
+	var starts []time.Time
+	for _, r := range rounds {
+		if r.ID[24:] == parityDevices[3].tag {
+			starts = append(starts, roundStart(r.ID))
+		}
+	}
+	for k := range 4 {
+		start := now.Add(-time.Duration(240-k*29) * time.Hour)
+		// Clear of the device's own rounds, which the pace check measures from.
+		for slices.ContainsFunc(starts, func(s time.Time) bool { return s.Sub(start).Abs() < time.Minute }) {
+			start = start.Add(5 * time.Minute)
+		}
+		r := rounds[len(rounds)-1].Round
+		dur := 95.5 + float64(k)
+		r.ID, r.PlayedAt, r.Tsum, r.Device, r.Duration, r.Medals = uuid7(start, 777+k, parityDevices[3].tag),
+			start.Add(100*time.Second).Format(sqlTime), "newtsum", parityDevices[3].name, &dur, nil
+		addRounds(t, apps[2], r)
+		newTsum[r.ID] = true
+	}
+	if ids := workerCatalog(t); ids["newtsum"] || !ids["mickey"] {
+		t.Fatal("the Worker's catalog should know mickey and not newtsum")
+	}
 
 	// Each player's forwarder makes its first pass, then the first player's
-	// CSV rows correct some rounds and its next pass sends only those.
+	// CSV rows correct some rounds and its next pass sends only those. At the
+	// third player's first pass the site's clock is 6 hours behind (as if that
+	// computer and its devices ran fast): to the site its newest rounds have
+	// not happened yet, so it names them in retry, and the next pass sends
+	// them again, when they go.
 	type pass []RoundBatch
 	players := make([]struct {
 		Passes []pass         `json:"passes"`
 		Me     map[string]any `json:"me"`
+		// PassAt is the Worker's clock at each pass, ms.
+		PassAt []int64 `json:"passAt"`
 	}, 3)
+	behind := now.Add(-6 * time.Hour)
+	ahead := behind.Add(10 * time.Minute) // past this the site calls a time future (§1.2)
+	var retried []string
+	for _, r := range rounds {
+		if at, _ := time.Parse(sqlTime, r.PlayedAt); r.player == 2 && (at.After(ahead) || roundStart(r.ID).After(ahead)) {
+			retried = append(retried, r.ID)
+		}
+	}
+	if len(retried) < 2 {
+		t.Fatalf("%d of the third player's rounds end in its last 6 hours; the data needs more", len(retried))
+	}
+	slices.Sort(retried)
 	workers := make([]*fakeWorker, 3)
 	contributors := make([]*Contributor, 3)
 	// What a player's forwarder has uploaded so far.
@@ -240,8 +309,24 @@ func TestGlobalParity(t *testing.T) {
 		if err := contributors[i].Join(); err != nil {
 			t.Fatal(err)
 		}
+		at := now
+		if i == 2 {
+			at = behind
+			workers[i].retry = map[string]bool{}
+			for _, id := range retried {
+				workers[i].retry[id] = true
+			}
+		}
 		runPass(t, contributors[i])
 		players[i].Passes = append(players[i].Passes, uploaded(i))
+		players[i].PassAt = []int64{at.UnixMilli(), now.UnixMilli()}
+		workers[i].retry = nil
+		// Batches of at most GlobalBatchRows, oldest first.
+		for j, b := range players[i].Passes[0] {
+			if n := len(b.Records); n > GlobalBatchRows || n < GlobalBatchRows && j < len(players[i].Passes[0])-1 {
+				t.Fatalf("player %d's batch %d has %d records", i+1, j+1, n)
+			}
+		}
 	}
 	var edits []Round
 	coins, renamed, moved := 0, false, false
@@ -277,13 +362,24 @@ func TestGlobalParity(t *testing.T) {
 	}
 	addRounds(t, union, edits...)
 	addRounds(t, apps[0], edits...)
-	runPass(t, contributors[0])
-	players[0].Passes = append(players[0].Passes, uploaded(0)[len(players[0].Passes[0]):])
-	for i := 1; i < 3; i++ {
-		players[i].Passes = append(players[i].Passes, pass{})
+	for i := range players {
+		runPass(t, contributors[i])
+		players[i].Passes = append(players[i].Passes, uploaded(i)[len(players[i].Passes[0]):])
 	}
 	if n := len(players[0].Passes[1]); n != 1 || len(players[0].Passes[1][0].Records) != len(edits) {
 		t.Fatalf("the second pass should send just the %d changed rounds, sent %d batches", len(edits), n)
+	}
+	if len(players[1].Passes[1]) != 0 {
+		t.Fatalf("the second player's second pass sent %d batches", len(players[1].Passes[1]))
+	}
+	var again []string
+	for _, b := range players[2].Passes[1] {
+		for _, rec := range b.Records {
+			again = append(again, rec["id"])
+		}
+	}
+	if slices.Sort(again); !slices.Equal(again, retried) {
+		t.Fatalf("the third player's second pass should send the %d rounds the site named in retry, sent %v", len(retried), again)
 	}
 
 	// What the global site should answer, from the union's rounds.
@@ -419,6 +515,7 @@ func TestGlobalParity(t *testing.T) {
 	summary("empty range", map[string]string{"from": "2026-09-10T00:00:00Z", "to": "2026-09-10T00:00:00Z"}, nil, nil)
 	summary("nothing matches", map[string]string{"from": "2030-01-01T00:00:00Z"}, nil, nil)
 	summary("unknown Tsum", map[string]string{"tsum": "nope"}, nil, nil)
+	summary("a Tsum the catalog lacks", map[string]string{"tsum": "newtsum"}, nil, nil)
 	summary("ignored parameters", map[string]string{"device": "pixel-7", "minCoins": "3000", "maxScore": "100", "incomplete": "1", "tz": "540"}, none, nil)
 	summary("everything filtered", map[string]string{"tsum": "elsa, mickeyplus", "build": "global", "coins": "final", "from": "2026-09-01T00:00:00Z"}, nil, nil)
 	summary("one skill level", map[string]string{"skill": "3"}, none, skillIn(3))
@@ -484,20 +581,28 @@ func TestGlobalParity(t *testing.T) {
 	for i := range players {
 		n, first, last := 0, "", ""
 		tags := map[string]bool{}
+		mine := func(id string) {
+			n++
+			day := roundStart(id).Format(time.DateOnly)
+			if first == "" || day < first {
+				first = day
+			}
+			last = max(last, day)
+		}
 		for _, r := range final {
 			if owner[r.ID] == i {
-				n++
-				day := roundStart(r.ID).Format(time.DateOnly)
-				if first == "" || day < first {
-					first = day
-				}
-				last = max(last, day)
+				mine(r.ID)
+			}
+		}
+		if i == 2 {
+			for id := range newTsum {
+				mine(id)
 			}
 		}
 		dups := 0
 		for _, b := range players[i].Passes[0] {
 			for _, rec := range b.Records {
-				if _, ok := owner[rec["id"]]; ok {
+				if _, ok := owner[rec["id"]]; ok || newTsum[rec["id"]] {
 					tags[rec["id"][24:]] = true
 				}
 				if owner[rec["id"]] != i && duplicated[rec["id"]] {
@@ -513,12 +618,14 @@ func TestGlobalParity(t *testing.T) {
 		Unchanged  int            `json:"unchanged"`
 		Duplicates int            `json:"duplicates"`
 		Rejected   map[string]int `json:"rejected"`
+		Retry      []string       `json:"retry"`
 	}
 	fixture := map[string]any{
 		"now": now.UnixMilli(), "players": players, "cases": cases,
 		"uploads": []totals{
-			{Accepted: len(rounds), Duplicates: len(duplicated), Rejected: map[string]int{"id": 2, "tsum": 1, "duration": 1, "range": 1}},
-			{Accepted: len(edits), Rejected: map[string]int{}},
+			{Accepted: len(rounds) + len(newTsum) - len(retried), Duplicates: len(duplicated),
+				Rejected: map[string]int{"id": 2, "tsum": 1, "duration": 1, "range": 1, "future": len(retried)}, Retry: retried},
+			{Accepted: len(edits) + len(retried), Rejected: map[string]int{}, Retry: []string{}},
 		},
 	}
 	data, err := json.Marshal(fixture)
@@ -540,8 +647,8 @@ func TestGlobalParity(t *testing.T) {
 	cmd.Dir = global
 	cmd.Env = append(os.Environ(), "WRANGLER_SEND_METRICS=false", "CI=1")
 	out, err := cmd.CombinedOutput()
-	t.Logf("%d rounds from %d players (%d hours long, %d of those across midnight), %d cases\n%s",
-		len(rounds), len(players), long, crossing, len(cases), out)
+	t.Logf("%d rounds from %d players (%d hours long, %d of those across midnight; %d sent again after a retry), "+
+		"%d of a Tsum the catalog lacks, %d cases\n%s", len(rounds), len(players), long, crossing, len(retried), len(newTsum), len(cases), out)
 	if err != nil {
 		t.Fatalf("the global site's answers differ from the server's:\n%s", out)
 	}

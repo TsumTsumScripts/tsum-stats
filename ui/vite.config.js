@@ -2,7 +2,7 @@
 // `npm run dev` serves it with hot reload and sends /api to a running tsum-stats.
 // `--mode global` builds the global site instead (global/CONTRACT.md §6): into
 // ../global/site, tagged so api() reads data/global/; its dev server gets those
-// files from a `wrangler dev` on :8787.
+// files from global's `npm run dev` (wrangler dev on 127.0.0.1:8788).
 import {defineConfig} from 'vite';
 import {svelte} from '@sveltejs/vite-plugin-svelte';
 
@@ -30,7 +30,7 @@ export default defineConfig(({mode}) => {
     },
     server: {
       proxy: global
-        ? {'/data/global': {target: 'http://127.0.0.1:8787'}}
+        ? {'/data/global': {target: 'http://127.0.0.1:8788'}}
         : {'/api': {target: 'http://127.0.0.1:8090', ws: true}},
     },
   };
