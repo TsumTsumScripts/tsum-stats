@@ -50,27 +50,33 @@
   // Secrets (not here): DEVICE_KEY re-keys device tags and addresses, ADMIN_KEY
   // opens /api/v1/admin/*. Locally they come from .dev.vars.
   "vars": {
-    // Accepted rounds per contributor per UTC day.
-    "QUOTA_PER_CONTRIBUTOR": "5000",
+    // The account is on Workers Paid (since 2026-10-15); the numbers below are
+    // sized for it. test/tunables.json keeps the Free ones the tests use.
+    // Accepted rounds per contributor per UTC day: big enough for a whole
+    // history in a day or two, small enough that one runaway client cannot
+    // spend the day's budget.
+    "QUOTA_PER_CONTRIBUTOR": "250000",
     // Rows D1 may write (insert, change or delete) per UTC day, for everything
-    // the Worker does (D1 Free writes 100k a day). Uploads and joins stop at
-    // this less JOB_RESERVE_ROWS; the hourly job spends the rest.
-    "BUDGET_ROWS_PER_DAY": "90000",
-    "JOB_RESERVE_ROWS": "25000",
+    // the Worker does (D1 Paid includes 50M a month, about 1.6M a day). Uploads
+    // and joins stop at this less JOB_RESERVE_ROWS; the hourly job spends the rest.
+    "BUDGET_ROWS_PER_DAY": "1500000",
+    "JOB_RESERVE_ROWS": "375000",
     // Rows D1 may read per UTC day before the job puts off the work that can
-    // wait: full recomputes, the archive, unlinks (D1 Free reads 5M a day).
-    "READ_BUDGET_PER_DAY": "4000000",
-    // Archived days stay in D1 (a delete is a row written) until it holds more rounds than this.
-    "RETAIN_ROWS": "3000000",
+    // wait: full recomputes, the archive, unlinks (D1 Paid includes 25B a month).
+    "READ_BUDGET_PER_DAY": "500000000",
+    // Archived days stay in D1 (a delete is a row written) until it holds more
+    // rounds than this (about 2.9 GB; a Paid database may hold 10 GB).
+    "RETAIN_ROWS": "30000000",
     // How old a round may be; a day older than this + 1 is final and moves to the archive.
     "ACCEPT_DAYS": "60",
     // Dirty days one run recomputes in full at most.
     "ROLLUP_DAYS_PER_RUN": "8",
     // About how many rounds one run re-files (or deletes) per unlinking contributor, a whole day at a time.
     "UNLINK_CHUNK": "5000",
-    // A run stops issuing new work at this many D1 queries or R2 operations (Free allows 50).
-    "RUN_QUERY_BUDGET": "45",
-    "RUN_R2_BUDGET": "40",
+    // A run stops issuing new work at this many D1 queries or R2 operations
+    // (Paid allows 1,000 queries and 10,000 subrequests a run).
+    "RUN_QUERY_BUDGET": "500",
+    "RUN_R2_BUDGET": "500",
     // Bytes of parts and archive files one run carries from D1 to R2: its CPU goes on them (Free allows 10 ms).
     "RUN_BYTES": "2000000",
     // The largest value the Worker has D1 build (D1 refuses one over 2,000,000 bytes); bigger files are split.

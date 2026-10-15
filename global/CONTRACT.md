@@ -151,7 +151,7 @@ admin key is the `ADMIN_KEY` secret, compared in constant time.
 | 405 | `method` | Wrong method |
 | 413 | `too-large` | Body over 1 MiB |
 | 415 | `content-type` | A `POST` that is not `application/json` |
-| 429 | `quota` | The contributor's daily quota (`QUOTA_PER_CONTRIBUTOR`, 5,000 rounds) would be passed; `Retry-After` = seconds to the next 00:00 UTC |
+| 429 | `quota` | The contributor's daily quota (`QUOTA_PER_CONTRIBUTOR`, 250,000 rounds as deployed) would be passed; `Retry-After` = seconds to the next 00:00 UTC |
 | 429 | `join-limit` | More than 5 joins today from this address (§2.1); `Retry-After` as for quota |
 | 500 | `internal` | A fault, or the `DEVICE_KEY` secret is not set (no key or device hash is ever made without it) |
 | 503 | `budget` | Today's write budget (§2.6) would be passed; `Retry-After` as for quota |
@@ -246,7 +246,7 @@ of 250 records takes about 15 D1 statements in all.
 ```json
 {"ok": true, "id": 17, "status": "active", "since": "2026-10-14", "lastSeen": "2026-10-14T18:05:00Z",
  "rounds": 12345, "duplicates": 3, "devices": 4, "first": "2026-08-20", "last": "2026-10-14",
- "today": {"rounds": 800, "quota": 5000}}
+ "today": {"rounds": 800, "quota": 250000}}
 ```
 
 `rounds` is `rounds_total` (a Tsum the catalog lacks included); `devices`
@@ -351,10 +351,10 @@ D1 writes or deletes** (`meta.rows_written`) for anything the Worker does:
 uploads, joins, unlinks, the admin routes, restores and the hourly job.
 `budget.reads` adds up the rows read, roughly.
 
-- `BUDGET_ROWS_PER_DAY` (90,000): the day's cap for everything.
-- `JOB_RESERVE_ROWS` (25,000): the part of it uploads and joins never take.
+- `BUDGET_ROWS_PER_DAY` (1,500,000 as deployed on Paid; 90,000 on Free): the day's cap for everything.
+- `JOB_RESERVE_ROWS` (375,000; 25,000 on Free): the part of it uploads and joins never take.
   **An upload or a join is refused (`503 budget`) when its writes would take
-  the day past `BUDGET_ROWS_PER_DAY − JOB_RESERVE_ROWS`** (65,000), counting
+  the day past `BUDGET_ROWS_PER_DAY − JOB_RESERVE_ROWS`** (1,125,000; 65,000 on Free), counting
   everything already written that day, the job's included.
 - The check and the count are statements of the same D1 batch as the writes
   (a batch is one transaction): a refusal statement inserts into `refusals`,

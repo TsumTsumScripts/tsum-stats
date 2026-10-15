@@ -418,11 +418,21 @@ Once an account passes D1's free daily limits, every query fails until 00:00
 UTC: uploads and the rollup stop for the rest of the day. The budget is there
 so that writes never get that far.
 
+**The account moved to Workers Paid on 2026-10-15**, and `wrangler.jsonc`
+now has the Paid numbers below (quota 250,000, budget 1,500,000, reserve
+375,000, reads 500 million, `RETAIN_ROWS` 30 million, 500 queries and R2
+operations a run). The Free table above is what `test/tunables.json` still
+uses. Raising the numbers is not optional: the plan change alone leaves
+the Free caps in place, the 5,000-round quota included.
+
 **Move to Workers Paid** ($5 a month) when uploads keep getting `503 budget`
 (the players' dialogs say the daily limit is reached), when the database
 passes about 400 MB, when rows read approach 5 million a day, or when runs
 log exceeded CPU. Upgrade on the personal account under **Workers & Pages →
-Plans**. Nothing in the code changes. Optionally, then:
+Plans**. Nothing in the code changes. Then:
+
+- raise `QUOTA_PER_CONTRIBUTOR`: 5,000 rounds a day was a share of Free's
+  budget, and holds back a player sending their whole history;
 
 - raise `BUDGET_ROWS_PER_DAY` in `wrangler.jsonc`: Paid includes 50 million
   rows written a month, about 1.6 million a day; keep `JOB_RESERVE_ROWS`

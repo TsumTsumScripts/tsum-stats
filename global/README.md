@@ -275,19 +275,21 @@ rewrite. These rules are why some code looks the way it does:
 
 ## Tunables
 
-The `vars` in `wrangler.jsonc`, read by `env.ts: limits`:
+The `vars` in `wrangler.jsonc`, read by `env.ts: limits`, as deployed on
+Workers Paid. `env.ts`'s fallbacks and `test/tunables.json` keep the Free
+numbers (Free) the tests are written against:
 
-| Var | Default | |
+| Var | Deployed (Free) | |
 |:--|:--|:--|
-| `QUOTA_PER_CONTRIBUTOR` | 5000 | Accepted rounds per contributor per UTC day |
-| `BUDGET_ROWS_PER_DAY` | 90000 | Rows D1 may write (insert, change or delete) per UTC day, for everything (Free writes 100,000) |
-| `JOB_RESERVE_ROWS` | 25000 | Of those, what uploads and joins never take: the hourly job's. Its other work keeps a fifth of it as a margin |
-| `READ_BUDGET_PER_DAY` | 4000000 | Rows read per UTC day before the job puts off the work that can wait (Free reads 5 million) |
-| `RETAIN_ROWS` | 3000000 | Archived days stay in D1 until it holds more rounds than this (about 290 MB of rounds) |
+| `QUOTA_PER_CONTRIBUTOR` | 250000 (5000) | Accepted rounds per contributor per UTC day |
+| `BUDGET_ROWS_PER_DAY` | 1500000 (90000) | Rows D1 may write (insert, change or delete) per UTC day, for everything (Paid includes about 1.6 million a day, Free writes 100,000) |
+| `JOB_RESERVE_ROWS` | 375000 (25000) | Of those, what uploads and joins never take: the hourly job's. Its other work keeps a fifth of it as a margin |
+| `READ_BUDGET_PER_DAY` | 500000000 (4000000) | Rows read per UTC day before the job puts off the work that can wait (Paid includes 25 billion a month, Free reads 5 million) |
+| `RETAIN_ROWS` | 30000000 (3000000) | Archived days stay in D1 until it holds more rounds than this (about 2.9 GB of rounds; 290 MB at the Free number) |
 | `ACCEPT_DAYS` | 60 | How long ago a round may have started. Older days are final and archived |
 | `ROLLUP_DAYS_PER_RUN` | 8 | Dirty days one run recomputes in full at most |
 | `UNLINK_CHUNK` | 5000 | About how many rounds one run re-files (or deletes) per unlinking contributor, a whole day at a time |
-| `RUN_QUERY_BUDGET`, `RUN_R2_BUDGET` | 45, 40 | Where a run stops starting work |
+| `RUN_QUERY_BUDGET`, `RUN_R2_BUDGET` | 500, 500 (45, 40) | Where a run stops starting work |
 | `RUN_BYTES` | 2000000 | Bytes of parts and archive files one run carries from D1 to R2 |
 | `VALUE_MAX_BYTES` | 1500000 | The largest value the Worker has D1 build; longer files are split |
 | `MIN_CONTRIBUTORS` | 3 | Below this many contributors the page flags a Tsum "few players" |
