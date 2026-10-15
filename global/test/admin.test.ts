@@ -77,6 +77,26 @@ describe("admin", () => {
     expect(await json(call("/api/v1/me", { key: a.key }))).toMatchObject({ rounds: 9, duplicates: 4, devices: 2, first: "2026-10-14" });
   });
 
+  it("refuses a merge that today's write budget has no room for", async () => {
+    const a = await joinNew(), b = await joinNew();
+    await upload(a.key, series(40, { tag: "0a0000000001" }));
+    await upload(b.key, series(2, { tag: "0b0000000001" }));
+    await rollup();
+    const spent = (await one<{ rows: number }>("SELECT rows FROM budget")).rows;
+    const res = await call("/api/v1/admin/merge", { body: { from: a.id, into: b.id }, key: "test-admin-key", env: { ...env, BUDGET_ROWS_PER_DAY: String(spent + 20) } });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ ok: false, error: "budget" });
+    expect(await one("SELECT count(*) AS n FROM rounds WHERE contributor = ?1", a.id)).toEqual({ n: 40 });
+    // A ban writes a few rows and always goes through, its rows counted.
+    const banned = await call("/api/v1/admin/ban", { body: { id: a.id }, key: "test-admin-key", env: { ...env, BUDGET_ROWS_PER_DAY: String(spent) } });
+    expect(banned.status).toBe(200);
+    await admin("unban", { id: a.id });
+    expect((await one<{ rows: number }>("SELECT rows FROM budget")).rows).toBeGreaterThan(spent);
+    // With room, it moves every round, found by day rather than by reading the whole table.
+    expect((await admin("merge", { from: a.id, into: b.id })).status).toBe(200);
+    expect(await rows("SELECT contributor, count(*) AS n FROM rounds GROUP BY contributor")).toEqual([{ contributor: b.id, n: 42 }]);
+  });
+
   it("marks days dirty for a rebuild", async () => {
     const c = await joinNew();
     await upload(c.key, [...series(2, { end: NOW - 3 * 86400_000 }), ...series(2)]);
@@ -96,7 +116,7 @@ describe("admin", () => {
   it("runs the hourly job on request, and on the cron", async () => {
     const c = await joinNew();
     await upload(c.key, series(2));
-    expect(await json(admin("rollup"))).toMatchObject({ ok: true, recomputed: ["2026-10-14"], manifest: true, more: false });
+    expect(await json(admin("rollup"))).toMatchObject({ ok: true, folded: 2, recomputed: [], manifest: true, more: false, errors: [] });
     await upload(c.key, series(1, { end: NOW - 600_000 }));
     await worker.scheduled(createScheduledController({ scheduledTime: NOW, cron: "5 * * * *" }), env);
     expect(await one("SELECT sum(rounds) AS n FROM cells")).toEqual({ n: 3 });

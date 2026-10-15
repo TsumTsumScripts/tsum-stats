@@ -190,19 +190,54 @@ export async function dataset(days = 3, seed = 7, now = NOW) {
   return { people, sent };
 }
 
-/** An env whose D1 and R2 count each query (a batch: each statement) and operation, and what each write touched. */
-export function counted(base: Env = env) {
-  const n = { q: 0, r2: 0, writes: [] as { sql: string; rows: number }[] };
+/** D1 refuses to make a string or blob longer than this (Miniflare does not). */
+export const D1_VALUE_MAX = 2_000_000;
+
+/**
+ * An env whose D1 and R2 count each query (a batch: each statement) and
+ * operation, what each write touched, and every row D1 says it read and
+ * wrote (first() is run as all(), so its meta counts too). With `valueMax`, a
+ * statement given or giving back a string longer than that fails as D1 would.
+ */
+export function counted(base: Env = env, opts: { valueMax?: number } = {}) {
+  const n = {
+    q: 0, r2: 0, read: 0, written: 0,
+    writes: [] as { sql: string; rows: number }[],
+    bySql: new Map<string, { n: number; read: number; written: number }>(),
+  };
   const real = new WeakMap<object, D1PreparedStatement>();
   const sqlOf = new WeakMap<object, string>();
-  const wrap = (s: D1PreparedStatement, sql: string): D1PreparedStatement => {
+  const tooBig = (v: unknown) => typeof v === "string" && v.length > (opts.valueMax ?? Infinity);
+  const check = (sql: string, params: unknown[], rows: unknown[]) => {
+    if (params.some(tooBig) || rows.some(r => Object.values(r as object).some(tooBig))) {
+      throw new Error(`D1_ERROR: string or blob too big: SQLITE_TOOBIG (${sql.trim().slice(0, 60)})`);
+    }
+  };
+  const note = (sql: string, r: D1Result) => {
+    n.read += r.meta.rows_read ?? 0;
+    n.written += r.meta.rows_written ?? 0;
+    const k = sql.replace(/\s+/g, " ").trim().slice(0, 90);
+    const e = n.bySql.get(k) ?? { n: 0, read: 0, written: 0 };
+    e.n++;
+    e.read += r.meta.rows_read ?? 0;
+    e.written += r.meta.rows_written ?? 0;
+    n.bySql.set(k, e);
+  };
+  const paramsOf = new WeakMap<object, unknown[]>();
+  const wrap = (s: D1PreparedStatement, sql: string, params: unknown[] = []): D1PreparedStatement => {
     const p = new Proxy(s, {
       get(t, k) {
-        if (k === "bind") return (...a: unknown[]) => wrap(t.bind(...a), sql);
+        if (k === "bind") return (...a: unknown[]) => wrap(t.bind(...a), sql, a);
         if (k === "first" || k === "all" || k === "run" || k === "raw") {
           return async (...a: unknown[]) => {
             n.q++;
-            return (t as unknown as Record<string, (...x: unknown[]) => unknown>)[k](...a);
+            if (k === "raw") return t.raw(...(a as []));
+            const r = await t.all();
+            check(sql, params, r.results);
+            note(sql, r);
+            if (k !== "first") return r;
+            const row = r.results[0] as Record<string, unknown> | undefined;
+            return row === undefined ? null : typeof a[0] === "string" ? row[a[0]] : row;
           };
         }
         const v = Reflect.get(t, k);
@@ -211,14 +246,21 @@ export function counted(base: Env = env) {
     });
     real.set(p, s);
     sqlOf.set(p, sql);
+    paramsOf.set(p, params);
     return p;
   };
   const DB = {
     prepare: (sql: string) => wrap(base.DB.prepare(sql), sql),
     batch: async (stmts: D1PreparedStatement[]) => {
       n.q += stmts.length;
+      for (const s of stmts) check(sqlOf.get(s) ?? "", paramsOf.get(s) ?? [], []);
       const res = await base.DB.batch(stmts.map(s => real.get(s) ?? s));
-      res.forEach((r, i) => n.writes.push({ sql: sqlOf.get(stmts[i]) ?? "", rows: r.meta.rows_written ?? 0 }));
+      res.forEach((r, i) => {
+        const sql = sqlOf.get(stmts[i]) ?? "";
+        check(sql, [], r.results ?? []);
+        note(sql, r);
+        n.writes.push({ sql, rows: r.meta.rows_written ?? 0 });
+      });
       return res;
     },
   } as unknown as D1Database;
@@ -232,5 +274,11 @@ export function counted(base: Env = env) {
       };
     },
   });
-  return { env: { ...base, DB, BUCKET } as Env, n, reset: () => Object.assign(n, { q: 0, r2: 0, writes: [] }) };
+  return {
+    env: { ...base, DB, BUCKET } as Env, n,
+    reset: () => Object.assign(n, { q: 0, r2: 0, read: 0, written: 0, writes: [], bySql: new Map() }),
+    /** The statements that read or wrote most, for a failing test's message. */
+    top: (k = 8) => [...n.bySql].sort((a, b) => b[1].read + 50 * b[1].written - a[1].read - 50 * a[1].written).slice(0, k)
+      .map(([s, e]) => `${e.n}x read ${e.read} written ${e.written}: ${s}`).join("\n"),
+  };
 }

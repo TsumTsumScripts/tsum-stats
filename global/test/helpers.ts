@@ -31,15 +31,11 @@ export async function call(path: string, init: CallInit = {}): Promise<Response>
   const headers: Record<string, string> = { "cf-connecting-ip": init.ip ?? "203.0.113.1", ...(init.headers ?? {}) };
   if (init.key) headers.authorization = "Bearer " + init.key;
   let body: BodyInit | undefined = init.raw;
-  if (body === undefined && init.body !== undefined) {
-    body = JSON.stringify(init.body);
-    headers["content-type"] = "application/json";
-  }
-  const req = new Request("https://tsum-stats.gapscripts.app" + path, {
-    method: init.method ?? (body !== undefined ? "POST" : "GET"),
-    headers,
-    body,
-  });
+  if (body === undefined && init.body !== undefined) body = JSON.stringify(init.body);
+  const method = init.method ?? (body !== undefined ? "POST" : "GET");
+  // Every POST says it is JSON, as the forwarder's do, unless a test says otherwise.
+  if (method === "POST" && !Object.keys(headers).some(h => h.toLowerCase() === "content-type")) headers["content-type"] = "application/json";
+  const req = new Request("https://tsum-stats.gapscripts.app" + path, { method, headers, body });
   const ctx = createExecutionContext();
   const res = await handle(req, init.env ?? env, ctx, init.now ?? NOW);
   await waitOnExecutionContext(ctx);
@@ -180,8 +176,8 @@ export async function r2keys(prefix: string): Promise<string[]> {
 export async function wipe(): Promise<void> {
   await env.DB.batch([
     "DELETE FROM contributors WHERE id != 0", "DELETE FROM devices", "DELETE FROM settings", "DELETE FROM rounds",
-    "DELETE FROM dirty_days", "DELETE FROM budget", "DELETE FROM join_limits", "DELETE FROM state", "DELETE FROM cells",
-    "DELETE FROM bins", "DELETE FROM contrib_cells",
+    "DELETE FROM dirty_days", "DELETE FROM pending", "DELETE FROM budget", "DELETE FROM join_limits", "DELETE FROM state", "DELETE FROM cells",
+    "DELETE FROM bins", "DELETE FROM contrib_cells", "DELETE FROM recent",
   ].map(s => env.DB.prepare(s)));
   const keys = await r2keys("");
   for (let i = 0; i < keys.length; i += 1000) await env.BUCKET.delete(keys.slice(i, i + 1000));

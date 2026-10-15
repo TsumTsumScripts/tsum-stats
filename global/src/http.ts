@@ -20,6 +20,16 @@ export const fail = (e: HttpError) => Response.json({ ok: false, error: e.code }
 /** A body is at most this long once inflated. */
 export const MAX_BODY = 1 << 20;
 
+/**
+ * A POST must say it is JSON (415 otherwise). A page on another site can only
+ * send a form or text/plain without asking first (CORS), so this keeps it
+ * from joining, or spending its visitors' joins.
+ */
+export function requireJson(req: Request): void {
+  const type = (req.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+  if (type !== "application/json") throw new HttpError(415, "content-type");
+}
+
 /** The body as text, inflated when gzipped; a 413 past MAX_BODY. */
 export async function readText(req: Request): Promise<string> {
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) throw new HttpError(413, "too-large");

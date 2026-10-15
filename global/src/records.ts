@@ -19,7 +19,10 @@ const ITEM_BITS: [string, number][] = [
 ];
 
 /** Why a record was not kept, in the order the checks run. */
-export type Reason = "id" | "old" | "future" | "tsum" | "build" | "incomplete" | "duration" | "range" | "repeat" | "pace";
+export type Reason = "id" | "old" | "future" | "tsum" | "settings" | "build" | "incomplete" | "duration" | "range" | "repeat" | "pace";
+
+/** Reasons a record may pass later (its round has not happened yet by this clock): the reply asks for it again. */
+const RETRY: ReadonlySet<Reason> = new Set(["future"]);
 
 /** A round as the rounds table keeps it, plus what the checks and writes need. */
 export interface Round {
@@ -30,6 +33,8 @@ export interface Round {
   playedAt: number;
   build: number;
   tsum: string;
+  /** The bundled catalog has the Tsum: only then do its rounds reach the public figures. */
+  known: boolean;
   skill: number;
   items: number;
   version: string;
@@ -50,6 +55,8 @@ export interface Checked {
   /** The kept rounds, in key order. */
   rounds: Round[];
   rejected: Partial<Record<Reason, number>>;
+  /** The ids, as sent, of records rejected for a reason that can pass later. */
+  retry: string[];
 }
 
 // Plausible figures: about twice the largest seen.
@@ -59,6 +66,15 @@ const PACE_MS = 40_000;
 const SKEW = 10 * 60;
 
 const UUID7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/**
+ * A Tsum id as the catalog writes them. A well-formed one the bundled catalog
+ * lacks (a Tsum newer than this deploy) is kept, but left out of the public
+ * figures until a deploy knows it.
+ */
+const TSUM_ID = /^[A-Za-z0-9_.-]{1,48}$/;
+
+/** What one record's settings may hold; past it the record is rejected as `settings`. */
+export const SETTINGS_MAX = { columns: 64, name: 64, value: 256, json: 4096 };
 const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
 /** A cell, trimmed as csv.go: cell does. The format sends text; a number is taken as its text. */
@@ -89,7 +105,10 @@ const canonical = (o: Record<string, unknown>) => JSON.stringify(Object.fromEntr
 
 type Read = Omit<Round, "key" | "device" | "settingsHash"> & { hex: string };
 
-/** One record through the per-record checks, §1.2's first eight. */
+/** UTF-8 bytes of a string, without encoding it when it is plainly short enough. */
+const utf8Over = (s: string, max: number) => s.length > max || (s.length * 3 > max && new TextEncoder().encode(s).byteLength > max);
+
+/** One record through the per-record checks, §1.2's first nine. */
 function readRecord(rec: Record<string, unknown>, now: number, oldest: number): Read | Reason {
   const id = text(rec.id).toLowerCase();
   if (!UUID7.test(id)) return "id";
@@ -102,16 +121,21 @@ function readRecord(rec: Record<string, unknown>, now: number, oldest: number): 
   if (start < oldest) return "old";
   if (start > now + SKEW || playedAt > now + SKEW) return "future";
   const tsum = text(rec.tsum);
-  if (!TSUMS.has(tsum)) return "tsum";
+  if (!TSUM_ID.test(tsum)) return "tsum";
 
   // Every other column is a setting; an empty cell is left out. Built from
-  // entries, so a column called __proto__ is just a setting.
+  // entries, so a column called __proto__ is just a setting. Bounded, since
+  // each distinct object is a stored row.
   const entries: [string, boolean | number | string][] = [];
   for (const [name, v] of Object.entries(rec)) {
     const s = text(v);
-    if (!BASE_COLUMNS.has(name) && s !== "") entries.push([name, settingValue(s)]);
+    if (BASE_COLUMNS.has(name) || s === "") continue;
+    if (entries.length === SETTINGS_MAX.columns || name.length > SETTINGS_MAX.name || s.length > SETTINGS_MAX.value) return "settings";
+    entries.push([name, settingValue(s)]);
   }
   const settings = Object.fromEntries(entries);
+  const json = canonical(settings);
+  if (utf8Over(json, SETTINGS_MAX.json)) return "settings";
 
   let build = text(rec.build);
   if (build !== "global" && build !== "jp") {
@@ -138,10 +162,11 @@ function readRecord(rec: Record<string, unknown>, now: number, oldest: number): 
   }
   return {
     hex, startMs, playedAt, tsum, items,
+    known: TSUMS.has(tsum),
     build: build === "jp" ? 1 : 0,
     skill: Number.isInteger(skill) && (skill as number) >= 1 && (skill as number) <= 10 ? (skill as number) : -1,
     version: text(rec.script_version).slice(0, 16),
-    settings: canonical(settings),
+    settings: json,
     duration, score, base, final, medals,
     binBase: bin(base),
     binFinal: bin(final),
@@ -158,6 +183,7 @@ export async function checkRecords(
   records: Record<string, unknown>[], nowMs: number, acceptDays: number, deviceKey: CryptoKey, archived = "",
 ): Promise<Checked> {
   const rejected: Partial<Record<Reason, number>> = {};
+  const retry: string[] = [];
   const reject = (r: Reason) => (rejected[r] = (rejected[r] ?? 0) + 1);
   const now = nowMs / 1000;
   const oldest = Math.max(now - acceptDays * DAY, archived ? dayStart(archived) + DAY : 0);
@@ -165,8 +191,10 @@ export async function checkRecords(
   const read: Read[] = [];
   for (const rec of records) {
     const r = readRecord(rec, now, oldest);
-    if (typeof r === "string") reject(r);
-    else read.push(r);
+    if (typeof r === "string") {
+      reject(r);
+      if (RETRY.has(r)) retry.push(text(rec.id));
+    } else read.push(r);
   }
 
   // The key: the id's time and random bits, then the tag's HMAC. A batch holds
@@ -197,5 +225,5 @@ export async function checkRecords(
       last.set(r.device, r);
     }
   }
-  return { rounds: kept, rejected };
+  return { rounds: kept, rejected, retry };
 }

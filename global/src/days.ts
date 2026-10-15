@@ -32,13 +32,6 @@ export const keyStart = (key: string): number => Math.floor(parseInt(key.slice(0
 /** A round's day: the UTC day it started (CONTRACT §1.1), however long it lasted. */
 export const keyDay = (key: string): string => dayOf(keyStart(key));
 
-/**
- * keyDay in SQL, for a key column. SQLite cannot read hex, so the 12 digits
- * are added up one by one.
- */
-export const keyDaySQL = (key = "key") =>
-  `date((${Array.from({ length: 12 }, (_, i) => `(instr('0123456789abcdef', substr(${key}, ${i + 1}, 1)) - 1) * ${16 ** (11 - i)}`).join(" + ")}) / 1000, 'unixepoch')`;
-
 /** A day as SQL bounds: the key range of the rounds that started on it. */
 export interface DayRange {
   lo: string;

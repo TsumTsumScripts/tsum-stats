@@ -5,7 +5,7 @@ import { authContributor, join, me, unlink } from "./contributors";
 import { sameSecret } from "./crypto";
 import { serveData } from "./data";
 import type { Env } from "./env";
-import { HttpError, bearer, fail } from "./http";
+import { HttpError, bearer, fail, requireJson } from "./http";
 import { postRounds } from "./ingest";
 import { runJob } from "./job";
 
@@ -39,6 +39,7 @@ export async function handle(req: Request, env: Env, ctx: ExecutionContext, nowM
     const route = Object.hasOwn(ROUTES, path) ? ROUTES[path] : undefined;
     if (!route) throw new HttpError(404, "not-found");
     if (req.method !== route[0]) throw new HttpError(405, "method", { Allow: route[0] });
+    if (req.method === "POST") requireJson(req);
     return await route[1](req, env, nowMs);
   } catch (e) {
     if (e instanceof HttpError) return fail(e);

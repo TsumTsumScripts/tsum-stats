@@ -1,11 +1,19 @@
-// The archive (CONTRACT §3.4): step 4 of the hourly job moves each final day's
-// rounds to R2, one file per contributor, and restore reads a day back.
+// The archive (CONTRACT §3.4): step 4 of the hourly job writes each final
+// day's rounds to R2, one file per contributor (more for a big one), and a
+// restore reads a day back. Step 4b drops archived days from D1, oldest
+// first, only once D1 holds more than RETAIN_ROWS rounds: a delete is a row
+// written, so a small deployment never pays for them.
 //
-// A file is built by D1 in one statement, so the Worker only carries the
-// string. Every name is deterministic (c<id>, or an HMAC for unlinked
-// rounds), so a run cut short simply writes the same files again.
+// A day is read once: D1 turns it, a share at a time, into archive_parts,
+// each contributor's columns as text, so no value it builds passes its limit
+// however big the day. The files are then put together from those pieces, a
+// few a run, as many as the run's bytes allow (the Worker's CPU goes on
+// them), without reading the rounds again. A file is built by D1, so the
+// Worker only carries the string. Every name is deterministic (c<id>, or an
+// HMAC for unnamed rounds), so a run cut short simply writes the same files again.
+import { BUDGET_CHECK, RECORD, refusedBy } from "./budget";
 import { hmacHex, hmacKey } from "./crypto";
-import { DAY, DAY_ROUNDS, addDays, dayParams, dayRange, dayStart, keyDay } from "./days";
+import { DAY, DAY_ROUNDS, addDays, dayOf, dayParams, dayRange, dayStart, hex48, keyDay } from "./days";
 import type { Env } from "./env";
 import { HttpError } from "./http";
 import type { Job } from "./job";
@@ -14,18 +22,29 @@ import { Run } from "./run";
 export const ARCHIVE = "archive/";
 export const archiveKey = (day: string, name: string) => `${ARCHIVE}${day.slice(0, 7)}/${day}/${name}`;
 
+const hmac16 = async (env: Env, what: string) => (await hmacHex(await hmacKey(env.DEVICE_KEY), "archive:" + what)).slice(0, 16);
+
 /**
  * An unlinked file's name: u + an HMAC of what it holds, so the name says
  * nothing about whose rounds they were and a re-run writes the same file.
  */
 export async function unlinkedName(env: Env, what: string): Promise<string> {
-  return "u" + (await hmacHex(await hmacKey(env.DEVICE_KEY), "archive:" + what)).slice(0, 16) + ".json";
+  return "u" + (await hmac16(env, what)) + ".json";
 }
 
-/** Unlinked rounds (contributor 0) are filed this many a file; anyone else's day is one file. */
-const UNLINKED_PER_FILE = 5000;
-/** Settings rows per archive/settings file. */
-const SETTINGS_PER_FILE = 2000;
+/**
+ * A file of a banned contributor that unlinked: b + an HMAC. Kept, since the
+ * raw rounds are archived for good, but a restore never reads one back, so
+ * those rounds never reach the public figures.
+ */
+export async function bannedName(env: Env, what: string): Promise<string> {
+  return "b" + (await hmac16(env, what)) + ".json";
+}
+
+/** A contributor's own file of a day: c<id>.json, then c<id>.<k>.json for a day too big for one. */
+export const namedFile = (id: number, chunk: number) => (chunk === 0 ? `c${id}.json` : `c${id}.${chunk}.json`);
+/** The R2 prefix of every file namedFile gives for id. */
+export const namedPrefix = (day: string, id: number) => archiveKey(day, `c${id}.`);
 
 // The file's arrays, in the rounds table's columns.
 const COLUMNS: [string, string][] = [
@@ -34,15 +53,52 @@ const COLUMNS: [string, string][] = [
   ["final", "final"], ["medals", "medals"],
 ];
 
-/** One file: contributor ?3's rounds of the day (?1-?2) after key ?4, at most ?5, filed as day ?6 and contributor ?7. */
-const FILE = `SELECT count(*) AS n, max(key) AS last,
-    json_object('kind', 'tsum-global-archive', 'format', 1, 'day', ?6, 'contributor', CAST(?7 AS INTEGER), 'n', count(*),
-      ${COLUMNS.map(([j, c]) => `'${j}', json_group_array(${c})`).join(", ")}) AS body
-  FROM (SELECT * FROM rounds WHERE ${DAY_ROUNDS} AND contributor = ?3 AND key > ?4 ORDER BY key LIMIT ?5)`;
+/**
+ * How long one round can be in a file, at most (a 48-character Tsum id, a
+ * 16-character version, every figure at its longest): a share of a day is
+ * sized by it, so no piece passes the value limit.
+ */
+const ROUND_BYTES = 190;
 
+/**
+ * Share ?5 of day ?3 into archive_parts: the ?4 rounds after the last key
+ * already there (or after ?1, just before the day's first key), up to ?2, one
+ * piece per contributor, each column's values as the text of a JSON array's
+ * items, in key order. Its one lower bound is where the scan starts.
+ */
+const STAGE = `INSERT INTO archive_parts (day, contributor, part, n, bytes, last, ${COLUMNS.map(([, c]) => c).join(", ")})
+  SELECT ?3, contributor, ?5, count(*),
+    sum(length(json_array(${COLUMNS.map(([, c]) => c).join(", ")}))), max(key),
+    ${COLUMNS.map(([, c]) => `group_concat(json_quote(${c}), ',')`).join(", ")}
+  FROM (SELECT * FROM (SELECT * FROM rounds WHERE key > coalesce((SELECT max(last) FROM archive_parts WHERE day = ?3), ?1) AND key < ?2
+      ORDER BY key LIMIT ?4) ORDER BY contributor, key)
+  GROUP BY contributor`;
+
+/** Who a file of contributor c is: c (named), u (no one's, unlinked) or b (a banned contributor's that left). */
+const kindOf = (c: string) => `CASE WHEN ${c} = 0 THEN 'u'
+    WHEN (SELECT status FROM contributors WHERE id = ${c}) IN ('active', 'banned') THEN 'c'
+    WHEN (SELECT status FROM contributors WHERE id = ${c}) = 'unlinking-banned' OR (SELECT value FROM state WHERE key = 'gone:' || ${c}) = 'banned' THEN 'b'
+    WHEN (SELECT value FROM state WHERE key = 'merged:' || ${c}) IS NOT NULL THEN 'c'
+    ELSE 'u' END`;
+
+/**
+ * Files of day ?1 from its pieces: ?2 maps each piece wanted ("<contributor>:<part>")
+ * to its file's place in the list. A file names its contributor only when
+ * that one is still linked (or was merged into another, which a restore follows).
+ */
+const FILES = `SELECT i, n, ${kindOf("c")} AS kind,
+    json_object('kind', 'tsum-global-archive', 'format', 1, 'day', ?1,
+      'contributor', CASE WHEN ${kindOf("c")} = 'c' THEN c END, 'n', n, ${COLUMNS.map(([j, c]) => `'${j}', json('[' || ${c} || ']')`).join(", ")}) AS body
+  FROM (SELECT ?2 ->> ('$."' || contributor || ':' || part || '"') AS i, contributor AS c, sum(n) AS n,
+      ${COLUMNS.map(([, c]) => `group_concat(${c}, ',' ORDER BY part) AS ${c}`).join(", ")}
+    FROM archive_parts WHERE day = ?1 AND (?2 ->> ('$."' || contributor || ':' || part || '"')) IS NOT NULL GROUP BY i, contributor)
+  ORDER BY i`;
+
+/** Settings rows after id ?1 into one file, up to about ?2 bytes (always at least one). */
 const SETTINGS = `SELECT min(id) AS lo, max(id) AS hi, json_object('kind', 'tsum-global-settings', 'format', 1,
     'settings', json_group_array(json_object('id', id, 'hash', hash, 'json', json))) AS body
-  FROM (SELECT * FROM settings WHERE id > ?1 ORDER BY id LIMIT ${SETTINGS_PER_FILE})`;
+  FROM (SELECT * FROM (SELECT id, hash, json, sum(length(json) + length(hash) + 40) OVER (ORDER BY id) AS upto
+    FROM (SELECT * FROM settings WHERE id > ?1 ORDER BY id LIMIT 5000)) WHERE upto <= ?2 OR id = (SELECT min(id) FROM settings WHERE id > ?1))`;
 
 /** days.ts: bin, in SQL, for rounds read back from a file. */
 const binSQL = (v: string) => `CASE WHEN ${v} < 100 THEN ${v} ELSE 100 + CAST(floor(ln(${v} / 100.0) / ln(1.02)) AS INTEGER) END`;
@@ -61,15 +117,16 @@ const RESTORE = `WITH ${COLUMNS.map(([j]) => `c_${j} AS MATERIALIZED (SELECT key
   FROM (SELECT ${COLUMNS.map(([j, c]) => `c_${j}.v AS ${c}`).join(", ")}
     FROM c_key ${COLUMNS.slice(1).map(([j]) => `JOIN c_${j} ON c_${j}.i = c_key.i`).join(" ")})`;
 
-/** An archive in progress: the day, its contributors' row counts when it began, and what is written. */
+/** A file to put together: [contributor, first part, after its last part, its number, its bytes]. */
+type Plan = [number, number, number, number, number];
+
+/** An archive in progress: the day, its shares in archive_parts and whether that is all of it, its files, and how many are written. */
 interface Progress {
   day: string;
-  groups: string;
-  done: number[];
-  /** Contributor 0's files: the last key filed, how many files, how many rounds. */
-  after: string;
-  chunk: number;
-  unlinked: number;
+  parts: number;
+  staged: boolean;
+  files: Plan[] | null;
+  done: number;
 }
 
 const isFinal = (job: Job, day: string) => dayStart(day) + DAY + (job.lim.acceptDays + 1) * DAY <= job.run.now;
@@ -80,10 +137,22 @@ async function putWhole(run: Run, key: string, body: string): Promise<void> {
   if (!obj || obj.size !== bytes.byteLength) throw new Error(`archive: ${key} was not stored whole`);
 }
 
+/** Where file k of contributor c goes, by who it is now (FILES: kind). */
+async function fileKey(env: Env, day: string, c: number, k: number, kind: string): Promise<string> {
+  if (kind === "b") return archiveKey(day, await bannedName(env, `${c}:${day}:${k}`));
+  if (kind === "u") return archiveKey(day, await unlinkedName(env, `${c}:${day}:${k}`));
+  return archiveKey(day, namedFile(c, k));
+}
+
+/** Reads putting a day into archive_parts costs per round, about (the scan, and sorting it by contributor). */
+const ARCHIVE_READS_PER_ROUND = 2;
+/** Shares one batch puts into archive_parts. */
+const STAGE_PER_BATCH = 4;
+
 /**
- * Step 4: each day older than ACCEPT_DAYS + 1, in order, while the budget
- * lasts. A day leaves D1 only once all its files are written and it still
- * has exactly the rows they hold.
+ * Step 4: each day older than ACCEPT_DAYS + 1, in order, while the run's
+ * budget, its bytes and the day's reads last. Its files are written, then it
+ * counts as archived; its rounds stay in D1 until dropStep drops them.
  */
 export async function archiveStep(job: Job): Promise<void> {
   const { run } = job;
@@ -104,7 +173,7 @@ export async function archiveStep(job: Job): Promise<void> {
         return;
       }
     } catch (e) {
-      // Rows changed under it (a merge, say): start the day over next run.
+      // Start the day over next run, from its rounds.
       console.error("archive", day, e);
       job.state.set("archive", null);
       job.more = true;
@@ -116,66 +185,93 @@ export async function archiveStep(job: Job): Promise<void> {
 
 /** Archives one day; false when the budget ran out first (its progress is kept). */
 async function archiveDay(job: Job, day: string, progress: Progress | null): Promise<boolean> {
-  const { run } = job;
+  const { run, lim } = job;
   const env = run.env;
-  const params = dayParams(dayRange(day));
-  if (!run.room(1)) return false;
-  const groups = await run.all<{ c: number; n: number; status: string | null }>(`SELECT g.c, g.n, s.status
-    FROM (SELECT contributor AS c, count(*) AS n FROM rounds WHERE ${DAY_ROUNDS} GROUP BY contributor) g
-    LEFT JOIN contributors s ON s.id = g.c ORDER BY g.c`, ...params);
-  const signature = groups.map(g => `${g.c}:${g.n}`).join(",");
-  const p: Progress = progress?.day === day && progress.groups === signature
-    ? progress
-    : { day, groups: signature, done: [], after: "", chunk: 0, unlinked: 0 };
+  const p: Progress = progress?.day === day ? progress : { day, parts: 0, staged: false, files: null, done: 0 };
   const stop = () => {
     job.state.set("archive", JSON.stringify(p));
     return false;
   };
-  const total = groups.reduce((n, g) => n + g.n, 0);
-  if (total > 0 && !(await archiveSettings(job))) return stop();
 
-  for (const g of groups) {
-    if (p.done.includes(g.c)) continue;
-    if (g.c === 0) {
-      while (p.unlinked < g.n) {
-        if (!run.room(1, 1)) return stop();
-        const f = (await run.first<{ n: number; last: string; body: string }>(FILE, ...params, 0, p.after, UNLINKED_PER_FILE, day, null))!;
-        if (f.n === 0) throw new Error(`unlinked rounds of ${day} changed`);
-        await putWhole(run, archiveKey(day, await unlinkedName(env, `0:${day}:${p.chunk}`)), f.body);
-        p.after = f.last;
-        p.chunk++;
-        p.unlinked += f.n;
-      }
-      if (p.unlinked !== g.n) throw new Error(`unlinked rounds of ${day} changed`);
-    } else if (g.status !== "unlinking-banned") {
-      // A banned contributor's rounds are kept like anyone's; an unlinking
-      // one's are already unnamed; an unlinking banned one's go with the day.
-      if (!run.room(1, 1)) return stop();
-      const unlinking = g.status === "unlinking";
-      const f = (await run.first<{ n: number; body: string }>(FILE, ...params, g.c, "", -1, day, unlinking ? null : g.c))!;
-      if (f.n !== g.n) throw new Error(`contributor ${g.c}'s rounds of ${day} changed`);
-      const name = unlinking ? await unlinkedName(env, `${g.c}:${day}`) : `c${g.c}.json`;
-      await putWhole(run, archiveKey(day, name), f.body);
-    }
-    p.done.push(g.c);
+  // The day into archive_parts, a share of at most `share` rounds a statement.
+  const share = Math.max(1, Math.floor((lim.valueMax * 0.8) / ROUND_BYTES));
+  while (!p.staged) {
+    const fresh = progress?.day !== day && p.done === 0 && !p.files;
+    const n = STAGE_PER_BATCH + (fresh ? 1 : 0);
+    // A share writes a piece per contributor in it (about), which the end deletes again.
+    if (!run.room(n) || !run.canRead(share * STAGE_PER_BATCH * ARCHIVE_READS_PER_ROUND) || !run.canWrite(STAGE_PER_BATCH * 50)) return stop();
+    // Just before the day's first key, so a bound of `key >` takes all of it.
+    const before = hex48(dayStart(day) * 1000 - 1) + "f".repeat(20);
+    const params = [before, dayRange(day).hi, day, share];
+    // A day started afresh drops what an earlier, failed start left.
+    const res = await run.batch([
+      ...(fresh ? [run.stmt("DELETE FROM archive_parts WHERE day = ?1", day)] : []),
+      ...Array.from({ length: STAGE_PER_BATCH }, (_, i) => run.stmt(STAGE, ...params, p.parts + i)),
+    ]);
+    progress = p;
+    const staged = res.slice(fresh ? 1 : 0);
+    p.parts += staged.filter(r => r.meta.changes > 0).length;
+    if (staged.at(-1)!.meta.changes === 0) p.staged = true;
   }
 
-  if (!run.room(3)) return stop();
-  const [dropped] = await run.batch([
-    run.stmt(`DELETE FROM rounds WHERE ${DAY_ROUNDS} AND (SELECT count(*) FROM rounds WHERE ${DAY_ROUNDS}) = ?3`, ...params, total),
-    run.stmt(`INSERT OR REPLACE INTO state (key, value) SELECT 'archived_through', ?3
-      WHERE NOT EXISTS (SELECT 1 FROM rounds WHERE ${DAY_ROUNDS})`, ...params, day),
+  if (!p.files) {
+    if (!run.room(1)) return stop();
+    const pieces = await run.all<{ c: number; part: number; n: number; bytes: number }>(
+      "SELECT contributor AS c, part, n, bytes FROM archive_parts WHERE day = ?1 ORDER BY contributor, part", day);
+    // Each contributor's pieces, in order, a file for as many as stay well under the value limit.
+    const files: Plan[] = [];
+    for (const x of pieces) {
+      const f = files.at(-1);
+      if (f && f[0] === x.c && f[4] + x.bytes <= lim.valueMax * 0.8) {
+        f[2] = x.part + 1;
+        f[4] += x.bytes;
+      } else files.push([x.c, x.part, x.part + 1, f && f[0] === x.c ? f[3] + 1 : 0, x.bytes]);
+    }
+    p.files = files;
+    p.done = 0;
+    if (files.length && !(await archiveSettings(job))) return stop();
+  } else if (p.done < p.files.length && !(await archiveSettings(job))) return stop();
+
+  // The files, as many a run as its bytes and R2 operations allow.
+  const files = p.files!;
+  while (p.done < files.length) {
+    const take: Plan[] = [];
+    let bytes = 0;
+    for (const f of files.slice(p.done)) {
+      if (take.length && (bytes + f[4] > lim.runBytes - run.bytes || !run.room(1, take.length + 2))) break;
+      take.push(f);
+      bytes += f[4];
+    }
+    if (!run.room(1, take.length, bytes)) return stop();
+    const wanted: Record<string, number> = {};
+    take.forEach(([c, from, to], i) => {
+      for (let part = from; part < to; part++) wanted[`${c}:${part}`] = i;
+    });
+    const got = await run.all<{ i: number; n: number; kind: string; body: string }>(FILES, day, JSON.stringify(wanted));
+    if (got.length !== take.length || got.some((g, i) => g.i !== i)) throw new Error(`the pieces of ${day} changed`);
+    for (const [i, f] of take.entries()) await putWhole(run, await fileKey(env, day, f[0], f[3], got[i].kind), got[i].body);
+    p.done += take.length;
+  }
+
+  // Every file is written: the day is archived. Its rounds stay in D1 for now.
+  if (!run.room(3) || !run.canWrite(files.length * 2 + 4)) return stop();
+  const total = await run.first<{ n: number }>("SELECT coalesce(sum(n), 0) AS n FROM archive_parts WHERE day = ?1", day);
+  const held: [string, number][] = [...job.held.filter(([d]) => d !== day), [day, total!.n]];
+  await run.batch([
+    run.stmt("DELETE FROM archive_parts WHERE day = ?1", day),
+    run.stmt(`INSERT OR REPLACE INTO state (key, value) SELECT key, value FROM (
+      SELECT 'archived_through' AS key, ?1 AS value UNION ALL SELECT 'held', ?2)`, day, JSON.stringify(held)),
     run.stmt("DELETE FROM state WHERE key = 'archive'"),
   ]);
   job.state.delete("archive");
-  if (dropped.meta.changes !== total) throw new Error(`${day} has other rows than its files`);
+  job.held = held;
   job.archivedThrough = day;
   job.archive = null;
   job.report.archived.push(day);
   return true;
 }
 
-/** Every settings row into archive/settings/ before a round naming it leaves D1. */
+/** Every settings row into archive/settings/ before a round naming it is archived. */
 async function archiveSettings(job: Job): Promise<boolean> {
   const { run } = job;
   if (job.settingsArchived) return true;
@@ -185,8 +281,8 @@ async function archiveSettings(job: Job): Promise<boolean> {
     coalesce((SELECT max(id) FROM settings), 0) AS top`))!;
   let done = s.done;
   while (done < s.top) {
-    if (!run.room(1, 1)) return false;
-    const f = (await run.first<{ lo: number; hi: number; body: string }>(SETTINGS, done))!;
+    if (!run.room(1, 1, job.lim.valueMax)) return false;
+    const f = (await run.first<{ lo: number; hi: number; body: string }>(SETTINGS, done, Math.floor(job.lim.valueMax * 0.8)))!;
     await putWhole(run, `${ARCHIVE}settings/${f.lo}-${f.hi}.json`, f.body);
     done = f.hi;
     job.state.set("settings_archived", String(done));
@@ -196,21 +292,58 @@ async function archiveSettings(job: Job): Promise<boolean> {
 }
 
 /**
- * A restored day's rounds leave D1 again once it is recomputed. Its files
- * are already in the archive, so nothing is written.
+ * About how many rounds D1 holds: the archived days not yet dropped, and the
+ * public rounds of the days after them (their parts' counts).
+ */
+function heldRows(job: Job): number {
+  const held = job.held.reduce((n, [, rounds]) => n + rounds, 0);
+  let open = 0;
+  for (const p of job.parts.values()) if (p.from > job.archivedThrough) open += p.rounds;
+  return held + open;
+}
+
+/**
+ * Step 4b: drops archived days from D1, oldest first, while D1 holds more
+ * than RETAIN_ROWS rounds and the day's write budget has room to spare (each
+ * deleted round is a row written). Their files are written already, and
+ * every later change to them (an unlink, a merge) is carried to the files too.
+ */
+export async function dropStep(job: Job): Promise<void> {
+  const { run } = job;
+  while (job.held.length && heldRows(job) > job.lim.retain) {
+    const [day, rounds] = job.held[0];
+    if (!run.room(2) || !run.canWrite(rounds + 2) || !run.canRead(rounds)) {
+      job.more = true;
+      return;
+    }
+    const held = job.held.slice(1);
+    await run.batch([
+      run.stmt(`DELETE FROM rounds WHERE ${DAY_ROUNDS}`, ...dayParams(dayRange(day))),
+      run.stmt(`INSERT OR REPLACE INTO state (key, value) SELECT key, value FROM (
+        SELECT 'dropped_through' AS key, ?1 AS value UNION ALL SELECT 'held', ?2)`, day, JSON.stringify(held)),
+    ]);
+    job.held = held;
+    job.droppedThrough = day;
+    job.report.dropped.push(day);
+  }
+}
+
+/**
+ * A restored day's rounds leave D1 again once it is recomputed, within the
+ * day's write budget. Its files are already in the archive, so nothing is written.
  */
 export async function dropRestored(job: Job): Promise<void> {
   const { run } = job;
-  for (const day of job.restored) {
+  for (const [day, rounds] of job.restored) {
     if (job.claimed.includes(day) && !job.done.includes(day)) continue;
-    if (!run.room(2)) {
+    if (!run.room(2) || !run.canWrite(rounds + 1)) {
       job.more = true;
       return;
     }
     const params = dayParams(dayRange(day));
     const [gone] = await run.batch([
       run.stmt(`DELETE FROM rounds WHERE ${DAY_ROUNDS} AND NOT EXISTS (SELECT 1 FROM dirty_days WHERE day = ?3)`, ...params, day),
-      run.stmt(`UPDATE state SET value = (SELECT json_group_array(value) FROM json_each(state.value) WHERE value != ?3)
+      run.stmt(`UPDATE state SET value = (SELECT json_group_array(json(value)) FROM json_each(state.value) WHERE value ->> 0 != ?3)
         WHERE key = 'restored' AND NOT EXISTS (SELECT 1 FROM rounds WHERE ${DAY_ROUNDS})`, ...params, day),
     ]);
     if (gone.meta.changes > 0) job.report.dropped.push(day);
@@ -220,16 +353,31 @@ export async function dropRestored(job: Job): Promise<void> {
 /**
  * POST /api/v1/admin/restore {day}: an archived day's files back into D1,
  * then the day is marked dirty so the next rollup recomputes it. A day with
- * many files takes several calls (each within the invocation's budget);
- * `done` says when it is complete.
+ * many files takes several calls (each within the invocation's budget and
+ * the day's write budget); `done` says when it is complete. A day whose
+ * rounds are still in D1 needs no files: it is only marked dirty.
  */
 export async function restore(env: Env, day: string, nowMs: number): Promise<Record<string, unknown>> {
   const run = new Run(env, nowMs);
   const key = "restore:" + day;
-  const at = (await run.first<{ files: string | null; through: string | null }>(`SELECT
-    (SELECT value FROM state WHERE key = ?1) AS files, (SELECT value FROM state WHERE key = 'archived_through') AS through`, key))!;
+  const at = (await run.first<{ files: string | null; through: string | null; dropped: string | null }>(`SELECT
+    (SELECT value FROM state WHERE key = ?1) AS files, (SELECT value FROM state WHERE key = 'archived_through') AS through,
+    (SELECT value FROM state WHERE key = 'dropped_through') AS dropped`, key))!;
   // A day still in D1 is not in the archive yet, or not all of it.
   if (!at.through || day > at.through) throw new HttpError(400, "bad-request");
+  try {
+    if (!at.dropped || day > at.dropped) {
+      await run.batch([run.stmt("INSERT OR IGNORE INTO dirty_days (day) VALUES (?1)", day)]);
+      return { day, done: true, files: 0, left: 0, rounds: 0 };
+    }
+    return await restoreFiles(run, day, key, at.files);
+  } finally {
+    // Whatever happened, what D1 did for it is counted.
+    await run.batch([run.stmt(RECORD, dayOf(nowMs / 1000), run.written + 1, run.read)]).catch(e => console.error("restore budget", e));
+  }
+}
+
+async function restoreFiles(run: Run, day: string, key: string, saved: string | null): Promise<Record<string, unknown>> {
   const listing = async () => {
     const found: string[] = [];
     let cursor: string | undefined;
@@ -240,25 +388,35 @@ export async function restore(env: Env, day: string, nowMs: number): Promise<Rec
     } while (cursor);
     return found.sort();
   };
-  let files: string[] = at.files ? JSON.parse(at.files) : await listing();
+  let files: string[] = saved ? JSON.parse(saved) : await listing();
 
   const owner = await owners(run);
+  const today = dayOf(run.now);
+  const cap = run.lim.budget - Math.floor(run.lim.reserve / 5);
   let read = 0, rounds = 0, relisted = false;
-  // Each file is a get and an insert; three statements are kept for the end.
-  while (files.length && run.room(1 + 3, 1)) {
+  // Each file is a get and an insert; four statements are kept for the end.
+  while (files.length && run.room(2 + 4, 1)) {
     const to = owner(files[0]);
     if (to !== null) {
       const obj = await run.get(files[0]);
       if (!obj) {
         // Renamed since the listing (an unlink): list again. A file read
         // twice adds nothing, since D1 keeps the rounds it already has.
-        if (relisted || !run.room(1 + 3, 2)) break;
+        if (relisted || !run.room(2 + 4, 2)) break;
         files = await listing();
         relisted = true;
         continue;
       }
-      const [res] = await run.batch([run.stmt(RESTORE, await obj.text(), to)]);
-      rounds += res.meta.changes;
+      const text = await obj.text();
+      // Its rounds are rows written: stop, keeping the rest for later, when today has no room for them.
+      const n = Number(/"n":(\d+)/.exec(text.slice(0, 400))?.[1] ?? 0);
+      try {
+        const [, res] = await run.batch([run.stmt(BUDGET_CHECK, today, run.written + n + 4, cap), run.stmt(RESTORE, text, to)]);
+        rounds += res.meta.changes;
+      } catch (e) {
+        if (refusedBy(e) !== "budget") throw e;
+        break;
+      }
     }
     files.shift();
     read++;
@@ -270,32 +428,36 @@ export async function restore(env: Env, day: string, nowMs: number): Promise<Rec
   await run.batch([
     run.stmt("INSERT OR IGNORE INTO dirty_days (day) VALUES (?1)", day),
     run.stmt("DELETE FROM state WHERE key = ?1", key),
-    run.stmt(`INSERT INTO state (key, value) VALUES ('restored', json_array(?1))
-      ON CONFLICT (key) DO UPDATE SET value = json_insert(value, '$[#]', ?1)
-      WHERE NOT EXISTS (SELECT 1 FROM json_each(state.value) WHERE value = ?1)`, day),
+    run.stmt(`INSERT INTO state (key, value) VALUES ('restored', json_array(json_array(?1, ?2)))
+      ON CONFLICT (key) DO UPDATE SET value = json_insert(value, '$[#]', json_array(?1, ?2))
+      WHERE NOT EXISTS (SELECT 1 FROM json_each(state.value) WHERE value ->> 0 = ?1)`, day, rounds),
   ]);
   return { day, done: true, files: read, left: 0, rounds };
 }
 
 /**
  * Who a file's rounds belong to now: its contributor, or the one it was
- * merged into; contributor 0 once unlinked (or for a u file); null (left out)
- * for a banned contributor being unlinked, whose rounds are being deleted.
+ * merged into; contributor 0 once unlinked (or for a u file). Null (left out)
+ * for a b file, and for a banned contributor that unlinked or is unlinking
+ * (state gone:<id>), even through a merge: those rounds never come back.
  */
 async function owners(run: Run): Promise<(file: string) => number | null> {
-  const [statuses, merges] = await run.batch<{ id: number; status: string; value: string }>([
+  const [statuses, merges, gone] = await run.batch<{ id: number; status: string; value: string }>([
     run.stmt("SELECT id, status FROM contributors"),
     run.stmt("SELECT CAST(substr(key, 8) AS INTEGER) AS id, value FROM state WHERE key >= 'merged:' AND key < 'merged;'"),
+    run.stmt("SELECT CAST(substr(key, 6) AS INTEGER) AS id, value FROM state WHERE key >= 'gone:' AND key < 'gone;'"),
   ]);
   const status = new Map(statuses.results.map(r => [r.id, r.status]));
   const merged = new Map(merges.results.map(r => [r.id, Number(r.value)]));
+  const banned = new Set(gone.results.filter(r => r.value === "banned").map(r => r.id));
   return file => {
     const name = file.slice(file.lastIndexOf("/") + 1);
     if (/^u[0-9a-f]+\.json$/.test(name)) return 0;
-    const m = /^c(\d+)\.json$/.exec(name);
+    const m = /^c(\d+)(?:\.\d+)?\.json$/.exec(name);
     if (!m) return null;
     let id = Number(m[1]);
-    for (let hops = 0; hops < 32 && merged.has(id); hops++) id = merged.get(id)!;
+    for (let hops = 0; hops < 32 && merged.has(id) && !banned.has(id); hops++) id = merged.get(id)!;
+    if (banned.has(id)) return null;
     const s = status.get(id);
     if (s === undefined || s === "unlinking") return 0;
     return s === "unlinking-banned" ? null : id;

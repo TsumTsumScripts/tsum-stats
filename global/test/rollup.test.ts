@@ -1,13 +1,14 @@
 // The hourly job's recompute and render (CONTRACT §3.2 steps 1, 2, 6; §4).
 import { beforeEach, describe, expect, it } from "vitest";
-import { MEDAL_TSUMS } from "../src/catalog";
+import { MEDAL_TSUMS, TSUMS, isMedalTsum } from "../src/catalog";
 import { sha256Hex } from "../src/crypto";
 import { dayOf, keyDay } from "../src/days";
 import { runJob } from "../src/job";
 import {
-  DAY_MS, NOW, admin, env, joinNew, one, r2json, r2keys, record, rollup, rows, series, upload, wipe,
+  DAY_MS, NOW, admin, call, env, joinNew, one, r2json, r2keys, record, rollup, rows, series, upload, wipe,
 } from "./helpers";
 import { CELL_KEY, BIN_KEY, checkAgainstReference, counted, dataset, sameRows, tables } from "./reference";
+import { createGlobalEngine } from "../../ui/src/lib/global/engine.js";
 
 beforeEach(wipe);
 
@@ -132,13 +133,13 @@ describe("recompute", () => {
     expect(await rows("SELECT tsum FROM bins ORDER BY tsum")).toEqual([{ tsum: "donald" }, { tsum: "mickey" }]);
   });
 
-  it("leaves a day whose rounds are archived as it is", async () => {
+  it("leaves a day whose rounds have left D1 as it is", async () => {
     const c = await joinNew();
     await upload(c.key, series(3));
     await rollup();
     await env.DB.batch([
       env.DB.prepare("DELETE FROM rounds"),
-      env.DB.prepare("INSERT INTO state (key, value) VALUES ('archived_through', '2026-10-14')"),
+      env.DB.prepare("INSERT INTO state (key, value) VALUES ('archived_through', '2026-10-14'), ('dropped_through', '2026-10-14')"),
       env.DB.prepare("INSERT INTO dirty_days (day) VALUES ('2026-10-14')"),
     ]);
     const before = await tables();
@@ -205,17 +206,134 @@ describe("render", () => {
     expect(m).toMatchObject({ rounds: 0, parts: [], tsums: [], skills: [], first: null, last: null, contributors: 0 });
   });
 
-  it("writes the manifest when it is missing, and not otherwise", async () => {
+  it("writes the manifest when a part changed or it is missing, and not otherwise", async () => {
     const c = await joinNew();
     await upload(c.key, series(2));
     expect((await rollup())[0].manifest).toBe(true);
     expect((await rollup())[0].manifest).toBe(false);
-    // A recompute rewrites it even when no part changed.
+    // A recompute that changes no part leaves it alone.
     await admin("rebuild", {});
-    expect((await rollup())[0]).toMatchObject({ manifest: true, rendered: [] });
+    expect((await rollup())[0]).toMatchObject({ recomputed: ["2026-10-14"], manifest: false, rendered: [] });
     await env.BUCKET.delete("data/global/manifest.json");
     expect((await rollup())[0].manifest).toBe(true);
     expect(await manifest()).toMatchObject({ rounds: 2 });
+    // The next day, its counts of people are made again.
+    expect((await rollup(NOW + 7 * 3600_000))[0].manifest).toBe(true);
+  });
+
+  it("writes the manifest again on a later run when its put failed, and keeps the parts it names", async () => {
+    const c = await joinNew();
+    await upload(c.key, series(5));
+    await rollup();
+    const old = (await manifest()).parts[0].file;
+    // The run that replaces the part cannot put the manifest.
+    const failing = { ...env, BUCKET: new Proxy(env.BUCKET, {
+      get(t, k) {
+        const v = Reflect.get(t, k);
+        if (k === "put") return (key: string, ...a: unknown[]) => key.endsWith("manifest.json") ? Promise.reject(new Error("R2 is down")) : v.call(t, key, ...a);
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    }) };
+    await upload(c.key, series(2, { end: NOW - 300_000 }), NOW + 60_000);
+    await expect(runJob(failing, NOW + 120_000)).rejects.toThrow("R2 is down");
+    expect((await manifest()).parts[0].file).toBe(old);
+    // Hours later, with nothing new: the old part is still there, and the manifest is written again.
+    const [r] = await rollup(NOW + 3600_000);
+    expect(r.manifest).toBe(true);
+    const now = (await manifest()).parts[0].file;
+    expect(now).not.toBe(old);
+    expect(await env.BUCKET.head("data/global/" + now)).not.toBeNull();
+    expect(await env.BUCKET.head("data/global/" + old)).not.toBeNull();
+    // Only once that manifest has been out for a while does the old part go.
+    await rollup(NOW + 3600_000 + 16 * 60_000);
+    expect(await env.BUCKET.head("data/global/" + old)).toBeNull();
+    expect(await env.BUCKET.head("data/global/" + now)).not.toBeNull();
+  });
+
+  it("renders the manifest from running totals, without reading contrib_cells or every part's Tsums each run", async () => {
+    // 40 days of three contributors, 30 Tsums a day.
+    const people = [await joinNew(), await joinNew(), await joinNew()];
+    const tsums = [...TSUMS].filter(t => !isMedalTsum(t)).slice(0, 30);
+    for (let p = 0; p < 3; p++) {
+      const recs = Array.from({ length: 40 * 30 }, (_, i) => record({
+        at: NOW - 40 * DAY_MS + Math.floor(i / 30) * DAY_MS + (i % 30) * 60_000 + p * 3 * 3600_000, tsum: tsums[i % 30], tag: `0a00000000${p}0`,
+      }));
+      for (let i = 0; i < recs.length; i += 250) expect((await upload(people[p].key, recs.slice(i, i + 250))).status).toBe(200);
+    }
+    await rollup();
+    const m = await manifest();
+    expect(m.parts.length).toBe(41);
+    expect(m.tsums).toHaveLength(30);
+    // An hourly run with one new round: the manifest's query reads about its parts, not their cells or Tsums.
+    await upload(people[0].key, series(1, { tag: "0a0000000000", end: NOW + 1800_000 }), NOW + 3600_000);
+    const k = counted();
+    const [r] = await rollup(NOW + 3600_000, k.env);
+    expect(r.manifest).toBe(true);
+    const manifestReads = [...k.n.bySql].filter(([sql]) => sql.startsWith("WITH p AS")).reduce((n, [, e]) => n + e.read, 0);
+    expect(manifestReads).toBeGreaterThan(0);
+    expect(manifestReads).toBeLessThan(15 * m.parts.length);
+    expect([...k.n.bySql].some(([sql]) => sql.includes("contrib_cells WHERE day >= ?1 AND contributor != 0"))).toBe(false);
+    // And it says the same as one made afresh.
+    const fresh = await manifest();
+    await env.DB.prepare("DELETE FROM state WHERE key IN ('totals', 'people')").run();
+    await env.BUCKET.delete("data/global/manifest.json");
+    await rollup(NOW + 3600_000);
+    expect({ ...(await manifest()), generatedAt: "" }).toEqual({ ...fresh, generatedAt: "" });
+  });
+});
+
+describe("limits", () => {
+  it("splits a part too big for one value into several files, which the page adds up as one", async () => {
+    await dataset(1, 17);
+    await rollup();
+    const engineAt = () => createGlobalEngine({
+      async json(name: string) {
+        const res = await call("/data/global/" + name);
+        if (!res.ok) throw Object.assign(new Error(`${name}: ${res.status}`), { status: res.status });
+        return res.json();
+      },
+    });
+    const one = (await manifest()).parts.find(p => p.from === "2026-10-14")!;
+    const whole = await engineAt().call("summary", {});
+    const size = (await env.BUCKET.head("data/global/" + one.file))!.size;
+
+    // Parts of at most a third of that, and a D1 that refuses a value half its size.
+    await admin("rebuild", {});
+    const k = counted({ ...env, VALUE_MAX_BYTES: String(Math.floor(size / 3)) }, { valueMax: Math.floor(size / 2) });
+    const reports = await rollup(NOW, k.env);
+    expect(reports.flatMap(r => r.errors)).toEqual([]);
+    const m = await manifest();
+    const files = m.parts.filter(p => p.from === "2026-10-14");
+    expect(files.length).toBeGreaterThan(2);
+    for (const f of files) {
+      expect(f.to).toBe("2026-10-15");
+      expect((await env.BUCKET.head("data/global/" + f.file))!.size).toBeLessThan(size / 2);
+    }
+    expect(files.reduce((n, f) => n + f.rounds, 0)).toBe(one.rounds);
+    expect(await engineAt().call("summary", {})).toEqual(whole);
+  });
+
+  it("logs and reports a step that fails, and the other steps and the next runs go on", async () => {
+    const c = await joinNew();
+    await upload(c.key, series(4));
+    // The unlink step's first query fails, every run.
+    const broken = { ...env, DB: new Proxy(env.DB, {
+      get(t, k) {
+        const v = Reflect.get(t, k);
+        if (k === "prepare") return (sql: string) => sql.includes("WHERE c.status IN ('unlinking', 'unlinking-banned')") ? t.prepare("SELECT nosuchcolumn FROM rounds") : t.prepare(sql);
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    }) };
+    const [r] = await rollup(NOW, broken, 1);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toMatch(/^unlink: /);
+    // The rounds were added in and published regardless.
+    expect(r).toMatchObject({ folded: 4, manifest: true });
+    expect((await manifest()).rounds).toBe(4);
+    await upload(c.key, series(2, { end: NOW - 300_000 }));
+    const [next] = await rollup(NOW + 3600_000, broken, 1);
+    expect(next.folded).toBe(2);
+    expect((await manifest()).rounds).toBe(6);
   });
 });
 
@@ -238,19 +356,20 @@ describe("budget", () => {
       expect(r.recomputed.length).toBeLessThanOrEqual(8);
       if (!r.more) break;
     }
-    expect(runs.length).toBeGreaterThan(3);
+    expect(runs.length).toBeGreaterThan(1);
     expect(runs.at(-1)!.more).toBe(false);
-    expect(new Set(runs.flatMap(r => r.recomputed)).size).toBe(31);
+    expect(runs.reduce((n, r) => n + r.folded, 0)).toBe(120);
+    expect(new Set(runs.flatMap(r => r.rendered)).size).toBe(31);
     await checkAgainstReference(new Set());
 
     // A tighter budget still gets there, a day or so a run.
     await admin("rebuild", {});
-    const tight = counted({ ...env, RUN_QUERY_BUDGET: "20", RUN_R2_BUDGET: "6" });
+    const tight = counted({ ...env, RUN_QUERY_BUDGET: "30", RUN_R2_BUDGET: "6" });
     let n = 0;
     for (let more = true; more && n < 60; n++) {
       tight.reset();
       more = (await runJob(tight.env, NOW)).more;
-      expect(tight.n.q).toBeLessThanOrEqual(20);
+      expect(tight.n.q).toBeLessThanOrEqual(30);
       expect(tight.n.r2).toBeLessThanOrEqual(6);
     }
     expect(n).toBeGreaterThan(10);

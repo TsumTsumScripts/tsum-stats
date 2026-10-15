@@ -1,23 +1,26 @@
 // Step 3 of the hourly job: finishing unlinks (CONTRACT §2.4). Per
-// contributor being unlinked, up to UNLINK_CHUNK of its rounds a run are
-// re-filed under contributor 0 (or deleted, for a banned one), in key order
-// from a cursor; then its archive files are renamed so no file names it. The
-// contributor row goes when nothing is left.
-import { archiveKey, unlinkedName } from "./archive";
-import { keyDaySQL } from "./days";
+// contributor being unlinked, day by day (the days noted at unlink, with the
+// rounds it had in each): its archive files are renamed so no file names it,
+// and its rounds still in D1 are re-filed under contributor 0, or deleted for
+// a banned one. Neither changes a public figure, so no day is marked dirty.
+// The contributor row goes when no day is left.
+import { archiveKey, bannedName, namedPrefix, unlinkedName } from "./archive";
+import { addDays, DAY_ROUNDS, dayParams, dayRange } from "./days";
 import type { Job } from "./job";
 
 /** unlink:<id>, written by contributors.ts: unlink. */
 interface Unlinking {
-  /** The last key re-filed; rounds after it are left. */
-  cursor: string;
-  refiled: boolean;
-  /** Days whose archive file may still be c<id>.json. */
-  days: string[];
+  /** The days left, each with about how many of its rounds are there (for the write budget). */
+  days: [string, number][];
+  /** The ids whose archive files are this contributor's: its own, and those merged into it. */
+  ids: number[];
 }
 
 // Each file's id is the last thing before its rounds: `..."day":"…","contributor":17,"n":…`.
 const NAMED = /^(\{"kind":"tsum-global-archive","format":1,"day":"\d{4}-\d{2}-\d{2}","contributor":)\d+,/;
+
+/** Reads re-filing a day's rounds costs per round of the day (one scan). */
+const READS_PER_ROUND = 1;
 
 export async function unlinkStep(job: Job): Promise<void> {
   const { run } = job;
@@ -29,70 +32,94 @@ export async function unlinkStep(job: Job): Promise<void> {
     FROM contributors c LEFT JOIN state s ON s.key = 'unlink:' || c.id
     WHERE c.status IN ('unlinking', 'unlinking-banned') ORDER BY c.id`);
   for (const row of rows) {
-    const u: Unlinking = row.value ? JSON.parse(row.value) : { cursor: "", refiled: false, days: [] };
+    const u: Unlinking = row.value ? JSON.parse(row.value) : { days: [], ids: [row.id] };
     const banned = row.status === "unlinking-banned";
     const state = "unlink:" + row.id;
+    let budget = job.lim.unlinkChunk;
 
-    if (!u.refiled) {
-      if (!run.room(4)) {
+    while (u.days.length) {
+      const [day, rounds] = u.days[0];
+      // Files exist only for days archived, or being archived now.
+      const archived = job.archivedThrough !== "" && day <= addDays(job.archivedThrough, 1);
+      // Rounds are in D1 unless the day was dropped (and not restored since).
+      const inD1 = !job.droppedThrough || day > job.droppedThrough || job.restored.some(([d]) => d === day);
+      const dayRounds = job.parts.get(day)?.rounds ?? rounds;
+      if (budget <= 0 || !run.room(2, archived ? u.ids.length : 0) ||
+        (inD1 && (!run.canWrite(rounds + 1) || !run.canRead(dayRounds * READS_PER_ROUND)))) {
         job.more = true;
-        return;
+        break;
       }
-      const chunk = (await run.first<{ n: number; last: string | null; days: string }>(`SELECT count(*) AS n, max(key) AS last,
-          json_group_array(DISTINCT ${keyDaySQL()}) AS days
-        FROM (SELECT key FROM rounds WHERE key > ?1 AND contributor = ?2 ORDER BY key LIMIT ?3)`,
-        u.cursor, row.id, job.lim.unlinkChunk))!;
-      const after = u.cursor;
-      u.refiled = chunk.n < job.lim.unlinkChunk;
-      const stmts = [];
-      if (chunk.n > 0) {
-        u.cursor = chunk.last!;
-        const range = "key > ?1 AND key <= ?2 AND contributor = ?3";
+      if (archived && !(await renameFiles(job, day, u.ids, banned))) {
+        job.more = true;
+        break;
+      }
+      // The day's D1 part and its progress in one batch: done, or not at all.
+      const after: Unlinking = { ...u, days: u.days.slice(1) };
+      const stmts = [run.stmt("INSERT OR REPLACE INTO state (key, value) VALUES (?1, ?2)", state, JSON.stringify(after))];
+      if (inD1) {
         // A banned contributor's rounds were never public: leaving must not bring them in.
-        stmts.push(banned
-          ? run.stmt(`DELETE FROM rounds WHERE ${range}`, after, u.cursor, row.id)
-          : run.stmt(`UPDATE rounds SET contributor = 0 WHERE ${range}`, after, u.cursor, row.id));
-        if (!banned) stmts.push(run.stmt("INSERT OR IGNORE INTO dirty_days (day) SELECT value FROM json_each(?1)", chunk.days));
+        const range = `${DAY_ROUNDS} AND contributor = ?3`;
+        stmts.unshift(banned
+          ? run.stmt(`DELETE FROM rounds WHERE ${range}`, ...dayParams(dayRange(day)), row.id)
+          : run.stmt(`UPDATE rounds SET contributor = 0 WHERE ${range}`, ...dayParams(dayRange(day)), row.id));
       }
-      stmts.push(run.stmt("INSERT OR REPLACE INTO state (key, value) VALUES (?1, ?2)", state, JSON.stringify(u)));
       await run.batch(stmts);
-      // The days it marked dirty are recomputed by the next run.
-      if (!u.refiled || (chunk.n > 0 && !banned)) job.more = true;
+      u.days = after.days;
+      budget -= rounds;
     }
 
-    // Renaming is a get, a put and a delete; the state write after it is one query.
-    let renamed = false;
-    while (u.days.length && run.room(2, 3)) {
-      const day = u.days[0];
-      const from = archiveKey(day, `c${row.id}.json`);
-      const obj = await run.get(from);
-      if (obj) {
-        const text = await obj.text();
-        if (NAMED.test(text)) {
-          await run.put(archiveKey(day, await unlinkedName(run.env, `rename:${row.id}:${day}`)), text.replace(NAMED, "$1null,"));
-          await run.del(from);
-        } else {
-          console.error("unlink: unexpected archive file", from);
-        }
-      }
-      u.days.shift();
-      renamed = true;
-    }
-    if (u.days.length) job.more = true;
-
-    if (u.refiled && !u.days.length) {
-      if (!run.room(2)) {
+    if (!u.days.length) {
+      if (!run.room(5)) {
         job.more = true;
         return;
       }
-      await run.batch([
+      const stmts = [
         run.stmt("DELETE FROM contributors WHERE id = ?1", row.id),
+        // Deleted at unlink, and an upload landing after it is refused (ingest.ts), but no
+        // device row may outlive the contributor: it would tie a device hash to the id.
+        run.stmt("DELETE FROM devices WHERE contributor = ?1", row.id),
         run.stmt("DELETE FROM state WHERE key = ?1", state),
-      ]);
+        // Its merges are done with: no file names a merged id any more.
+        run.stmt("DELETE FROM state WHERE key IN (SELECT 'merged:' || value FROM json_each(?1))", JSON.stringify(u.ids.filter(id => id !== row.id))),
+      ];
+      // A banned contributor is remembered as gone, so a file that still
+      // names it (or an id merged into it) is never restored as anyone's.
+      if (banned) {
+        stmts.push(run.stmt("INSERT OR REPLACE INTO state (key, value) SELECT 'gone:' || value, 'banned' FROM json_each(?1)", JSON.stringify(u.ids)));
+      }
+      await run.batch(stmts);
       job.report.unlinked.push(row.id);
-    } else if (renamed) {
-      if (!run.room(1)) return;
-      await run.batch([run.stmt("INSERT OR REPLACE INTO state (key, value) VALUES (?1, ?2)", state, JSON.stringify(u))]);
     }
   }
+}
+
+/**
+ * Renames one day's archive files of the ids (c<id>.json and its further
+ * parts): an R2 list per id, then a get, a put and a delete per file. A
+ * banned contributor's go to b files, which a restore never reads. False when
+ * the run's R2 budget ran out first; what was renamed stays renamed, and the
+ * day is done again next run.
+ */
+async function renameFiles(job: Job, day: string, ids: number[], banned: boolean): Promise<boolean> {
+  const { run } = job;
+  for (const id of ids) {
+    if (!run.room(0, 1)) return false;
+    const page = await run.list({ prefix: namedPrefix(day, id) });
+    for (const obj of page.objects) {
+      if (!run.room(0, 3, obj.size)) return false;
+      const got = await run.get(obj.key);
+      if (!got) continue;
+      const text = await got.text();
+      if (!NAMED.test(text)) {
+        console.error("unlink: unexpected archive file", obj.key);
+        continue;
+      }
+      const what = `rename:${id}:${obj.key.slice(obj.key.lastIndexOf("/") + 1)}`;
+      const to = archiveKey(day, banned ? await bannedName(run.env, what) : await unlinkedName(run.env, what));
+      await run.put(to, text.replace(NAMED, "$1null,"));
+      await run.del(obj.key);
+    }
+    if (page.truncated) return false;
+  }
+  return true;
 }

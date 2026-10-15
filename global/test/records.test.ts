@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { hmacHex, hmacKey, fromHex, sha256Hex } from "../src/crypto";
 import { bin } from "../src/days";
-import { checkRecords } from "../src/records";
+import { SETTINGS_MAX, checkRecords } from "../src/records";
 import { DAY_MS, NOW, TAG_A, TAG_B, record, uuid7 } from "./helpers";
 
 const key = () => hmacKey("test-device-key");
@@ -21,8 +21,15 @@ describe("rejections", () => {
     ["old", record({ at: NOW - 59 * DAY_MS, id: uuid7(NOW - 61 * DAY_MS, TAG_A) })],
     ["future", record({ at: NOW + 11 * 60_000 })],
     ["future", record({ at: NOW + 4 * 3600_000, took: 3 * 3600 })],
-    ["tsum", record({ tsum: "nosuchtsum" })],
+    // Only an id no catalog could hold; a well-formed one is kept (below).
+    ["tsum", record({ tsum: "no such tsum" })],
     ["tsum", record({ tsum: "" })],
+    ["tsum", record({ tsum: "x".repeat(49) })],
+    ["tsum", record({ tsum: "../catalog" })],
+    ["settings", record({ extra: { ["n".repeat(65)]: "1" } })],
+    ["settings", record({ extra: { note: "x".repeat(257) } })],
+    ["settings", record({ extra: Object.fromEntries(Array.from({ length: 64 }, (_, i) => [`c${i}`, "1"])) })],
+    ["settings", record({ extra: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`note${i}`, "é".repeat(120)])) })],
     ["build", record({ build: "" })],
     ["build", record({ build: "kr", extra: { jpVersion: "yes" } })],
     ["incomplete", record({ score: "" })],
@@ -68,9 +75,40 @@ describe("rejections", () => {
   });
 
   it("checks in the contract's order", async () => {
-    // Old and an unknown Tsum: old comes first; an unknown Tsum before a missing build.
-    const out = await check([record({ at: NOW - 70 * DAY_MS, tsum: "nosuch" }), record({ tsum: "nosuch", build: "" })]);
-    expect(out.rejected).toEqual({ old: 1, tsum: 1 });
+    // Old and a malformed Tsum: old comes first; a malformed Tsum before
+    // too many settings, and those before a missing build.
+    const junk = Object.fromEntries(Array.from({ length: 70 }, (_, i) => [`c${i}`, "1"]));
+    const out = await check([
+      record({ at: NOW - 70 * DAY_MS, tsum: "no such" }),
+      record({ tsum: "no such", build: "", extra: junk }),
+      record({ at: NOW - 600_000, build: "", extra: junk }),
+    ]);
+    expect(out.rejected).toEqual({ old: 1, tsum: 1, settings: 1 });
+  });
+
+  it("keeps a well-formed Tsum the catalog lacks, marked unknown, with its medals unread", async () => {
+    const out = await check([record({ tsum: "brandnew_2026.v2", at: NOW - 900_000 }), record({ tsum: "mickey", at: NOW - 600_000 })]);
+    expect(out.rejected).toEqual({});
+    expect(out.rounds.map(r => [r.tsum, r.known, r.medals])).toEqual([["brandnew_2026.v2", false, null], ["mickey", true, null]]);
+  });
+
+  it("takes settings up to their bounds", async () => {
+    // record() has eight settings of its own (the skill level and the items); the long name makes 64.
+    const most = Object.fromEntries(Array.from({ length: SETTINGS_MAX.columns - 9 }, (_, i) => [`c${String(i).padStart(2, "0")}`, "1"]));
+    const out = await check([
+      record({ extra: { ...most, ["n".repeat(SETTINGS_MAX.name)]: "x".repeat(SETTINGS_MAX.value) } }),
+      // Empty cells are left out, so they do not count.
+      record({ at: NOW - 600_000, extra: Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`empty${i}`, ""])) }),
+    ]);
+    expect(out.rejected).toEqual({});
+    expect(Object.keys(JSON.parse(out.rounds[0].settings))).toHaveLength(SETTINGS_MAX.columns);
+  });
+
+  it("asks again only for a round whose time has not come yet", async () => {
+    const soon = record({ at: NOW + 20 * 60_000 });
+    const out = await check([soon, record({ at: NOW - 61 * DAY_MS }), record({ tsum: "" }), { ...record(), id: "nope" }]);
+    expect(out.rejected).toEqual({ future: 1, old: 1, tsum: 1, id: 1 });
+    expect(out.retry).toEqual([soon.id]);
   });
 
   it("holds a device to 40 s between round starts, and drops a repeated key", async () => {
