@@ -35,30 +35,30 @@ in [README.md](README.md); every shape it uses is in [CONTRACT.md](CONTRACT.md).
      Custom Token**, with **Account Resources: Include →** the personal
      account, and only that one.
 
-   Name it `tsum-global deploy` and give it these permissions:
+   Name it `tsum-global deploy` and give it these permissions, all on the
+   account, none on a zone. The newer token page groups them by product, with
+   a Read / Edit (or Write) box on each; the older one has an Account / Zone
+   dropdown per row.
 
-   | Scope | Permission | Access | Used for |
-   |:--|:--|:--|:--|
-   | Account | Workers Scripts | Edit | The Worker, its secrets, attaching the custom domain |
-   | Account | D1 | Edit | `d1 create`, the migrations |
-   | Account | Workers R2 Storage | Edit | `r2 bucket create` |
-   | Account | Account Settings | Read | `wrangler whoami` lists the account, which `deploy.sh` checks |
-   | Account | Workers Tail | Read | Optional: only `wrangler tail` needs it |
-   | Zone | Workers Routes | Edit | The custom domain |
-   | Zone | DNS | Edit | The custom domain's DNS record |
-   | Zone | Zone | Read | Finding the zone |
+   | Permission (newer page) | Older page | Used for |
+   |:--|:--|:--|
+   | Workers Editor | Account · Workers Scripts · Edit | The Worker, its secrets, attaching the custom domain |
+   | D1 Write | Account · D1 · Edit | `d1 create`, the migrations |
+   | Workers R2 Storage Write | Account · Workers R2 Storage · Edit | `r2 bucket create` |
+   | Account Settings Read | Account · Account Settings · Read | `wrangler whoami` lists the account, which the deploy checks |
+   | Workers Tail Read | Account · Workers Tail · Read | Optional: only `wrangler tail` needs it |
 
-   **Zone Resources: Include → Specific zone → `gapscripts.app`.** No other
-   zone.
+   Leave everything under **DNS & Zones** (Account DNS Settings, DNS View,
+   Registrar …) unticked.
 
-   Why the zone permissions: for a `custom_domain` route, wrangler (4.145)
-   makes one account-level call,
+   No zone permissions, on purpose. For the `custom_domain` route, wrangler
+   (4.145) makes one account-level call,
    `POST /accounts/<id>/workers/scripts/tsum-global/domains/changeset`, and
-   looks up no zone itself. Cloudflare then creates the DNS record and the
-   certificate on the zone. Cloudflare's API reference lists only Workers
-   Scripts Edit for attaching a domain, but scoped tokens are reported to fail
-   at that step without Workers Routes and DNS Edit on the zone. So grant both,
-   on this one zone.
+   Cloudflare then creates the DNS record and certificate on the zone itself;
+   its API reference lists only Workers Scripts for that. Some scoped tokens
+   are reported to fail there anyway. If the first deploy stops at attaching
+   `tsum-stats.gapscripts.app`, attach it once by hand (step 5) instead of
+   widening the token.
 4. **Continue to summary → Create Token**, and copy the token: it is shown
    once. With it on the clipboard (macOS), save it outside the repo, readable
    only by you. `$(pbpaste)` keeps it out of your shell history:
@@ -189,7 +189,17 @@ Then it:
    custom domain, plus the secrets the first time.
 
 The first deploy also creates the `tsum-stats.gapscripts.app` DNS record and
-its certificate, which can take a few minutes. Workers Free allows 5 cron
+its certificate, which can take a few minutes.
+
+**If it stops at the custom domain** (an authentication or permission error
+while attaching `tsum-stats.gapscripts.app`, after the Worker itself
+uploaded): the token has no zone permissions (step 1). Attach the domain once
+by hand: **Workers & Pages → tsum-global → Settings → Domains & Routes → Add →
+Custom domain → `tsum-stats.gapscripts.app`**, wait for it to show Active,
+then deploy again. Later deploys find the domain attached and change nothing
+on the zone. Only if they still fail, add zone permissions to the token
+(Workers Routes Edit, DNS Edit and Zone Read, on `gapscripts.app` only; that
+needs a user API token if the account token page offers no zone permissions). Workers Free allows 5 cron
 triggers per account, and this Worker uses one. Every later deploy is the same
 command and changes no secret.
 
@@ -364,6 +374,12 @@ Plans**. Nothing in the code changes. Optionally, then:
 - raise `RUN_QUERY_BUDGET` and `RUN_R2_BUDGET`, so each run does more: Paid
   allows 1,000 D1 queries and 10,000 subrequests per invocation.
   `VALUE_MAX_BYTES` stays: D1's limit on one value is the same on Paid;
+- know what those caps do not cover. They hold D1 inside Paid's included
+  amounts, but nothing caps Worker requests, CPU time or R2 reads: on Free a
+  flood is stopped at 100,000 requests a day, on Paid it is billed (past 10
+  million requests a month, $0.30 a million; past 10 million R2 reads, $0.36
+  a million). Normal traffic is far below that. If a scraper ever shows up,
+  a rate-limiting rule on `tsum-stats.gapscripts.app` is the fix;
 - run `./deploy.sh`.
 
 ## 8. After launch
