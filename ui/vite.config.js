@@ -3,8 +3,28 @@
 // `--mode global` builds the global site instead (global/CONTRACT.md §6): into
 // ../global/site, tagged so api() reads data/global/; its dev server gets those
 // files from global's `npm run dev` (wrangler dev on 127.0.0.1:8788).
+import {execSync} from 'node:child_process';
 import {defineConfig} from 'vite';
 import {svelte} from '@sveltejs/vite-plugin-svelte';
+
+/**
+ * What the page says it was built from, in its footer: the date and time (UTC,
+ * to the minute, as a day may see several) and short hash of the commit, and
+ * whether the working tree had changes besides. Without git (a source
+ * download), when it was built.
+ */
+function siteBuild() {
+  const git = cmd => execSync(`git ${cmd}`, {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: {...process.env, TZ: 'UTC'}}).trim();
+  try {
+    return {
+      date: git("log -1 --format=%cd '--date=format-local:%Y-%m-%d %H:%M'"),
+      commit: git('rev-parse --short HEAD'),
+      changed: git('status --porcelain') !== '',
+    };
+  } catch {
+    return {date: new Date().toISOString().slice(0, 16).replace('T', ' '), commit: '', changed: false};
+  }
+}
 
 // The tag that makes the page the global site (lib/global/client.js: isGlobal),
 // early in <head> so index.html's theme script sees it.
@@ -19,6 +39,7 @@ export default defineConfig(({mode}) => {
   const global = mode === 'global';
   return {
     plugins: [svelte(), global && globalSite],
+    define: {__SITE_BUILD__: JSON.stringify(siteBuild())},
     base: './',
     build: {
       outDir: global ? '../global/site' : '../web',

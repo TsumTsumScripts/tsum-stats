@@ -552,6 +552,12 @@ everyone's rounds, and in the *Midnight Felt* theme until you pick another:
 
 ## Changing the site
 
+**Which version of the site is this?** The foot of every page, on this
+program's site, a snapshot and the global site alike, says when its code
+was last changed: `Site 2026-10-15 17:20 UTC · 64160c4`, the date and time
+of the commit it was built from and its short hash, and `· with local changes` when it was built
+from a working tree with changes not yet committed.
+
 `--web-dir DIR` puts files on disk in front of the embedded site, path by
 path (`internal/stats/site.go`):
 

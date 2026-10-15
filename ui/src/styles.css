@@ -122,6 +122,8 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 .page { max-width: 1480px; margin: 0 auto; padding: 0 16px 80px; }
+/* The footer's build stamp: small and faint, but still 4.5:1 (--faint). */
+.site-foot { margin-top: 32px; text-align: center; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
 @media (min-width: 720px) { .page { padding: 0 28px 90px; } }
 
 /* Top bar: stays on screen; its height is --topbar-h, set by app.js. What sticks below it

@@ -30,6 +30,12 @@
   const readOnly = snapshot || globalSite;
   const ROUTES = [['stats', 'Stats'], ['tsum', 'Tsum'], ['catalog', 'Catalog'], ['help', 'Help']]
     .filter(([r]) => !(readOnly && r === 'help'));
+  // The commit the site was built from (vite.config.js: siteBuild), for the footer.
+  const build = __SITE_BUILD__;
+  const buildText = `Site ${build.date} UTC${build.commit ? ` · ${build.commit}` : ''}${build.changed ? ' · with local changes' : ''}`;
+  const buildTitle = build.commit
+    ? `The site's code is from commit ${build.commit}, made ${build.date} UTC${build.changed ? ', with changes not yet committed' : ''}`
+    : `The site's code was built ${build.date} UTC`;
   // The Tsum Tsum website, which the global site is part of.
   const WEBSITE = 'https://tsumtsum.gapscripts.app';
 
@@ -196,6 +202,8 @@
     {#if initial.help}
       <Help bind:this={help} hidden={route !== 'help'} initial={initial.help} />
     {/if}
+    <!-- When the site's code was last changed, out of the way at the foot of every page. -->
+    <footer class="site-foot" title={buildTitle}>{buildText}</footer>
   </div>
   {#if !readOnly}
     <DataDialog bind:this={dataDialog} {upload} {overrideText} />

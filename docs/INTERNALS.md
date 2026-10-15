@@ -315,6 +315,13 @@ npm run build:global   # the global site, into ../global/site
 npm run test:global    # the global engine's tests
 ```
 
+Each build stamps the page with the commit it came from (`siteBuild` in
+`ui/vite.config.js`: the commit's UTC date and time to the minute, its short hash and whether the
+tree had uncommitted changes; the build date without git), as
+`__SITE_BUILD__` (declared in `ui/src/env.d.ts`), shown in the footer by
+`App.svelte`. The global site's page and its Worker deploy from the same
+commit, so its stamp dates the Worker too.
+
 The page is Svelte 5 (`ui/src/`). Markup lives in `.svelte`
 files. The d3 charts in `lib/charts.js` draw the SVG; their legends and
 tooltips come back as data that `Legend.svelte` and `Tip.svelte` render.
