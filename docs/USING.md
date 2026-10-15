@@ -248,7 +248,11 @@ How it is put together:
 - **Filters and navigation stay on screen.** At 1180 px and wider they are a
   sticky side column with a jump menu. Narrower, they are a bar under the top
   bar: chips for the active filters, a *Filters* button that drops the form
-  down, and the jump menu. The top bar is sticky everywhere.
+  down, and the jump menu. The top bar is sticky everywhere. Its device chip
+  names the one device and what it is doing, or counts several (*2/3 online ·
+  1 playing*); click it for each device's status, script and when an offline
+  one was last seen. **Share a snapshot**, the theme and the service starter
+  are in its **⋯** menu.
 
 **Every Tsum has its own colour,** `color` in `ui/public/data/catalog.json`. Charts,
 legends, tables and the Catalog's cards all use it.
@@ -374,7 +378,7 @@ months a filter's date range touches: its default 7 days is one or two files.
 
 ### Sharing it on GitHub Pages
 
-The top bar's **Share** button publishes a snapshot to the player's own
+**Share a snapshot** in the top bar's **⋯** menu publishes a snapshot to the player's own
 GitHub Pages site, at `https://<account>.github.io/tsum-stats/`. It needs no
 git and no command line:
 
@@ -569,7 +573,7 @@ export before adding the new version to `supports`.
 ## Themes
 
 **A theme is a CSS file in `themes/` that overrides the colour and font
-tokens on `:root`, and nothing else.** The top bar's Theme menu lists them.
+tokens on `:root`, and nothing else.** The Theme picker in the top bar's **⋯** menu lists them.
 The choice is saved in the browser (`localStorage`, `tsum-stats.theme`) and
 applied in `index.html` before the page draws.
 

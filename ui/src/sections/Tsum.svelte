@@ -296,6 +296,28 @@
         bind:this={box} onchange={pick} oninput={pickSoon}>
       {#if filter.id}<a class="btn" href={statsLink} title="This Tsum on the Stats page, with its rounds table">Open in Stats</a>{/if}
     </div>
+    <!-- The filters are the header's last row rather than a panel of their own. -->
+    {#if filter.id}
+      <div class="tsum-bar">
+        <Seg sm label="Time range" value={filter.days} onpick={v => set({days: v})}
+          options={[['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['all', 'All time']]} />
+        <Seg sm label="Primary stat" value={filter.coins} onpick={v => set({coins: v})}
+          options={[['', 'Base', 'coin'], ['final', 'Final', 'coin'], ['medals', '', 'medal', 'Medals']]} />
+        {#if filter.coins !== 'medals'}
+          <label class="check" title="Subtract what each round's boost items cost. Rounds recorded before items were have no net coins."><input type="checkbox" checked={filter.net === '1'} onchange={e => set({net: e.target.checked ? '1' : ''})}> Less item costs</label>
+        {/if}
+        {#if builds}
+          <Seg sm label="Game" value={filter.build} onpick={v => set({build: v})} options={[['', 'Both'], ['global', 'INTL'], ['jp', 'JP']]} />
+        {/if}
+        {#if devices.length > 1}
+          <select class="search" aria-label="Device" value={filter.device} onchange={e => set({device: e.target.value})}>
+            <option value="">All devices</option>
+            {#each devices as d (d.device)}<option value={d.device}>{d.device}</option>{/each}
+          </select>
+        {/if}
+        {#if error}<span class="sub">{error}</span>{/if}
+      </div>
+    {/if}
     <datalist id="tsum-page-options">
       {#each played as t (t.tsum)}<option value={tsumName(catalog, t.tsum)}>{fmt(t.rounds)} rounds</option>{/each}
     </datalist>
@@ -319,25 +341,6 @@
       {/if}
     </div>
   {:else}
-    <div class="panel tsum-bar">
-      <Seg sm label="Time range" value={filter.days} onpick={v => set({days: v})}
-        options={[['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['all', 'All time']]} />
-      <Seg sm label="Primary stat" value={filter.coins} onpick={v => set({coins: v})}
-        options={[['', 'Base', 'coin'], ['final', 'Final', 'coin'], ['medals', '', 'medal', 'Medals']]} />
-      {#if filter.coins !== 'medals'}
-        <label class="check" title="Subtract what each round's boost items cost. Rounds recorded before items were have no net coins."><input type="checkbox" checked={filter.net === '1'} onchange={e => set({net: e.target.checked ? '1' : ''})}> Less item costs</label>
-      {/if}
-      {#if builds}
-        <Seg sm label="Game" value={filter.build} onpick={v => set({build: v})} options={[['', 'Both'], ['global', 'INTL'], ['jp', 'JP']]} />
-      {/if}
-      {#if devices.length > 1}
-        <select class="search" aria-label="Device" value={filter.device} onchange={e => set({device: e.target.value})}>
-          <option value="">All devices</option>
-          {#each devices as d (d.device)}<option value={d.device}>{d.device}</option>{/each}
-        </select>
-      {/if}
-      {#if error}<span class="sub">{error}</span>{/if}
-    </div>
 
     {#if s && !s.totals.rounds}
       <div class="panel empty-state">

@@ -142,20 +142,51 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 }
 .brand h1 { font-size: 20px; }
 .brand-version { font-size: 12px; color: var(--muted, inherit); opacity: .7; }
-/* Devices get their own row so changing status text never reflows the controls above. */
-.topbar .live { order: 10; flex: 0 0 100%; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; min-height: 28px; }
-/* Phones: badge and sections on one row, devices and Data on a slim second. */
+/* One row: the devices are a single chip, sized to its text but never past
+   its share, so a changing status shifts only its own left edge. */
+.topbar .live { flex: 0 1 auto; min-width: 48px; flex-wrap: nowrap; }
+/* Past phone width the bar never wraps: the device chip gives way first. */
+@media (min-width: 720px) { .topbar { flex-wrap: nowrap; gap: 10px; } .topbar > .brand, .topbar > .seg { flex: none; } }
+.topbar .live > .pill, .topbar .live .dropdown, .topbar .live .live-chip { min-width: 0; max-width: 100%; }
+.topbar .live .pill { overflow: hidden; }
+.live-chip { cursor: pointer; font: inherit; font-size: 13px; }
+.live-chip:hover, .live-chip[aria-expanded="true"] { color: var(--ink); }
+.live-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.live-chip .caret { font-size: 10px; opacity: .7; }
+.topbar-actions { display: flex; gap: 8px; align-items: center; flex: none; }
+:root .topbar-actions .btn, :root .topbar #site-btn { padding: 5px 11px; font-size: 14px; }
+:root #more-btn { padding: 5px 9px; line-height: 1; }
+#more-btn span { display: block; font-size: 18px; letter-spacing: 1px; }
+
+/* The panel a top-bar button opens. */
+.dropdown { position: relative; display: flex; min-width: 0; }
+.dropdown-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 50; display: grid; gap: 10px;
+  min-width: 220px; max-width: min(360px, calc(100vw - 32px)); padding: 12px 14px; border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel-top, var(--panel-hi)), var(--panel-bottom, var(--panel)));
+  border: 2px solid var(--panel-edge); box-shadow: var(--lift), 0 10px 30px rgba(0, 0, 0, .35); }
+.dropdown-panel.left { right: auto; left: 0; }
+.dropdown-panel .theme-pick { justify-content: space-between; }
+.dropdown-panel .btn { text-align: center; text-decoration: none; }
+.device-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 60vh; overflow-y: auto; }
+.device-list li { display: flex; gap: 10px; align-items: baseline; font-size: 14px; color: var(--muted); }
+.device-list li b { color: var(--ink); margin-right: 4px; }
+.device-list .dot { transform: translateY(-1px); }
+.device-list li.online .dot { background: var(--good); box-shadow: 0 0 8px var(--good); }
+.device-list li.playing .dot { animation: pulse 1.2s ease-in-out infinite; }
+
+/* Narrower screens drop the brand's words (over a theme's own) before anything wraps. */
+@media (max-width: 1299px) { :root .topbar .brand h1, :root .topbar .brand-version { display: none; } :root .topbar .brand { padding: 4px; } }
+/* Phones: badge and sections on one row, devices and the buttons on a slim second. */
 @media (max-width: 719px) {
   .topbar { gap: 8px; padding: 8px 16px; }
-  .brand { padding: 4px; }
-  .brand h1, .brand-version { display: none; }
   .brand-badge { width: 32px; height: 32px; font-size: 12px; }
   .topbar > .seg button { padding: 5px 10px; font-size: 14px; }
   .topbar .spacer { flex: 0 0 100%; height: 0; order: 4; }
-  .topbar .live { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto; order: 5; scrollbar-width: none; }
-  .topbar #data-btn, .topbar #share-btn, .topbar #contribute-btn, .topbar #starter-btn, .topbar #site-btn { order: 7; padding: 3px 12px; font-size: 14px; }
-  .theme-pick { order: 6; }
-  .theme-pick .sub { display: none; }
+  .topbar .live { flex: 1 1 0; order: 5; }
+  .topbar-actions, .topbar .theme-pick, .topbar #site-btn { order: 7; }
+  .topbar-actions { gap: 6px; }
+  .topbar-actions .btn, .topbar #site-btn { padding: 3px 10px; }
+  .topbar > .theme-pick .sub { display: none; }
 }
 .theme-pick { display: inline-flex; align-items: center; gap: 6px; }
 .theme-pick select { padding: 4px 8px; border-radius: 999px; border: 2px solid var(--panel-edge); background: var(--well);
@@ -662,7 +693,9 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 .fact.dim { color: var(--faint); }
 .tsum-pick { display: flex; gap: 8px; align-items: center; flex: 0 1 340px; min-width: 0; }
 .tsum-pick .search { flex: 1 1 auto; min-width: 0; }
-.tsum-bar { display: flex; gap: 10px 14px; align-items: center; flex-wrap: wrap; padding: 10px 14px; }
+.tsum-pick .btn { white-space: nowrap; }
+.tsum-bar { flex: 1 1 100%; display: flex; gap: 10px 14px; align-items: center; flex-wrap: wrap;
+  padding-top: 12px; border-top: 1px dashed var(--hairline); }
 .tsum-bar .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
 .tsum-bar .check input { accent-color: var(--accent-b); }
 .tsum-bar select.search { width: auto; max-width: 220px; }

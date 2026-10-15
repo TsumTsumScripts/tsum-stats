@@ -130,7 +130,7 @@ and that parity is a test:** `go test ./internal/stats` runs both over the same
 rounds — timezones, ties, empty results, junk input — and fails if they differ.
 Change a query in `queries.go` or `summary.go` and the engine changes with it.
 
-Help, the Data dialog, importing and the live device pills are hidden in a
+Help, the Data dialog, importing and the live device chip is hidden in a
 snapshot; a note in the top bar says when it was taken.
 
 ## Publishing to GitHub Pages

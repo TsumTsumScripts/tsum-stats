@@ -5,6 +5,7 @@
   import {onMount} from 'svelte';
   import ContributeDialog from './components/ContributeDialog.svelte';
   import DataDialog from './components/DataDialog.svelte';
+  import Dropdown from './components/Dropdown.svelte';
   import GlobalNote from './components/GlobalNote.svelte';
   import LivePills from './components/LivePills.svelte';
   import PublishDialog from './components/PublishDialog.svelte';
@@ -45,7 +46,7 @@
   let starter = $state(false);
   const initial = $state({});
   let stats = $state(), tsum = $state(), catalog = $state(), help = $state();
-  let dataDialog = $state(), publishDialog = $state(), contributeDialog = $state();
+  let dataDialog = $state(), publishDialog = $state(), contributeDialog = $state(), moreMenu = $state();
   const sectionOf = r => ({stats, tsum, catalog, help})[r];
 
   // Each section's latest link, so the top buttons return to it rather than to defaults.
@@ -165,13 +166,21 @@
       </nav>
       <div class="spacer"></div>
       {#if globalSite}<GlobalNote />{:else if snapshot}<SnapshotNote />{:else}<LivePills />{/if}
-      <ThemePicker />
-      {#if globalSite}<a class="btn" id="site-btn" href={WEBSITE} title="The Tsum Tsum script's website">Website</a>{/if}
-      {#if !readOnly}
-        {#if starter}<a class="btn" id="starter-btn" href="/starter/">Starter</a>{/if}
-        <button type="button" class="btn" id="share-btn" onclick={() => publishDialog.open()}>Share</button>
-        <button type="button" class="btn" id="contribute-btn" title="Add your rounds to the global stats" onclick={() => contributeDialog.open()}>Contribute</button>
-        <button type="button" class="btn" id="data-btn" onclick={() => dataDialog.open()}>Data</button>
+      {#if readOnly}
+        <ThemePicker />
+        {#if globalSite}<a class="btn" id="site-btn" href={WEBSITE} title="The Tsum Tsum script's website">Website</a>{/if}
+      {:else}
+        <div class="topbar-actions">
+          <button type="button" class="btn" id="contribute-btn" title="Add your rounds to the global stats" onclick={() => contributeDialog.open()}>Contribute</button>
+          <button type="button" class="btn" id="data-btn" onclick={() => dataDialog.open()}>Data</button>
+          <!-- What is used now and then. -->
+          <Dropdown bind:this={moreMenu} id="more-btn" title="Share, theme{starter ? ', service starter' : ''}">
+            {#snippet label()}<span aria-label="More">⋯</span>{/snippet}
+            <button type="button" class="btn" id="share-btn" onclick={() => { moreMenu.close(); publishDialog.open(); }}>Share a snapshot</button>
+            {#if starter}<a class="btn" id="starter-btn" href="/starter/">Service starter</a>{/if}
+            <ThemePicker />
+          </Dropdown>
+        </div>
       {/if}
     </header>
 
