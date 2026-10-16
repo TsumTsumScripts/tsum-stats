@@ -327,6 +327,12 @@ tree had uncommitted changes; the build date without git), as
 `App.svelte`. The global site's page and its Worker deploy from the same
 commit, so its stamp dates the Worker too.
 
+`__LOCAL_ONLY__` (same file) is `false` in the global build. Code behind it in
+`App.svelte` (the devices chip, importing, the Contribute, Data and Share
+dialogs, Help, the live-update subscriptions) is folded away there, so the
+global bundle does not carry it. Put anything that only the local site needs
+behind it.
+
 The page is Svelte 5 (`ui/src/`). Markup lives in `.svelte`
 files. The d3 charts in `lib/charts.js` draw the SVG; their legends and
 tooltips come back as data that `Legend.svelte` and `Tip.svelte` render.

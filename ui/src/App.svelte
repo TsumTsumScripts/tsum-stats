@@ -28,6 +28,8 @@
   const snapshot = isSnapshot();
   const globalSite = isGlobal();
   const readOnly = snapshot || globalSite;
+  // Marks what the global build must not contain at all (see vite.config.js).
+  const local = __LOCAL_ONLY__;
   const ROUTES = [['stats', 'Stats'], ['tsum', 'Tsum'], ['catalog', 'Catalog'], ['help', 'Help']]
     .filter(([r]) => !(readOnly && r === 'help'));
   // The commit the site was built from (vite.config.js: siteBuild), for the footer.
@@ -80,7 +82,7 @@
   // ---- Importing ----
 
   async function upload(files) {
-    if (readOnly) return;
+    if (!local || readOnly) return;
     const csv = [...files].filter(f => f.name.endsWith('.csv'));
     if (!csv.length) return toast('Only .csv files can be imported');
     const body = new FormData();
@@ -113,23 +115,25 @@
 
   // ---- Live updates ----
 
-  subscribe('ts/devices', d => { shared.devices = d; });
-  subscribe('ts/publish', s => publishDialog?.update(s));
-  subscribe('ts/global', s => contributeDialog?.update(s));
-  subscribe('ts/rounds', r => { stats?.roundArrived(r); tsum?.refresh(); });
-  subscribe('ts/imports', res => {
-    if (res.rounds) { stats?.refresh(); tsum?.refresh(); catalog?.roundsChanged(); }
-    if (res.lists) catalog?.listsChanged();
-    help?.refresh();
-    toast(`Imported ${fmt(res.files)} file(s): ${fmt(res.rounds)} rounds, ${fmt(res.lists)} Tsum list(s)`);
-  });
-  onReconnect(async () => {
-    shared.devices = await api('devices');
-    stats?.refresh();
-    tsum?.refresh();
-    publishDialog?.update(await api('publish'));
-    contributeDialog?.update(await api('global'));
-  });
+  if (local) {
+    subscribe('ts/devices', d => { shared.devices = d; });
+    subscribe('ts/publish', s => publishDialog?.update(s));
+    subscribe('ts/global', s => contributeDialog?.update(s));
+    subscribe('ts/rounds', r => { stats?.roundArrived(r); tsum?.refresh(); });
+    subscribe('ts/imports', res => {
+      if (res.rounds) { stats?.refresh(); tsum?.refresh(); catalog?.roundsChanged(); }
+      if (res.lists) catalog?.listsChanged();
+      help?.refresh();
+      toast(`Imported ${fmt(res.files)} file(s): ${fmt(res.rounds)} rounds, ${fmt(res.lists)} Tsum list(s)`);
+    });
+    onReconnect(async () => {
+      shared.devices = await api('devices');
+      stats?.refresh();
+      tsum?.refresh();
+      publishDialog?.update(await api('publish'));
+      contributeDialog?.update(await api('global'));
+    });
+  }
 
   // A stream can go quiet without an error (a PC waking from sleep, a frozen tab).
   // A device gone stale here but fresh on the server means pushes stopped: reconnect.
@@ -144,7 +148,7 @@
   onMount(async () => {
     shared.catalog = await loadCatalog();
     show();
-    if (readOnly) return;
+    if (!local || readOnly) return;
     start();
     shared.devices = await api('devices');
     // The shell is never unmounted, so these are not cleared.
@@ -173,14 +177,14 @@
         {/each}
       </nav>
       <div class="spacer"></div>
-      {#if !readOnly}<LivePills />{/if}
+      {#if local && !readOnly}<LivePills />{/if}
       {#if readOnly}
         <ThemePicker />
         {#if globalSite}
           <a class="btn" id="contribute-link" href={CONTRIBUTE} title="How to add your rounds from tsum-stats">Contribute</a>
           <a class="btn" id="site-btn" href={WEBSITE} title="The Tsum Tsum script's website">Website</a>
         {/if}
-      {:else}
+      {:else if local}
         <div class="topbar-actions">
           <button type="button" class="btn" id="contribute-btn" title="Add your rounds to the global stats" onclick={() => contributeDialog.open()}>Contribute</button>
           <button type="button" class="btn" id="data-btn" onclick={() => dataDialog.open()}>Data</button>
@@ -204,21 +208,21 @@
     {#if initial.catalog}
       <Catalog bind:this={catalog} hidden={route !== 'catalog'} initial={initial.catalog} onStateChange={s => writeHash('catalog', s)} />
     {/if}
-    {#if initial.help}
+    {#if local && initial.help}
       <Help bind:this={help} hidden={route !== 'help'} initial={initial.help} />
     {/if}
     <!-- When the site's code was last changed, out of the way at the foot of every page. -->
     {#if globalSite}<GlobalNote />{:else if snapshot}<SnapshotNote />{/if}
     <footer class="site-foot" title={buildTitle}>{buildText}</footer>
   </div>
-  {#if !readOnly}
+  {#if local && !readOnly}
     <DataDialog bind:this={dataDialog} {upload} {overrideText} />
     <PublishDialog bind:this={publishDialog} />
     <ContributeDialog bind:this={contributeDialog} />
   {/if}
 {/if}
 
-<div class="drop-hint">Drop CSV files to import</div>
+{#if local}<div class="drop-hint">Drop CSV files to import</div>{/if}
 {#if expand.open}<div class="chart-backdrop" role="presentation" onclick={() => (expand.open = null)}></div>{/if}
 <Tip />
 <Toasts />

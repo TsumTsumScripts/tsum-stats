@@ -39,7 +39,9 @@ export default defineConfig(({mode}) => {
   const global = mode === 'global';
   return {
     plugins: [svelte(), global && globalSite],
-    define: {__SITE_BUILD__: JSON.stringify(siteBuild())},
+    // __LOCAL_ONLY__ is false in the global build, so code behind it (the devices chip,
+    // importing, the dialogs, Help) is folded away there instead of shipped unused.
+    define: {__SITE_BUILD__: JSON.stringify(siteBuild()), __LOCAL_ONLY__: JSON.stringify(!global)},
     base: './',
     build: {
       outDir: global ? '../global/site' : '../web',
