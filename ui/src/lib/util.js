@@ -127,9 +127,11 @@ export const playValueName = (param, v) => (v === '' || v === '-' ? 'Not recorde
 export const byPlayValue = (a, b) => (Number.isFinite(Number(a.value)) && Number.isFinite(Number(b.value)) && a.value !== '' && b.value !== ''
   ? Number(a.value) - Number(b.value) : 0);
 
-// Small rates (medals per second) keep two significant digits instead of rounding to 0.
+// Small rates (medals per second) keep two significant digits instead of rounding to 0;
+// the rest always show one decimal (50.0, not 50) so a column of rates lines up.
 const sig2 = new Intl.NumberFormat(undefined, {maximumSignificantDigits: 2});
-export const fmtRate = v => (v === null || v === undefined ? '—' : (Math.abs(v) < 1 ? sig2 : nf1).format(v));
+const fixed1 = new Intl.NumberFormat(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1});
+export const fmtRate = v => (v === null || v === undefined ? '—' : (Math.abs(v) < 1 ? sig2 : fixed1).format(v));
 export const pct = v => (v === null || v === undefined ? '—' : `${nf1.format(v * 100)}%`);
 
 /** A localStorage JSON value; private mode or bad JSON gives fallback. */
