@@ -122,9 +122,10 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 .page { max-width: 1480px; margin: 0 auto; padding: 0 16px 80px; }
-/* The footer's build stamp: small and faint, but still 4.5:1 (--faint). */
+/* The global site's footnote. */
 .global-note { margin: 32px 0 0; text-align: center; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.global-note + .site-foot { margin-top: 4px; }
+.global-note + /* The footer's build stamp: small and faint, but still 4.5:1 (--faint). */
+.site-foot { margin-top: 4px; }
 .site-foot { margin-top: 32px; text-align: center; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
 @media (min-width: 720px) { .page { padding: 0 28px 90px; } }
 
@@ -709,6 +710,12 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 .tsum-pick .btn { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   white-space: nowrap; padding: 6px 14px; font-size: 14px; line-height: 1.2; text-decoration: none; }
 .tsum-pick .btn .copy-label { margin: 0; font-size: inherit; }
+/* Narrower than the header's one-row layout: the search takes a row, the buttons share the next. */
+@media (max-width: 1099px) {
+  .tsum-pick { flex-basis: 100%; }
+  .tsum-pick .search { flex-basis: 100%; }
+  .tsum-pick .btn { flex: 1 1 0; }
+}
 .tsum-bar { flex: 1 1 100%; display: flex; gap: 10px 14px; align-items: center; flex-wrap: wrap;
   padding-top: 12px; border-top: 1px dashed var(--hairline); }
 .tsum-bar .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
