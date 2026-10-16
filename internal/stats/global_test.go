@@ -46,6 +46,8 @@ type fakeWorker struct {
 	retry map[string]bool
 	// keeps is what every upload's reply says the site keeps of a record; 0 leaves it out, as an older Worker does.
 	keeps int
+	// resend is the site's call for a full re-upload every upload and /me reply names.
+	resend int
 	// hold, when set, keeps each upload waiting until it closes; held hears of each one waiting.
 	hold, held chan struct{}
 	log        []string // "rounds" and "unlink", as each was answered
@@ -140,12 +142,13 @@ func (f *fakeWorker) api(w http.ResponseWriter, r *http.Request) {
 		if f.keeps > 0 {
 			reply["keeps"] = f.keeps
 		}
+		reply["resend"] = f.resend
 		f.reply(w, http.StatusOK, reply)
 	case r.URL.Path == "/api/v1/me" && r.Method == http.MethodGet:
 		f.meCalls++
 		f.reply(w, http.StatusOK, map[string]any{"ok": true, "id": id, "status": "active", "since": "2026-10-14",
 			"lastSeen": nil, "rounds": f.taken(), "duplicates": 0, "devices": 1, "first": nil, "last": nil,
-			"today": map[string]int{"rounds": f.taken(), "quota": 5000}})
+			"today": map[string]int{"rounds": f.taken(), "quota": 5000}, "resend": f.resend})
 	case r.URL.Path == "/api/v1/me/unlink" && r.Method == http.MethodPost:
 		delete(f.keys, key)
 		f.unlinked = append(f.unlinked, key)
@@ -591,6 +594,51 @@ func TestGlobalResendsOnceWhenTheSiteKeepsMore(t *testing.T) {
 	}
 	if f.batches[len(f.batches)-1].Records[0]["skill_type"] != "burst" {
 		t.Fatalf("the re-sent record: %v", f.batches[len(f.batches)-1].Records[0])
+	}
+	// It is remembered, so a restart sends nothing more.
+	again := contributorIn(dir, app, f.srv.URL)
+	if st := again.Refresh(); st.Pending != 0 {
+		t.Fatalf("pending after a restart: %+v", st)
+	}
+}
+
+// A call for a full re-upload sends every round once more, on the next pass:
+// learnt from /me when nothing is new, or from an upload's reply, which
+// starts again from the oldest round.
+func TestGlobalResendsEverythingWhenTheSiteCalls(t *testing.T) {
+	app := testApp(t)
+	f := newFakeWorker(t)
+	c, dir := testContributor(t, app, f)
+	if err := c.Join(); err != nil {
+		t.Fatal(err)
+	}
+	addRounds(t, app, globalRound("a", 3*time.Hour), globalRound("b", 2*time.Hour))
+	runPass(t, c)
+	runPass(t, c)
+	if got := f.sentIDs(); !slices.Equal(got, []string{"a", "b"}) {
+		t.Fatalf("before the call: sent %v", got)
+	}
+
+	// Nothing new: the pass hears of it from /me, and sends both at once.
+	f.resend = 1
+	runPass(t, c)
+	if got := f.sentIDs(); !slices.Equal(got, []string{"a", "b", "a", "b"}) {
+		t.Fatalf("after a call heard from /me: sent %v", got)
+	}
+	runPass(t, c)
+	if got := f.sentIDs(); len(got) != 4 {
+		t.Fatalf("a call is answered once: sent %v", got)
+	}
+
+	// A new round: its reply names the next call, and the pass starts over.
+	f.resend = 2
+	addRounds(t, app, globalRound("c", time.Hour))
+	runPass(t, c)
+	if got := f.sentIDs(); !slices.Equal(got, []string{"a", "b", "a", "b", "c", "a", "b", "c"}) {
+		t.Fatalf("after a call heard from an upload: sent %v", got)
+	}
+	if st := c.State(); st.Pending != 0 {
+		t.Fatalf("pending after the re-upload: %+v", st)
 	}
 	// It is remembered, so a restart sends nothing more.
 	again := contributorIn(dir, app, f.srv.URL)

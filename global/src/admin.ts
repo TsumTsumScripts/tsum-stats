@@ -166,6 +166,17 @@ export async function adminPost(action: string, req: Request, env: Env, nowMs: n
 
     case "rollup":
       return ok({ ...(await runJob(env, nowMs)) });
+
+    case "resend": {
+      // Every contributor's next pass sends every round it has once more
+      // (CONTRACT §7.2): the replies carry the new number, and a forwarder
+      // that sees it go up re-sends its window. Unchanged rounds write nothing.
+      const [r] = await spend(db, nowMs, { est: 1, cap: null }, [
+        db.prepare(`INSERT INTO state (key, value) VALUES ('resend', '1')
+          ON CONFLICT (key) DO UPDATE SET value = CAST(value AS INTEGER) + 1 RETURNING CAST(value AS INTEGER) AS resend`),
+      ]);
+      return ok({ resend: (r.results[0] as { resend: number }).resend });
+    }
   }
   throw new HttpError(404, "not-found");
 }

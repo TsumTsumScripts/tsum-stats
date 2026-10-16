@@ -12,6 +12,11 @@ export interface Contributor {
   status: string;
   day: string | null;
   day_rounds: number;
+  /**
+   * The site's call for a full re-upload (state `resend`, CONTRACT §2.2), 0
+   * until an admin first makes one. Read with the key, so it costs no query.
+   */
+  resend: number;
 }
 
 /** Joins a day from one address (joinAddress). */
@@ -22,7 +27,8 @@ export async function authContributor(req: Request, env: Env): Promise<Contribut
   const key = bearer(req);
   if (!key) throw new HttpError(401, "unauthorized");
   const c = await env.DB.prepare(
-    "SELECT id, status, day, day_rounds FROM contributors WHERE key_hash = ?1 AND status IN ('active', 'banned')",
+    `SELECT id, status, day, day_rounds, coalesce((SELECT CAST(value AS INTEGER) FROM state WHERE key = 'resend'), 0) AS resend
+      FROM contributors WHERE key_hash = ?1 AND status IN ('active', 'banned')`,
   ).bind(await sha256Hex(key)).first<Contributor>();
   if (!c) throw new HttpError(401, "unauthorized");
   return c;
@@ -103,6 +109,7 @@ export async function me(env: Env, c: Contributor, nowMs: number): Promise<Respo
     first: row.first,
     last: row.last,
     today: { rounds: row.day === dayOf(nowMs / 1000) ? row.day_rounds : 0, quota: limits(env).quota },
+    resend: c.resend,
   });
 }
 

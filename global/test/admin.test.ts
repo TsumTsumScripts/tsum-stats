@@ -7,7 +7,7 @@ import { checkAgainstReference } from "./reference";
 
 beforeEach(wipe);
 
-const POSTS = ["ban", "unban", "merge", "rebuild", "restore", "rollup"];
+const POSTS = ["ban", "unban", "merge", "rebuild", "restore", "rollup", "resend"];
 
 describe("admin", () => {
   it("needs the admin key", async () => {
@@ -37,6 +37,19 @@ describe("admin", () => {
         { id: b.id, status: "banned", createdAt: "2026-10-14T18:00:01Z", lastSeen: "2026-10-14T18:00:00Z", client: "tsum-stats/test", rounds: 3, duplicates: 0, devices: 1 },
       ],
     });
+  });
+
+  it("calls for a full re-upload: every reply after it carries the new number", async () => {
+    const c = await joinNew();
+    const rounds = series(2);
+    const before = await upload(c.key, rounds);
+    expect(before.body).toMatchObject({ resend: 0 });
+    expect(await json(admin("resend", {}))).toEqual({ ok: true, resend: 1 });
+    expect(await json(admin("resend", {}))).toEqual({ ok: true, resend: 2 });
+    // The same rounds again: nothing written, and the reply says 2.
+    const again = await upload(c.key, rounds);
+    expect(again.body).toMatchObject({ accepted: 0, unchanged: 2, resend: 2 });
+    expect(await json(call("/api/v1/me", { key: c.key }))).toMatchObject({ resend: 2 });
   });
 
   it("refuses bad ids and contributors being unlinked", async () => {

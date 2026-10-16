@@ -203,6 +203,7 @@ curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "$J" -d '{"from":18,"in
 curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "$J" -d '{"from":"2026-09-01","to":"2026-09-30"}' $H/api/v1/admin/rebuild
 curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "$J" -d '{"day":"2026-08-01"}' $H/api/v1/admin/restore
 curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "$J" -d '{}' $H/api/v1/admin/rollup
+curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "$J" -d '{}' $H/api/v1/admin/resend
 ```
 
 | Route | Does | Reply |
@@ -213,6 +214,7 @@ curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "$J" -d '{}' $H/api/v1/
 | `POST rebuild` | Marks days dirty for the next runs, at most 400: `{from, to}`, or `{}` for every day with rounds in D1. Also how a Tsum the catalog learned comes into the figures | `{from, to, days}` |
 | `POST restore` | Brings an archived day back to recompute it: marked dirty at once if its rounds are still in D1, else read back from its files. A big day takes several calls: repeat until `done` | `{day, done, files, left, rounds}` |
 | `POST rollup` | Runs the hourly job now | The run's report |
+| `POST resend` | Calls for a full re-upload: every contributor's next pass sends every round it has (its last 60 days, all the site accepts) once more. Unchanged rounds write nothing, so it costs reads and CPU more than writes; spread over a day, as each app's hourly pass comes round. For when the site needs rounds it stored before back whole, such as after a fault, or for a field a migration starts deriving that cannot come from what D1 has | `{resend}`, the call's number |
 
 Ban, unban and merge refuse id 0 and a contributor being unlinked (400), and
 an unknown id (404); merge also refuses `from` = `into`.

@@ -99,7 +99,7 @@ describe("what is stored", () => {
       record({ at: NOW - 1800_000, tsum: "no such" }),
     ];
     const up = await upload(c.key, recs);
-    expect(up.body).toEqual({ ok: true, accepted: 2, unchanged: 0, duplicates: 0, rejected: { tsum: 1 }, retry: [], keeps: 2 });
+    expect(up.body).toEqual({ ok: true, accepted: 2, unchanged: 0, duplicates: 0, rejected: { tsum: 1 }, retry: [], keeps: 2, resend: 0 });
 
     const tagKey = await hmacKey("test-device-key");
     const hashOf = async (tag: string) => (await hmacHex(tagKey, fromHex(tag))).slice(0, 12);
@@ -159,7 +159,7 @@ describe("duplicates", () => {
     const before = await spent();
     const k = counted();
     const again = await call("/api/v1/rounds", { body: batch(recs), key: c.key, env: k.env });
-    expect(await again.json()).toEqual({ ok: true, accepted: 0, unchanged: 10, duplicates: 0, rejected: {}, retry: [], keeps: 2 });
+    expect(await again.json()).toEqual({ ok: true, accepted: 0, unchanged: 10, duplicates: 0, rejected: {}, retry: [], keeps: 2, resend: 0 });
     // No round is written: only the contributor's last seen, and the budget's own row.
     expect(k.n.bySql.size).toBeGreaterThan(0);
     expect([...k.n.bySql].filter(([, e]) => e.written > 0).map(([s]) => s.split(" ").slice(0, 3).join(" ")).sort())
@@ -174,7 +174,7 @@ describe("duplicates", () => {
     const changed = { ...recs[2], final_coins: "5000" };
     const movedBack = { ...moved, datetime: "2026-10-13 23:59:30" };
     const res = await upload(c.key, [changed, movedBack, recs[5]]);
-    expect(res.body).toEqual({ ok: true, accepted: 2, unchanged: 1, duplicates: 0, rejected: {}, retry: [], keeps: 2 });
+    expect(res.body).toEqual({ ok: true, accepted: 2, unchanged: 1, duplicates: 0, rejected: {}, retry: [], keeps: 2, resend: 0 });
     expect(await one("SELECT final FROM rounds WHERE played_at = ?1", Date.parse(recs[2].datetime.replace(" ", "T") + "Z") / 1000))
       .toEqual({ final: 5000 });
     // The changed rounds' start days are recomputed in full.
@@ -191,7 +191,7 @@ describe("duplicates", () => {
     expect(await rows("SELECT skill_type, sum(rounds) AS n FROM cells2 GROUP BY skill_type")).toEqual([{ skill_type: "", n: 4 }]);
     // The forwarder's one re-send after the Worker kept skill types (CONTRACT §7.2).
     const res = await upload(c.key, recs.map((r, i) => ({ ...r, skill_type: i < 3 ? "beastda" : "" })));
-    expect(res.body).toEqual({ ok: true, accepted: 3, unchanged: 1, duplicates: 0, rejected: {}, retry: [], keeps: 2 });
+    expect(res.body).toEqual({ ok: true, accepted: 3, unchanged: 1, duplicates: 0, rejected: {}, retry: [], keeps: 2, resend: 0 });
     await rollup();
     expect(await rows("SELECT skill_type, sum(rounds) AS n FROM cells2 GROUP BY skill_type ORDER BY skill_type"))
       .toEqual([{ skill_type: "", n: 1 }, { skill_type: "beastda", n: 3 }]);
@@ -203,7 +203,7 @@ describe("duplicates", () => {
     await upload(a.key, recs);
     const changed = recs.map(r => ({ ...r, score: "1" }));
     const res = await upload(b.key, [...changed, record({ tag: TAG_B })]);
-    expect(res.body).toEqual({ ok: true, accepted: 1, unchanged: 0, duplicates: 5, rejected: {}, retry: [], keeps: 2 });
+    expect(res.body).toEqual({ ok: true, accepted: 1, unchanged: 0, duplicates: 5, rejected: {}, retry: [], keeps: 2, resend: 0 });
     expect(await rows("SELECT contributor, count(*) AS n, min(score) AS s FROM rounds GROUP BY contributor ORDER BY contributor"))
       .toEqual([{ contributor: a.id, n: 5, s: 12345678 }, { contributor: b.id, n: 1, s: 12345678 }]);
     expect(await one("SELECT dup_rounds, rounds_total FROM contributors WHERE id = ?1", b.id)).toEqual({ dup_rounds: 5, rounds_total: 1 });
@@ -313,7 +313,7 @@ describe("limits", () => {
     const c = await joinNew();
     const early = record({ at: NOW + 30 * 60_000, tag: TAG_B });
     const res = await upload(c.key, [record(), early, record({ tsum: "" , tag: "0c0000000001" })]);
-    expect(res.body).toEqual({ ok: true, accepted: 1, unchanged: 0, duplicates: 0, rejected: { future: 1, tsum: 1 }, retry: [early.id], keeps: 2 });
+    expect(res.body).toEqual({ ok: true, accepted: 1, unchanged: 0, duplicates: 0, rejected: { future: 1, tsum: 1 }, retry: [early.id], keeps: 2, resend: 0 });
     // Once its time has come it is taken.
     expect((await upload(c.key, [early], NOW + 3600_000)).body).toMatchObject({ accepted: 1, retry: [] });
   });
@@ -435,12 +435,12 @@ describe("contributors", () => {
     await upload(c.key, series(3), NOW);
     expect(await json(call("/api/v1/me", { key: c.key }))).toEqual({
       ok: true, id: c.id, status: "active", since: "2026-10-11", lastSeen: "2026-10-14T18:00:00Z", rounds: 7, duplicates: 0,
-      devices: 1, first: null, last: null, today: { rounds: 3, quota: 5000 },
+      devices: 1, first: null, last: null, today: { rounds: 3, quota: 5000 }, resend: 0,
     });
     await rollup();
     await admin("ban", { id: c.id });
     expect(await json(call("/api/v1/me", { key: c.key, now: NOW + 86400_000 }))).toMatchObject({
-      status: "active", first: "2026-10-12", last: "2026-10-14", today: { rounds: 0, quota: 5000 },
+      status: "active", first: "2026-10-12", last: "2026-10-14", today: { rounds: 0, quota: 5000 }, resend: 0,
     });
   });
 });

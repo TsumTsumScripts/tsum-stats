@@ -484,7 +484,9 @@ level, boost items and the rest), with this app's version. Only rounds that:
 A round is sent once, and again only if its figures change, such as when a
 CSV import fills in what the live event lacked (`ts_global_sent` in the
 database records what was sent), or when the global site starts keeping more
-of each round: then every round of the last 60 days goes once more. The global
+of each round, or asks every contributor to send everything again (after a
+fault on its side, say): then every round of the last 60 days goes once more,
+with the next upload. The global
 site keeps every field of a round as it was sent. A round the global site cannot take yet,
 because by its clock the round has not happened (this computer's or the
 device's clock is ahead), is sent again with the next upload.

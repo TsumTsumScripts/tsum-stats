@@ -266,5 +266,5 @@ export async function postRounds(req: Request, env: Env, c: Contributor, nowMs: 
       WHERE id = ?1 AND (CASE WHEN day = ?2 THEN day_rounds ELSE 0 END) + ?3 > ?4`).bind(c.id, today, accepted, lim.quota));
   }
   await spend(db, nowMs, { est, cap: lim.budget - lim.reserve, reads, checks }, stmts);
-  return ok({ accepted, unchanged, duplicates, rejected, retry, keeps: KEEPS });
+  return ok({ accepted, unchanged, duplicates, rejected, retry, keeps: KEEPS, resend: c.resend });
 }

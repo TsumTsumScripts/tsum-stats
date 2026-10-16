@@ -24,6 +24,7 @@
 //   merged:<id>       the contributor an id was merged into, for restores
 //   gone:<id>         "banned": a banned contributor that unlinked; its archive files are never restored
 //   nocompact:<month> a month too big for one part
+// and, written by the admin route only, resend (the full re-upload number, CONTRACT §2.2).
 import { archiveStarved, archiveStep, dropRestored, dropStep } from "./archive";
 import { RECORD } from "./budget";
 import { catalogId } from "./catalog";

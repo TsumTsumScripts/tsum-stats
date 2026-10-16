@@ -191,7 +191,7 @@ deleted at the first run after 00:00 UTC.
 Reply **200**:
 
 ```json
-{"ok": true, "accepted": 240, "unchanged": 5, "duplicates": 3, "rejected": {"pace": 2, "future": 1}, "retry": ["0192…"], "keeps": 2}
+{"ok": true, "accepted": 240, "unchanged": 5, "duplicates": 3, "rejected": {"pace": 2, "future": 1}, "retry": ["0192…"], "keeps": 2, "resend": 0}
 ```
 
 - `accepted`: rows inserted, or this contributor's rows whose figures changed.
@@ -207,6 +207,12 @@ Reply **200**:
   Worker before it leaves `keeps` out. When it goes up, the forwarder sends
   every round in its window once more (§7.2), so the rounds the site kept
   without a field get it.
+- `resend`: the site's last **call for a full re-upload** (`state` `resend`,
+  raised by `POST /api/v1/admin/resend`, §2.5), 0 until the first. Read in
+  the key's own query (`contributors.ts: authContributor`), so it costs no
+  statement. When it goes up, the forwarder sends every round it has once
+  more (§7.2). `/api/v1/me` carries it too, so a pass with nothing new to
+  send hears of it. A Worker before it leaves `resend` out (0).
 
 `ok: true` means "do not send these again" (the script moves its cursor on
 it), even when rows were rejected, **except the records named in `retry`**,
@@ -253,7 +259,7 @@ of 250 records takes about 15 D1 statements in all.
 ```json
 {"ok": true, "id": 17, "status": "active", "since": "2026-10-14", "lastSeen": "2026-10-14T18:05:00Z",
  "rounds": 12345, "duplicates": 3, "devices": 4, "first": "2026-08-20", "last": "2026-10-14",
- "today": {"rounds": 800, "quota": 250000}}
+ "today": {"rounds": 800, "quota": 250000}, "resend": 0}
 ```
 
 `rounds` is `rounds_total` (a Tsum the catalog lacks included); `devices`
@@ -338,6 +344,12 @@ counted in the day's budget (§2.6).
   After the last file the day is marked dirty and added to `state`
   `restored`; once recomputed its rounds leave D1 again, with no files
   rewritten.
+- `resend {}`: calls for a full re-upload: `state` `resend` goes up by one
+  (from 0), and every reply after it names the new number (§2.2). Reply
+  `{resend}`. Never refused for the budget (one row). Each contributor's next
+  pass sends every round in its window again; unchanged rounds write nothing,
+  changed ones are recomputed as any change is. The window is the
+  forwarder's 60 days, which is all §1.2 accepts: an archived day stays final.
 - `rollup {}`: runs the hourly job now (also how tests trigger it); the reply
   is the run's report: `{folded, recomputed, rendered, unlinked, archived,
   dropped, compacted, manifest, more, queries, r2, read, written, bytes,
@@ -658,7 +670,7 @@ skills, skillTypes}`),
 (`[[day, rounds]]`), `archive` (the day in progress), `restored` (`[[day,
 rounds]]`), `restore:<day>`, `settings_archived`, `span:<id>`,
 `unlink:<id>`, `merged:<id>`, `gone:<id>`, `nocompact:<month>`,
-`contributor_seq`.
+`contributor_seq`; and `resend`, written only by its admin route (§2.5).
 
 ### 3.3 R2 layout (bucket `tsum-global`)
 
@@ -931,11 +943,12 @@ answer has `tsum.go: TsumDetail`'s fields, plus `global: {approx: true}`:
 
 ### 7.1 Settings (`<data dir>/global.json`, mode 0600)
 
-`{"url": "https://tsum-stats.gapscripts.app", "id": 17, "key": "…", "enabled": true, "joinedAt": "…", "sent": 12345, "lastUpload": "…", "lastCheck": "…", "lastError": "", "retryAt": "", "keeps": 2}`
+`{"url": "https://tsum-stats.gapscripts.app", "id": 17, "key": "…", "enabled": true, "joinedAt": "…", "sent": 12345, "lastUpload": "…", "lastCheck": "…", "lastError": "", "retryAt": "", "keeps": 2, "resend": 1}`
 
-`keeps` is the highest `keeps` an upload's reply named (§2.2), left out
-while it is 0. It stays through a refused key and a new join of the same
-site, and goes back to 0 with a join of another.
+`keeps` is the highest `keeps` an upload's reply named (§2.2), and
+`resend` the highest `resend` an upload's or `/me`'s reply named; each is
+left out while it is 0. They stay through a refused key and a new join of the
+same site, and go back to 0 with a join of another.
 
 `url` is the site the key came from: a key is used only while `--global-url`
 names that site, and is never sent anywhere else. It is also the site
@@ -961,7 +974,7 @@ nothing. `lastError` is shown only for its own site (or when `url` is `""`).
   within the last 60 days and at least 20 minutes ago. A Tsum the catalog
   lacks is sent like any other (§1.2). The fingerprint is the record's
   FNV-1a 64 over its canonical JSON, with `keeps <n>\n` hashed first once
-  `keeps` is 2 or more. It sends rows with no `ts_global_sent`
+  `keeps` is 2 or more, then `resend <n>\n` once `resend` is 1 or more. It sends rows with no `ts_global_sent`
   row or a different fingerprint, oldest first, **at most 100 a request**
   (`GlobalBatchRows`; fewer when their JSON passes 768 KiB, to stay under
   the 1 MiB body limit), and stops at the first refusal.
@@ -979,6 +992,12 @@ nothing. `lastError` is shown only for its own site (or when `url` is `""`).
   batch that learned it included. So the Worker that keeps a new field is
   deployed first; an older one never names a higher `keeps`, and nothing is
   sent again for it.
+- **When the site calls for a re-upload.** A reply whose `resend` is above
+  the saved one saves it, and the fingerprints follow, as for `keeps`: every
+  round in the window is sent once more. From an upload's reply, the pass
+  starts again from the oldest round at once; from `/me`'s (fetched at the
+  end of every pass), the pass sends them then. So the next pass after a call
+  re-sends everything, whether or not it had anything new.
 - **On refusals.** Only the Worker's own daily limits, read from the JSON
   `error`: **429 `quota` or `join-limit`, and 503 `budget`**. Then `retryAt`
   = now + `Retry-After` (an hour when it has none), and the pass stops; until

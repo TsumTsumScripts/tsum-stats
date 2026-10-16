@@ -9,7 +9,7 @@ import { HttpError, bearer, fail, requireJson } from "./http";
 import { postRounds } from "./ingest";
 import { runJob } from "./job";
 
-const ADMIN_POSTS = ["ban", "unban", "merge", "rebuild", "restore", "rollup"];
+const ADMIN_POSTS = ["ban", "unban", "merge", "rebuild", "restore", "rollup", "resend"];
 
 /** The API's routes: path → [method, handler]. */
 type Handler = (req: Request, env: Env, nowMs: number) => Promise<Response>;

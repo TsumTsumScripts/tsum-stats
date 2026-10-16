@@ -167,7 +167,11 @@ name, source or Tsum list), in the Tsum script's own upload format,
 `gap.round-stats/1`, 100 to a batch, oldest first. It keeps each sent round's
 fingerprint in `ts_global_sent`, so only new or changed rounds go again, and
 the rounds the Worker names in its reply's `retry` (turned away as `future`,
-a clock ahead of the site's) go again on the next pass. The Worker re-keys
+a clock ahead of the site's) go again on the next pass. Two numbers in the
+Worker's replies send every round once more: `keeps` going up (the site
+keeps a field it did not), and `resend` going up (an admin's call for a full
+re-upload, `POST /api/v1/admin/resend`); both are hashed into the
+fingerprints, so a pass that hears of either finds every round changed. The Worker re-keys
 each round: the id's start time and random bits, then an HMAC (the
 `DEVICE_KEY` secret) of its device tag. So the same round from two players
 still collides, the first sender keeps it, and the hardware tag is never
