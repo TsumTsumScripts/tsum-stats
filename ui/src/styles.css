@@ -701,9 +701,12 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 .fact.up b, td.up { color: var(--good); }
 .fact.down b, td.down { color: var(--bad); }
 .fact.dim { color: var(--faint); }
-.tsum-pick { display: flex; gap: 8px; align-items: center; flex: 0 1 340px; min-width: 0; }
-.tsum-pick .search { flex: 1 1 auto; min-width: 0; }
-.tsum-pick .btn { white-space: nowrap; }
+.tsum-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; flex: 1 1 340px; max-width: 100%; min-width: 0; }
+.tsum-pick .search { flex: 1 1 180px; min-width: 140px; width: auto; }
+/* Same height, type and alignment whatever the button holds (link, icon + label). */
+.tsum-pick .btn { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  white-space: nowrap; padding: 6px 14px; font-size: 14px; line-height: 1.2; text-decoration: none; }
+.tsum-pick .btn .copy-label { margin: 0; font-size: inherit; }
 .tsum-bar { flex: 1 1 100%; display: flex; gap: 10px 14px; align-items: center; flex-wrap: wrap;
   padding-top: 12px; border-top: 1px dashed var(--hairline); }
 .tsum-bar .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
