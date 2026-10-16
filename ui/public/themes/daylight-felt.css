@@ -101,6 +101,7 @@
   --weave: repeating-linear-gradient(31deg, var(--weave-hi) 0 1px, transparent 1px 4px),
            repeating-linear-gradient(-57deg, var(--weave-lo) 0 1px, transparent 1px 5px);
   --coin-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 104'%3E%3Ccircle cx='50' cy='57' r='44' fill='%23a85f0c'/%3E%3Ccircle cx='50' cy='52' r='44' fill='%23e8900c'/%3E%3Ccircle cx='50' cy='52' r='38' fill='%23ffbb1a'/%3E%3Ccircle cx='50' cy='55' r='14' fill='%23ffe07a'/%3E%3Ccircle cx='34' cy='39' r='9' fill='%23ffe07a'/%3E%3Ccircle cx='66' cy='39' r='9' fill='%23ffe07a'/%3E%3Ccircle cx='50' cy='53' r='14' fill='%23e2700a'/%3E%3Ccircle cx='34' cy='37' r='9' fill='%23e2700a'/%3E%3Ccircle cx='66' cy='37' r='9' fill='%23e2700a'/%3E%3Ccircle cx='50' cy='52' r='40.5' fill='none' stroke='%23fff4cc' stroke-width='2.4' stroke-dasharray='4.2 3.2'/%3E%3C/svg%3E");
+  --medal-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 104'%3E%3Cpolygon points='92.5,74.6 67.6,99.5 32.4,99.5 7.5,74.6 7.5,39.4 32.4,14.5 67.6,14.5 92.5,39.4' fill='%234a5fb3'/%3E%3Cpolygon points='92.5,69.6 67.6,94.5 32.4,94.5 7.5,69.6 7.5,34.4 32.4,9.5 67.6,9.5 92.5,34.4' fill='%237f97f0'/%3E%3Cpolygon points='86.0,66.9 64.9,88.0 35.1,88.0 14.0,66.9 14.0,37.1 35.1,16.0 64.9,16.0 86.0,37.1' fill='%23c4d2ff'/%3E%3Cpolygon points='50.0,27.0 57.1,46.9 77.0,54.0 57.1,61.1 50.0,81.0 42.9,61.1 23.0,54.0 42.9,46.9' fill='%237f97f0'/%3E%3Cpolygon points='50.0,25.0 57.1,44.9 77.0,52.0 57.1,59.1 50.0,79.0 42.9,59.1 23.0,52.0 42.9,44.9' fill='%23ffffff'/%3E%3Cpolygon points='88.8,68.1 66.1,90.8 33.9,90.8 11.2,68.1 11.2,35.9 33.9,13.2 66.1,13.2 88.8,35.9' fill='none' stroke='%23eef2ff' stroke-width='2.4' stroke-dasharray='4.2 3.2'/%3E%3C/svg%3E");
 }
 
 /* The ground: the felt's diagonal weave, no dots. */
@@ -186,6 +187,8 @@
 /* A felt coin stuck on the hero tile, as on the website. */
 :root .kpi.hero::after { content: ''; position: absolute; top: -20px; right: -14px; width: 58px; height: 60px; z-index: 2;
   background: var(--coin-svg) center / contain no-repeat; transform: rotate(14deg); pointer-events: none; }
+/* With medals as the primary stat, a felt medal in its place. */
+:root .kpi.hero.medal::after { background-image: var(--medal-svg); }
 
 /* Buttons and toggles: pills with dashed stitching and a hard edge. */
 :root .btn, :root .sort-btn, :root .chip, :root .pill, :root .tag { border: 2px dashed var(--seam); }
