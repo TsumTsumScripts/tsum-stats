@@ -123,6 +123,8 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 
 .page { max-width: 1480px; margin: 0 auto; padding: 0 16px 80px; }
 /* The footer's build stamp: small and faint, but still 4.5:1 (--faint). */
+.global-note { margin: 32px 0 0; text-align: center; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.global-note + .site-foot { margin-top: 4px; }
 .site-foot { margin-top: 32px; text-align: center; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
 @media (min-width: 720px) { .page { padding: 0 28px 90px; } }
 
@@ -162,7 +164,7 @@ html { overflow-x: clip; }
 .live-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .live-chip .caret { font-size: 10px; opacity: .7; }
 .topbar-actions { display: flex; gap: 8px; align-items: center; flex: none; }
-:root .topbar-actions .btn, :root .topbar #site-btn { padding: 5px 11px; font-size: 14px; }
+:root .topbar-actions .btn, :root .topbar #site-btn, :root .topbar #contribute-link { padding: 5px 11px; font-size: 14px; }
 :root #more-btn { padding: 5px 9px; line-height: 1; }
 #more-btn span { display: block; font-size: 18px; letter-spacing: 1px; }
 
@@ -191,9 +193,9 @@ html { overflow-x: clip; }
   .topbar > .seg button { padding: 5px 10px; font-size: 14px; }
   .topbar .spacer { flex: 0 0 100%; height: 0; order: 4; }
   .topbar .live { flex: 1 1 0; order: 5; }
-  .topbar-actions, .topbar .theme-pick, .topbar #site-btn { order: 7; }
+  .topbar-actions, .topbar .theme-pick, .topbar #site-btn, .topbar #contribute-link { order: 7; }
   .topbar-actions { gap: 6px; }
-  .topbar-actions .btn, .topbar #site-btn { padding: 3px 10px; }
+  .topbar-actions .btn, .topbar #site-btn, .topbar #contribute-link { padding: 3px 10px; }
   .topbar > .theme-pick .sub { display: none; }
   :root { --sticky-top: 0px; }
   .topbar { position: relative; }
@@ -689,7 +691,7 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 .callout b { color: var(--ink); }
 
 /* The Starter link is an <a> dressed as a button. */
-#starter-btn, #site-btn { text-decoration: none; }
+#starter-btn, #site-btn, #contribute-link { text-decoration: none; }
 
 /* ---- The Tsum page ---- */
 .tsum-head { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; border-top: 4px solid var(--tsum, var(--panel-edge)); }
@@ -779,8 +781,6 @@ td.medal .bd-bar > span.best { background: var(--medal); }
   /* A long Tsum name wraps, so the figures beside it are on screen before the table scrolls. */
   .dt .tsum-name { white-space: normal; min-width: 7em; max-width: 9.5em; }
   /* The global site's note takes a row of its own, its status wrapping rather than cut off. */
-  .topbar .global-note { flex: 1 1 100%; flex-wrap: wrap; }
-  .topbar .global-note .pill { white-space: normal; overflow: visible; }
 }
 
 /* Copy as an image: the button, and the card lib/card.js draws off screen. */

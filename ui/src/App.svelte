@@ -38,6 +38,8 @@
     : `The site's code was built ${build.date} UTC`;
   // The Tsum Tsum website, which the global site is part of.
   const WEBSITE = 'https://tsumtsum.gapscripts.app';
+  // The website's page about tsum-stats, which says how to contribute.
+  const CONTRIBUTE = 'https://tsumtsum.gapscripts.app/stats-site';
 
   // "#/stats?tsum=mickey" → {route: 'stats', params: {tsum: 'mickey'}}
   function readHash() {
@@ -171,10 +173,13 @@
         {/each}
       </nav>
       <div class="spacer"></div>
-      {#if globalSite}<GlobalNote />{:else if snapshot}<SnapshotNote />{:else}<LivePills />{/if}
+      {#if snapshot}<SnapshotNote />{:else}<LivePills />{/if}
       {#if readOnly}
         <ThemePicker />
-        {#if globalSite}<a class="btn" id="site-btn" href={WEBSITE} title="The Tsum Tsum script's website">Website</a>{/if}
+        {#if globalSite}
+          <a class="btn" id="contribute-link" href={CONTRIBUTE} title="How to add your rounds from tsum-stats">Contribute</a>
+          <a class="btn" id="site-btn" href={WEBSITE} title="The Tsum Tsum script's website">Website</a>
+        {/if}
       {:else}
         <div class="topbar-actions">
           <button type="button" class="btn" id="contribute-btn" title="Add your rounds to the global stats" onclick={() => contributeDialog.open()}>Contribute</button>
@@ -203,6 +208,7 @@
       <Help bind:this={help} hidden={route !== 'help'} initial={initial.help} />
     {/if}
     <!-- When the site's code was last changed, out of the way at the foot of every page. -->
+    {#if globalSite}<GlobalNote />{/if}
     <footer class="site-foot" title={buildTitle}>{buildText}</footer>
   </div>
   {#if !readOnly}
