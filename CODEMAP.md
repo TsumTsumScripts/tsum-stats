@@ -162,7 +162,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `ui/src/sections/Help.svelte` | How to get data in |
 | `components/` dialogs | `DataDialog.svelte` (what is stored, importing), `PublishDialog.svelte` (Share), `ContributeDialog.svelte` (the global stats) |
 | `components/` top bar | `LivePills.svelte` (live devices), `SnapshotNote.svelte`, `GlobalNote.svelte`, `ThemePicker.svelte`, `Dropdown.svelte` |
-| `components/` building blocks | `CopyButton.svelte` (copy as an image), `Panel.svelte`, `Chart.svelte`, `Legend.svelte`, `Tip.svelte`, `DataTable.svelte` (TanStack core; client or server paging), `Seg.svelte`, `Toasts.svelte`, `Avatar.svelte`, `TsumCell.svelte`, `TsumChip.svelte` |
+| `components/` building blocks | `CopyButton.svelte` (copy as an image), `Panel.svelte`, `Chart.svelte`, `Legend.svelte`, `Tip.svelte`, `DataTable.svelte` (TanStack core; client or server paging), `Seg.svelte`, `Toasts.svelte`, `Avatar.svelte`, `TsumCell.svelte`, `TsumChip.svelte`, `TsumCombo.svelte` (text box with its own suggestion list, in place of `<datalist>`) |
 | `ui/src/lib/util.js` | Formats, `api()`, the catalog, Tsum colours, `IMAGE_URL` |
 | `ui/src/lib/ui.svelte.js` | Shared page state: catalog, devices, tooltip, toasts, expanded panel, theme |
 | `ui/src/lib/realtime.js` | PocketBase realtime over SSE, resubscribing on reconnect |

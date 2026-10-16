@@ -169,6 +169,17 @@ html { overflow-x: clip; }
 :root #more-btn { padding: 5px 9px; line-height: 1; }
 #more-btn span { display: block; font-size: 18px; letter-spacing: 1px; }
 
+/* A text box with its suggestions right under it (TsumCombo). */
+.combo { position: relative; display: flex; min-width: 0; }
+.combo > input { flex: 1 1 auto; }
+.combo-list { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 50; margin: 0; padding: 4px; list-style: none;
+  max-height: min(320px, 50vh); overflow-y: auto; border-radius: 14px; border: 2px solid var(--panel-edge);
+  background: linear-gradient(180deg, var(--panel-top, var(--panel-hi)), var(--panel-bottom, var(--panel)));
+  box-shadow: var(--lift), 0 10px 30px rgba(0, 0, 0, .35); }
+.combo-list li { display: flex; flex-direction: column; padding: 7px 10px; border-radius: 10px; cursor: pointer; font-weight: 700; }
+.combo-list li .sub { font-weight: 500; font-size: 12px; }
+.combo-list li.active, .combo-list li:hover { background: color-mix(in srgb, var(--accent-a, #fff) 22%, transparent); }
+
 /* The panel a top-bar button opens. */
 .dropdown { position: relative; display: flex; min-width: 0; }
 .dropdown-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 50; display: grid; gap: 10px;
@@ -705,7 +716,7 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 .fact.down b, td.down { color: var(--bad); }
 .fact.dim { color: var(--faint); }
 .tsum-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; flex: 1 1 340px; max-width: 100%; min-width: 0; }
-.tsum-pick .search { flex: 1 1 180px; min-width: 140px; width: auto; }
+.tsum-pick .combo { flex: 1 1 180px; min-width: 140px; }
 /* Same height, type and alignment whatever the button holds (link, icon + label). */
 .tsum-pick .btn { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   white-space: nowrap; padding: 6px 14px; font-size: 14px; line-height: 1.2; text-decoration: none; }
@@ -713,7 +724,7 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 /* Narrower than the header's one-row layout: the search takes a row, the buttons share the next. */
 @media (max-width: 1099px) {
   .tsum-pick { flex-basis: 100%; }
-  .tsum-pick .search { flex-basis: 100%; }
+  .tsum-pick .combo { flex-basis: 100%; }
   .tsum-pick .btn { flex: 1 1 0; }
 }
 .tsum-bar { flex: 1 1 100%; display: flex; gap: 10px 14px; align-items: center; flex-wrap: wrap;

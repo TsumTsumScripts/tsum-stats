@@ -5,6 +5,7 @@
 <script>
   import Seg from '../../components/Seg.svelte';
   import TsumChip from '../../components/TsumChip.svelte';
+  import TsumCombo from '../../components/TsumCombo.svelte';
   import {isGlobal} from '../../lib/global/client.js';
   import {PLAY, byPlayValue, debounce, fmt, itemsLabel, playValue, playValueName, skillTypeName, skillTypeValue} from '../../lib/util.js';
 
@@ -26,17 +27,16 @@
   ];
   const jumps = $derived(JUMPS.filter(([id]) => id !== 's-compare' || comparing));
 
-  let rail, tsumBox, nav;
+  let rail, nav;
   let current = $state('');
 
   // The Tsums box adds each Tsum it matches to the picked ones.
-  function pickTsum() {
-    const id = matchTsum(tsumBox.value);
-    if (!id) return;
-    tsumBox.value = '';
+  function pickTsum(typed) {
+    const id = matchTsum(typed);
+    if (!id) return false;
     addTsum(id);
+    return true;
   }
-  const pickSoon = debounce(pickTsum, 250);
 
   // Editing a date turns the rolling range into fixed dates; clearing both is all time.
   function dates(from, to) {
@@ -115,11 +115,8 @@
       <div class="filters">
         <div class="field span-all">
           <label for="f-tsum" title="Pick one Tsum to focus on it, or several to compare them head to head">Tsums</label>
-          <input id="f-tsum" list="tsum-options" placeholder="All Tsums · type to add" autocomplete="off"
-            bind:this={tsumBox} onchange={pickTsum} oninput={pickSoon}>
-          <datalist id="tsum-options">
-            {#each played as t (t.tsum)}<option value={nameOf(t.tsum)}>{fmt(t.rounds)} rounds</option>{/each}
-          </datalist>
+          <TsumCombo id="f-tsum" options={played.map(t => ({value: nameOf(t.tsum), sub: `${fmt(t.rounds)} rounds`}))}
+            onpick={pickTsum} placeholder="All Tsums · type to add" />
           {#if picked.length}
             <div class="picked">
               {#each picked as id (id)}<TsumChip {id} name={nameOf(id)} color={colorOf(id)} onremove={() => dropTsum(id)} />{/each}

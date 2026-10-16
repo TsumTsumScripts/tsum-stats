@@ -11,6 +11,7 @@
   import {isGlobal} from '../lib/global/client.js';
   import Avatar from '../components/Avatar.svelte';
   import Chart from '../components/Chart.svelte';
+  import TsumCombo from '../components/TsumCombo.svelte';
   import Panel from '../components/Panel.svelte';
   import Seg from '../components/Seg.svelte';
   import {drawDaily, drawHistogram, drawItems, drawSkillSpread} from '../lib/charts.js';
@@ -179,17 +180,16 @@
 
   // ---- The picker ----
 
-  let box = $state();
-  function pick() {
-    const text = box.value.trim().toLowerCase();
+  const pickOptions = $derived(played.map(t => ({value: tsumName(catalog, t.tsum), sub: `${fmt(t.rounds)} rounds`})));
+
+  function pick(typed) {
+    const text = typed.trim().toLowerCase();
     const hit = text && played.find(t => [tsumName(catalog, t.tsum), tsumName(catalog, t.tsum, 'jp'), t.tsum]
       .some(n => n.toLowerCase() === text));
-    if (!hit) return;
-    box.value = '';
-    box.blur();
+    if (!hit) return false;
     set({id: hit.tsum});
+    return true;
   }
-  const pickSoon = debounce(pick, 250);
 
   // ---- What the page shows ----
 
@@ -350,8 +350,7 @@
       <div class="tsum-title"><h2>Pick a Tsum</h2><div class="sub">Everything about one Tsum: how it plays at each skill level, with each setting, and its best rounds.</div></div>
     {/if}
     <div class="tsum-pick">
-      <input class="search" list="tsum-page-options" placeholder="Find a Tsum…" autocomplete="off" aria-label="Show another Tsum"
-        bind:this={box} onchange={pick} oninput={pickSoon}>
+      <TsumCombo options={pickOptions} onpick={pick} placeholder="Find a Tsum…" label="Show another Tsum" />
       {#if filter.id}<a class="btn" href={statsLink} title="This Tsum on the Stats page, with its rounds table">Open in Stats</a>{/if}
       {#if filter.id && s?.totals.rounds}<CopyButton title="Everything" label="Copy all" root={() => page} />{/if}
     </div>
@@ -383,9 +382,6 @@
         {#if error}<span class="sub">{error}</span>{/if}
       </div>
     {/if}
-    <datalist id="tsum-page-options">
-      {#each played as t (t.tsum)}<option value={tsumName(catalog, t.tsum)}>{fmt(t.rounds)} rounds</option>{/each}
-    </datalist>
   </div>
 
   {#if !filter.id}
