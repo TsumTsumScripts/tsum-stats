@@ -173,7 +173,7 @@
         {/each}
       </nav>
       <div class="spacer"></div>
-      {#if snapshot}<SnapshotNote />{:else}<LivePills />{/if}
+      {#if !snapshot}<LivePills />{/if}
       {#if readOnly}
         <ThemePicker />
         {#if globalSite}
@@ -208,7 +208,7 @@
       <Help bind:this={help} hidden={route !== 'help'} initial={initial.help} />
     {/if}
     <!-- When the site's code was last changed, out of the way at the foot of every page. -->
-    {#if globalSite}<GlobalNote />{/if}
+    {#if globalSite}<GlobalNote />{:else if snapshot}<SnapshotNote />{/if}
     <footer class="site-foot" title={buildTitle}>{buildText}</footer>
   </div>
   {#if !readOnly}

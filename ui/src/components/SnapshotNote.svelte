@@ -1,4 +1,4 @@
-<!-- The top bar's note on a published snapshot: when it was taken, in place of the live devices. -->
+<!-- A published snapshot's footnote: when it was taken. -->
 <script>
   import {onMount} from 'svelte';
   import {api, fmt} from '../lib/util.js';
@@ -9,8 +9,6 @@
   const day = new Intl.DateTimeFormat(undefined, {dateStyle: 'medium'});
 </script>
 
-<div class="live">
-  <span class="pill" title="A copy of the player's stats taken at that time; it does not update by itself.">
-    {#if status}Snapshot · {day.format(new Date(status.generatedAt))} · {fmt(status.rounds)} rounds{:else}Snapshot{/if}
-  </span>
-</div>
+<p class="global-note" title="A copy of the player's stats taken at that time; it does not update by itself.">
+  {#if status}Snapshot · {day.format(new Date(status.generatedAt))} · {fmt(status.rounds)} rounds{:else}Snapshot{/if}
+</p>
