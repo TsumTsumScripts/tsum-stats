@@ -226,6 +226,19 @@ closes it. A table's pager sticks to the bottom of the window while the table is
 on screen. Column choices (and the Tsum table's sort and page size) are kept per
 browser in `localStorage` under `tsum-stats.tables`.
 
+The copy button beside it (and in the bottom corner of the overview's first
+tile) copies the panel to the clipboard as a picture, ready to paste into a chat. The
+picture is a compact card: the panel's title and the view picked in it, its
+chart drawn again at the card's width (the efficiency chart's top 10) or its
+table's first 10 rows and 5 columns (always with the sorted one), then the
+filters in a line (always the time range and primary stat), the rounds they
+count, and the date. With one Tsum focused, the card shows its portrait and
+name, as on the Tsum page; compared Tsums are named in the filter line. A
+browser that cannot put pictures on the clipboard downloads it as a PNG.
+Portraits come through the stats server (`/api/stats/art/{id}`, `art.go`), as
+their site does not let pages read them; in a snapshot or on the global site
+a card shows initials in their place until it does.
+
 | Panel | Views |
 |:--|:--|
 | Head to head | Only with 2+ Tsums picked: a scorecard with the best in each row marked, and a per-day line per Tsum |
@@ -305,6 +318,10 @@ Incomplete rounds are left out, as on Stats.
 - **By script version** and **By device**, when there is more than one.
 - The KPI tiles, per-day, histogram, items and hour charts, as on Stats, for
   this Tsum alone, and its ten best rounds by coins, rate or score.
+
+Every panel, and the overview tiles with the insights under them, can be copied
+as a picture as on Stats; on this page the card always shows the Tsum's
+portrait and name.
 
 A row with fewer than 20 rounds is dimmed and never marked best. Catalog cards
 of Tsums you have played link to their page. The page reads

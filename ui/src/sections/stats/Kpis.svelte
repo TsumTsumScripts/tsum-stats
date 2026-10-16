@@ -1,12 +1,17 @@
-<!-- The overview tiles: the primary stat's figures, then medals beside coins. -->
+<!-- The overview tiles: the primary stat's figures, then medals beside coins.
+     The first tile carries, in its bottom corner (clear of the themes' badges),
+     the button that copies them as an image; copyFrom gives a wider element to
+     copy (the Tsum page's tiles and insights). -->
 <script>
+  import CopyButton from '../../components/CopyButton.svelte';
   import {cap, fmt, fmtDuration, fmtRate, pct} from '../../lib/util.js';
 
   // t: the summary's totals; m: the same over rounds that earned medals.
   // noMedals drops the medal tiles when no round earned any (a Tsum that never does).
   // approx marks the median, quartile and P90 as estimates (the global site's);
   // missing says why they are not there, when they are not.
-  let {t, m, coins, basis, noMedals = false, approx = false, missing = ''} = $props();
+  let {t, m, coins, basis, noMedals = false, approx = false, missing = '', copyFrom = null} = $props();
+  let node;
 
   const u = $derived(coins === 'medals' ? 'medals' : 'coins');
   const medals = $derived(coins === 'medals');
@@ -37,9 +42,10 @@
   ]);
 </script>
 
-<div class="kpis">
-  {#each tiles as [label, value, cls, note] (label)}
+<div class="kpis" bind:this={node}>
+  {#each tiles as [label, value, cls, note], i (label)}
     <div class="panel kpi {cls}">
+      {#if i === 0}<CopyButton title="Overview" from={() => copyFrom?.() ?? node} cls="kpi-copy" />{/if}
       <div class="label">{label}</div>
       <div class="value">{value}</div>
       {#if note}<div class="note">{note}</div>{/if}

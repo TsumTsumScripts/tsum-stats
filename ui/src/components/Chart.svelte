@@ -1,13 +1,20 @@
 <!-- A d3 chart box. draw(box, ...args) fills it and returns legend items; it
-     runs again when args, the box size, the unit or the theme change. -->
+     runs again when args, the box size, the unit or the theme change. A copied
+     card draws it again in its own box (box.cardDraw), from cardArgs when the
+     page gives a shorter version of args for it. -->
 <script>
   import {untrack} from 'svelte';
   import {setUnit} from '../lib/charts.js';
   import {theme} from '../lib/ui.svelte.js';
 
-  let {draw, args, unit = 'coins', size = '', legend = $bindable([])} = $props();
+  let {draw, args, cardArgs = null, unit = 'coins', size = '', legend = $bindable([])} = $props();
   let box;
   let w = $state(0), h = $state(0);
+
+  $effect(() => {
+    const a = cardArgs ?? args;
+    box.cardDraw = {redraw: target => a && (setUnit(unit), draw(target, ...a))};
+  });
 
   $effect(() => {
     const a = args;

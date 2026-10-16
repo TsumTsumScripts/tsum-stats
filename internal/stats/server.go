@@ -139,6 +139,13 @@ func registerRoutes(se *core.ServeEvent, events *Events, importer *Importer, pul
 		return e.JSON(http.StatusOK, Themes(embedded))
 	})
 
+	// A Tsum's portrait, for a copied card's picture (art.go).
+	art := NewArt()
+	g.GET("/art/{id}", func(e *core.RequestEvent) error {
+		art.Serve(e.Response, e.Request.PathValue("id"))
+		return nil
+	})
+
 	g.GET("/rounds", func(e *core.RequestEvent) error {
 		q := e.Request.URL.Query()
 		page, _ := strconv.Atoi(q.Get("page"))

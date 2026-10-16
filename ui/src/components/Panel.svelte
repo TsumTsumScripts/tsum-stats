@@ -1,7 +1,9 @@
 <!-- A panel with a title row. tools go on the right of the title; with
-     expandable, a button there blows the panel up to fill the window. -->
+     expandable, a button there blows the panel up to fill the window. On a
+     page that sets a card context, a button there copies it as an image. -->
 <script>
   import {expand} from '../lib/ui.svelte.js';
+  import CopyButton from './CopyButton.svelte';
 
   let {id, title, sub = '', class: cls = '', expandable = true, hidden = false, tools, children} = $props();
   const me = Symbol();
@@ -23,15 +25,14 @@
 <div class="panel {cls}" class:expanded={open} {id} {hidden} bind:this={node}>
   <div class="panel-head">
     <div><h2>{title}</h2>{#if sub}<span class="sub">{sub}</span>{/if}</div>
-    {#if tools || expandable}
-      <div class="toggles">
-        {@render tools?.()}
-        {#if expandable}
-          <button type="button" class="btn expand-btn" aria-pressed={String(open)} title={open ? 'Close the big view (Esc)' : 'Expand'}
-            onclick={toggle}>{open ? '✕' : '⤢'}</button>
-        {/if}
-      </div>
-    {/if}
+    <div class="toggles">
+      {@render tools?.()}
+      <CopyButton {title} from={() => node} />
+      {#if expandable}
+        <button type="button" class="btn expand-btn" aria-pressed={String(open)} title={open ? 'Close the big view (Esc)' : 'Expand'}
+          onclick={toggle}>{open ? '✕' : '⤢'}</button>
+      {/if}
+    </div>
   </div>
   {@render children()}
 </div>

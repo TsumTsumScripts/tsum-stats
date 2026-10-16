@@ -18,6 +18,7 @@
   import Seg from '../components/Seg.svelte';
   import TsumCell from '../components/TsumCell.svelte';
   import {drawCompare, drawDaily, drawEfficiency, drawHistogram, drawHours, drawItems, drawShare} from '../lib/charts.js';
+  import {cardContext} from '../lib/card.js';
   import {expand, shared, toast} from '../lib/ui.svelte.js';
   import {
     api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsCost, itemsLabel, loadPref, pct, savePref, tsumColor, tsumName,
@@ -187,12 +188,12 @@
     if (pickedItems.length) {
       out.push({label: pickedItems.length > 2 ? `${pickedItems.length} item sets` : pickedItems.map(m => itemsLabel(Number(m))).join(', '), clear: () => set({items: ''})});
     }
-    if (Number(filter.days)) out.push({label: `Last ${filter.days} days${utc}`, clear: () => set({days: 'all'})});
+    if (Number(filter.days)) out.push({label: `Last ${filter.days} days${utc}`, kind: 'time', clear: () => set({days: 'all'})});
     else if (filter.days !== 'all' && (filter.from || filter.to)) {
-      out.push({label: `${filter.from || '…'} → ${filter.to || 'today'}${utc}`, clear: () => set({days: 'all', from: '', to: ''})});
+      out.push({label: `${filter.from || '…'} → ${filter.to || 'today'}${utc}`, kind: 'time', clear: () => set({days: 'all', from: '', to: ''})});
     }
-    if (filter.coins) out.push({label: cap(basisName(filter.coins)), clear: () => set({coins: ''})});
-    if (net) out.push({label: 'Less item costs', clear: () => set({net: ''})});
+    if (filter.coins) out.push({label: cap(basisName(filter.coins)), kind: 'basis', clear: () => set({coins: ''})});
+    if (net) out.push({label: 'Less item costs', kind: 'basis', clear: () => set({net: ''})});
     // The coin range is base or final coins, even in Medals mode.
     const rangeName = {coins: basisName(filter.coins === 'final' ? 'final' : '', net), score: 'score', medals: 'medals'};
     for (const [stat, , lo, hi] of OUTLIERS) {
@@ -205,6 +206,19 @@
     if (minRounds) out.push({label: `Tsums with ${fmt(minRounds)}+ rounds`, clear: () => set({minRounds: ''})});
     return out;
   });
+
+  // A copied card names the focused Tsum, or the compared ones in its filter line, and always the time range and primary stat.
+  cardContext(() => ({
+    tsum: picked.length === 1 ? picked[0] : '',
+    build: filter.build,
+    filters: [
+      picked.length > 1 ? picked.map(nameOf).join(' vs ') : '',
+      chips.find(c => c.kind === 'time')?.label ?? 'All time',
+      cap(basis),
+      ...chips.filter(c => !c.kind).map(c => c.label),
+    ],
+    rounds: summary?.totals.rounds ?? 0,
+  }));
 
   /** The Tsum page for the one focused Tsum, with the filters it understands. */
   const pageLink = $derived.by(() => {
@@ -333,6 +347,11 @@
   const byRounds = $derived(summary ? summary.tsums.filter(ranked).sort((a, c) => c.rounds - a.rounds) : []);
   // Shares are of every Tsum in the filter, ranked or not; the table lists the ranked ones.
   const tableRows = $derived(tsumRows.filter(ranked));
+  // A card's efficiency chart keeps the 10 best by its measure.
+  const effKey = {rate: 'coinsPerSec', avg: 'avgCoins', median: 'medianCoins', max: 'maxCoins'};
+  const effTop = $derived(views.eff === 'rate'
+    ? byRounds.filter(t => t[effKey[views.effMetric]] != null).sort((a, c) => c[effKey[views.effMetric]] - a[effKey[views.effMetric]]).slice(0, 10)
+    : byRounds.slice(0, 10));
   const args = $derived(summary && {
     compare: picked.length > 1 ? [summary.dailyTsums, picked, ctx, views.compare] : null,
     eff: [views.eff, byRounds, spreadCtx, views.effMetric],
@@ -529,7 +548,7 @@
         <Seg sm label="Measure" value={views.effMetric} onpick={v => setView('effMetric', v)} hidden={views.eff !== 'rate'}
           options={[['rate', `${U}/s`], ['avg', 'Average'], ['median', 'Median'], ['max', 'Best']]} />
       {/snippet}
-      <Chart draw={drawEfficiency} args={args?.eff} {unit} size="tall" />
+      <Chart draw={drawEfficiency} args={args?.eff} cardArgs={args && [views.eff, effTop, spreadCtx, views.effMetric]} {unit} size="tall" />
     </Panel>
 
     <div class="charts anchor" id="s-time">

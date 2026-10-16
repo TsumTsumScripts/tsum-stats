@@ -15,6 +15,7 @@
   import Seg from '../components/Seg.svelte';
   import {drawDaily, drawHistogram, drawHours, drawItems, drawSkillSpread} from '../lib/charts.js';
   import {toMax} from '../lib/boxes.js';
+  import {cardContext} from '../lib/card.js';
   import {shared} from '../lib/ui.svelte.js';
   import {
     api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref, tsumColor, tsumName,
@@ -255,6 +256,17 @@
   const roundCoins = r => (filter.coins === 'medals' ? r.medals : filter.coins === 'final' ? r.finalCoins : r.baseCoins);
   const roundRate = r => (roundCoins(r) !== null && r.durationSeconds ? roundCoins(r) / r.durationSeconds : null);
 
+  // A copied card shows this Tsum, the time range, the primary stat and the game and device when picked.
+  const daysLabel = {7: 'Last 7 days', 30: 'Last 30 days', 90: 'Last 90 days', all: 'All time'};
+  cardContext(() => ({
+    tsum: filter.id,
+    build: filter.build,
+    filters: [`${daysLabel[filter.days] ?? 'All time'}${globalSite && filter.days !== 'all' ? ' UTC' : ''}`, cap(basis),
+      filter.build ? buildLabel(filter.build) : '', filter.device],
+    rounds: s?.totals.rounds ?? 0,
+  }));
+  let overview = $state();
+
   const statsLink = $derived(`#/stats?${new URLSearchParams(Object.entries({tsum: filter.id, days: filter.days, coins: filter.coins, net: filter.net,
     device: filter.device, build: filter.build}).filter(([, v]) => v))}`);
 
@@ -374,8 +386,10 @@
         {#if filter.days !== 'all'}<button type="button" class="btn" onclick={() => set({days: 'all'})}>Show all time</button>{/if}
       </div>
     {:else if s}
-      <Kpis t={s.totals} m={s.medals.totals} coins={filter.coins} {basis} noMedals approx={globalSite} />
-      <Insights {detail} own={owned?.own} {entry} {unit} {basis} {target} {setTarget} {whose} approx={globalSite} />
+      <div class="tsum-overview" bind:this={overview}>
+        <Kpis t={s.totals} m={s.medals.totals} coins={filter.coins} {basis} noMedals approx={globalSite} copyFrom={() => overview} />
+        <Insights {detail} own={owned?.own} {entry} {unit} {basis} {target} {setTarget} {whose} approx={globalSite} />
+      </div>
 
       {#if skills.length}
         <Panel title="By skill level" sub="the skill level set in the script for each round · change is against the level below" expandable={false}>

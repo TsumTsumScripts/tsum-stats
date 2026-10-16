@@ -96,6 +96,7 @@ Cloudflare account only, never the GAP one (`global/README.md`,
 | `internal/stats/queries.go` | `Filter` (`ParseFilter`, the WHERE), the rounds page and its sort columns, played Tsums and devices, the latest Tsum list |
 | `internal/stats/summary.go` | `Summarize`: everything above the tables (KPIs, per day / hour / Tsum / mix, spreads, the coin histogram); item sets and their cost (`itemBits`) |
 | `internal/stats/tsum.go` | `DescribeTsum`: the Tsum page's answer (by setting, version, device; form, skill bins, rank) |
+| `internal/stats/art.go` | `Art`: Tsum portraits fetched for the page at `/api/stats/art/{id}` (their origin sends no CORS headers), kept in memory |
 | `internal/stats/server.go` | `Register`, `Config`, `StarterHook`: wiring into PocketBase, the `/api/stats` routes (`registerRoutes`, `registerGlobalRoutes`), the topics `ts/devices`, `ts/rounds`, `ts/imports` and their broadcaster, the loopback and same-origin guards |
 | `internal/stats/site.go` | The site's files: the embedded build, `--web-dir` overrides gated by `override.json` (`Manifest`), themes and `themeOrder`, `ExportSite` |
 | `internal/stats/snapshot.go` | `ExportSnapshot`: the `snapshot` command's static site and monthly data files (`SnapshotFormat`) |
@@ -108,7 +109,8 @@ lists, heartbeats), `stats/adb_test.go` and `adb_install_test.go` (device import
 through a fake adb; unzip refusing escapes), `legacy_test.go`, `site_test.go`
 (overrides, themes), `snapshot_test.go` (`TestSnapshotParity` runs
 `ui/tests/parity.mjs`), `publish_test.go` (a fake GitHub;
-`TestPageSubscribesToEveryTopic`), `global_test.go` (the forwarder against a
+`TestPageSubscribesToEveryTopic`), `art_test.go` (portraits through a fake
+origin), `global_test.go` (the forwarder against a
 fake Worker), `global_parity_test.go` (`TestGlobalParity`, which runs
 `global/test/parity.test.ts`).
 
@@ -160,10 +162,11 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `ui/src/sections/Help.svelte` | How to get data in |
 | `components/` dialogs | `DataDialog.svelte` (what is stored, importing), `PublishDialog.svelte` (Share), `ContributeDialog.svelte` (the global stats) |
 | `components/` top bar | `LivePills.svelte` (live devices), `SnapshotNote.svelte`, `GlobalNote.svelte`, `ThemePicker.svelte`, `Dropdown.svelte` |
-| `components/` building blocks | `Panel.svelte`, `Chart.svelte`, `Legend.svelte`, `Tip.svelte`, `DataTable.svelte` (TanStack core; client or server paging), `Seg.svelte`, `Toasts.svelte`, `Avatar.svelte`, `TsumCell.svelte`, `TsumChip.svelte` |
+| `components/` building blocks | `CopyButton.svelte` (copy as an image), `Panel.svelte`, `Chart.svelte`, `Legend.svelte`, `Tip.svelte`, `DataTable.svelte` (TanStack core; client or server paging), `Seg.svelte`, `Toasts.svelte`, `Avatar.svelte`, `TsumCell.svelte`, `TsumChip.svelte` |
 | `ui/src/lib/util.js` | Formats, `api()`, the catalog, Tsum colours, `IMAGE_URL` |
 | `ui/src/lib/ui.svelte.js` | Shared page state: catalog, devices, tooltip, toasts, expanded panel, theme |
 | `ui/src/lib/realtime.js` | PocketBase realtime over SSE, resubscribing on reconnect |
+| `ui/src/lib/card.js` | Copy as an image: the compact card (title, condensed panel, the page's `cardContext`: Tsum, filters, rounds), drawn with html-to-image, onto the clipboard |
 | `ui/src/lib/charts.js` | The d3 charts; each returns legend items |
 | `ui/src/lib/boxes.js` | Skill boxes left to max a Tsum, from the catalog's `boxes` |
 | `ui/src/lib/snapshot/engine.js` | **The server's `/api/stats` answers in the browser**, from a snapshot's monthly files. Held to Go by `TestSnapshotParity` |
