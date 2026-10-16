@@ -70,8 +70,8 @@
         <div class="label">To skill {boxes.next.skill}</div>
         <div class="value">{fmt(boxes.next.boxes)} <span class="unit">{boxes.next.boxes === 1 ? 'box' : 'boxes'}</span></div>
         <div class="note">
-          {fmt(boxes.next.cost)} {boxes.u}{#if boxes.nextTime} ≈ <b>{boxes.nextTime}</b> of play{/if}
-          {#if boxes.max.boxes > boxes.next.boxes} · full skill: {fmt(boxes.max.boxes)} boxes{#if boxes.maxTime} ≈ {boxes.maxTime}{/if}{/if}
+          {fmt(boxes.next.cost)} {boxes.u}{#if boxes.nextTime}{' '}≈ <b>{boxes.nextTime}</b> of play{/if}
+          {#if boxes.max.boxes > boxes.next.boxes} · full skill: {fmt(boxes.max.boxes)} boxes{#if boxes.maxTime}{' '}≈ {boxes.maxTime}{/if}{/if}
         </div>
       {:else}
         <div class="label">Skill</div>

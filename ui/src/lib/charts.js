@@ -473,7 +473,7 @@ export function drawItems(container, mix, metric) {
     [b(fmtRate(s.secs ? s.rateCoins / s.secs : null)), ` ${U}/s`]]);
   rows.append('rect').attr('x', -left).attr('width', inner.w + left + 60).attr('height', y.bandwidth()).attr('fill', 'transparent');
   rows.append('rect').attr('height', y.bandwidth()).attr('width', s => Math.max(2, x(m.get(s))))
-    .attr('rx', Math.min(4, y.bandwidth() / 2)).attr('fill', css('--coin'));
+    .attr('rx', Math.min(4, y.bandwidth() / 2)).attr('fill', css(U === 'medals' ? '--medal' : '--coin'));
   rows.append('text').attr('x', s => x(m.get(s)) + 6).attr('y', y.bandwidth() / 2).attr('dy', '0.35em').attr('class', 'value-label')
     .text(s => m.fmt(m.get(s)));
   const maxChars = Math.max(8, Math.floor((left - 12) / 7));

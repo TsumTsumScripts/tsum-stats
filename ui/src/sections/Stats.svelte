@@ -227,6 +227,7 @@
   cardContext(() => ({
     tsum: picked.length === 1 ? picked[0] : '',
     build: filter.build,
+    unit,
     filters: [
       picked.length > 1 ? picked.map(nameOf).join(' vs ') : '',
       chips.find(c => c.kind === 'time')?.label ?? 'All time',
@@ -383,6 +384,10 @@
 
   // ---- Tables ----
 
+  /** The class of a column of the primary stat: its figures take the coin or medal colour. */
+  const unitCls = () => (filter.coins === 'medals' ? 'medal' : 'coin');
+  /** Whether a rounds column is the primary stat itself (coins: '', 'final' or 'medals'), which a copied card keeps first. */
+  const primaryIs = coins => filter.coins === coins && !net;
   const num = (id, header, get, format = fmt, extra = {}) => ({
     id, header, accessorFn: r => get(r) ?? undefined, cell: r => format(get(r)), sortUndefined: 'last', sortDescFirst: true,
     ...extra, meta: {num: true, ...extra.meta},
@@ -403,8 +408,8 @@
     num('rounds', 'Rounds', r => r.rounds),
     num('players', 'Players', r => r.players, fmt, {meta: {show: () => globalSite, title: 'Contributors who sent rounds of this Tsum in the last 30 days'}}),
     num('share', () => `${U.slice(0, -1)} share`, r => r.share, pct, {meta: {title: "This Tsum's part of the primary stat in the filter"}}),
-    num('coins', () => `Total ${unit}`, r => r.coins, fmt, {meta: {cls: 'coin'}}),
-    num('coinsPerSec', () => `${U}/s`, r => r.coinsPerSec, fmtRate, {meta: {cls: 'coin', title: 'Per second of play'}}),
+    num('coins', () => `Total ${unit}`, r => r.coins, fmt, {meta: {cls: unitCls}}),
+    num('coinsPerSec', () => `${U}/s`, r => r.coinsPerSec, fmtRate, {meta: {cls: unitCls, title: 'Per second of play'}}),
     num('coinsPerHour', () => `${U}/h`, r => (r.coinsPerSec === null ? null : r.coinsPerSec * 3600)),
     num('avgCoins', 'Average', r => r.avgCoins),
     num('medianCoins', approxName('Median'), r => r.medianCoins, fmt, {meta: {title: approxTitle('')}}),
@@ -445,16 +450,16 @@
     {id: 'playedAt', header: 'When', accessorKey: 'playedAt', cell: r => fmtWhen(r.playedAt), enableHiding: false, sortDescFirst: true},
     {id: 'tsum', header: 'Tsum', accessorKey: 'tsum', snippet: roundTsumCell, sortDescFirst: false},
     {id: 'build', header: 'Game', accessorKey: 'build', snippet: buildCell, enableSorting: false},
-    num('baseCoins', 'Base coins', r => r.baseCoins, fmt, {meta: {cls: 'coin'}}),
-    num('finalCoins', 'Final coins', r => r.finalCoins, fmt, {meta: {cls: 'coin'}}),
-    num('netCoins', () => cap(basis), r => netCoins(r), fmt, {enableSorting: false, meta: {cls: 'coin', show: () => net}}),
+    num('baseCoins', 'Base coins', r => r.baseCoins, fmt, {meta: {cls: () => (primaryIs('') ? 'coin primary' : 'coin')}}),
+    num('finalCoins', 'Final coins', r => r.finalCoins, fmt, {meta: {cls: () => (primaryIs('final') ? 'coin primary' : 'coin')}}),
+    num('netCoins', () => cap(basis), r => netCoins(r), fmt, {enableSorting: false, meta: {cls: 'coin primary', show: () => net}}),
     num('coinsPerSec', () => `${U}/s`, r => {
       const c = filter.coins === 'medals' ? r.medals : netCoins(r);
       return c !== null && r.durationSeconds ? c / r.durationSeconds : null;
-    }, fmtRate, {meta: {cls: 'coin', title: 'Per second, of the Primary stat'}}),
+    }, fmtRate, {meta: {cls: () => `${unitCls()} primary`, title: 'Per second, of the Primary stat'}}),
     {id: 'items', header: 'Items', accessorKey: 'items', cell: r => itemsLabel(r.items), enableSorting: false, meta: {cls: 'dim'}},
     num('score', 'Score', r => r.score, fmt, {meta: {cls: 'score'}}),
-    num('medals', 'Medals', r => r.medals, fmt, {meta: {cls: 'medal'}}),
+    num('medals', 'Medals', r => r.medals, fmt, {meta: {cls: () => (primaryIs('medals') ? 'medal primary' : 'medal')}}),
     num('medalsPerSec', 'Medals/s', r => (r.medals !== null && r.durationSeconds ? r.medals / r.durationSeconds : null), fmtRate,
       {meta: {cls: 'medal', hidden: true, show: coinMode}}),
     num('durationSeconds', 'Time', r => r.durationSeconds, fmtDuration),

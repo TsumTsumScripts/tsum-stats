@@ -278,6 +278,7 @@
   cardContext(() => ({
     tsum: filter.id,
     build: filter.build,
+    unit,
     filters: [`${daysLabel[filter.days] ?? 'All time'}${globalSite && filter.days !== 'all' ? ' UTC' : ''}`, cap(basis),
       filter.build ? buildLabel(filter.build) : '', filter.device, filter.skillType ? skillTypeName(filter.skillType) : ''],
     rounds: s?.totals.rounds ?? 0,

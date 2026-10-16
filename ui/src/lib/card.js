@@ -19,8 +19,9 @@ const MAX_ROWS = 10, MAX_COLS = 5;
 const DROP = '.copy-btn, .toggles, .seg, .table-tools, .pager, .col-menu, .expand-btn, .linkish.dim, .target, input, select, textarea';
 
 /**
- * Sets what a page's cards say: get() returns {tsum, build, filters: [text], rounds}.
- * tsum is the one Tsum the page is about, or ''; build names it in that game.
+ * Sets what a page's cards say: get() returns {tsum, build, unit, filters: [text], rounds}.
+ * tsum is the one Tsum the page is about, or ''; build names it in that game;
+ * unit is the primary stat's, 'coins' or 'medals', whose columns a cut table keeps.
  */
 export const cardContext = get => setContext('card', get);
 export const cardInfo = () => getContext('card');
@@ -65,36 +66,71 @@ async function inlineImages(node) {
 }
 
 /**
- * The panel's tables, cut to their first rows and columns (and the column they
- * are sorted by, when it is further right), with a note of what was left out.
- * A column whose cells are controls (the compare ticks) goes, header and all.
+ * The panel's tables, cut to their first rows and to the columns that matter
+ * most, kept in their order: the first (what the row is), the Tsum, the one
+ * they are sorted by, the primary stat's own (cells classed primary), the rest
+ * of its unit's (unit: 'coins' or 'medals', cells classed coin or medal), then
+ * the rest from the left. Each kept cell carries its rank (data-cc-rank) for
+ * fitTables. A note says how
+ * many rows were left out, of the table's whole count (data-rows) when it is
+ * paged. A column whose cells are controls (the compare ticks) goes, header
+ * and all. Head to head keeps every row: they are its figures, not a list.
  */
-function condenseTables(body) {
+function condenseTables(body, unit) {
   for (const table of body.querySelectorAll('table')) {
     const rows = [...table.tBodies].flatMap(b => [...b.rows]);
-    const cut = rows.length - MAX_ROWS;
-    rows.slice(MAX_ROWS).forEach(r => r.remove());
+    const maxRows = table.classList.contains('versus') ? Infinity : MAX_ROWS;
+    const cut = Math.max(rows.length, Number(table.dataset.rows) || 0) - maxRows;
+    rows.slice(maxRows).forEach(r => r.remove());
     const first = table.tBodies[0]?.rows[0];
     const heads = table.tHead?.rows[0] ? [...table.tHead.rows[0].cells] : [];
     const n = Math.max(heads.length, first?.cells.length ?? 0);
-    const controls = new Set(first ? [...first.cells].flatMap((c, i) => (c.classList.contains('pick') ? [i] : [])) : []);
+    const cells = first ? [...first.cells] : [];
+    const controls = new Set(cells.flatMap((c, i) => (c.classList.contains('pick') ? [i] : [])));
     const cols = [...Array(n).keys()].filter(i => !controls.has(i));
-    const keep = new Set(cols.slice(0, MAX_COLS));
     const sorted = heads.findIndex(h => ['ascending', 'descending'].includes(h.getAttribute('aria-sort')));
-    if (sorted >= 0 && !keep.has(sorted) && !controls.has(sorted)) {
-      keep.delete(cols[MAX_COLS - 1]);
-      keep.add(sorted);
-    }
+    const unitCls = unit === 'medals' ? 'medal' : 'coin';
+    const ranked = [
+      cols[0],
+      ...cols.filter(i => cells[i]?.querySelector('.tsum-cell')),
+      ...(cols.includes(sorted) ? [sorted] : []),
+      ...cols.filter(i => cells[i]?.classList.contains('primary')),
+      ...cols.filter(i => cells[i]?.classList.contains(unitCls)),
+      ...cols,
+    ];
+    const order = [...new Set(ranked)].slice(0, MAX_COLS);
+    const keep = new Set(order);
     for (const r of table.rows) {
       // A row of one wide cell (an empty table's note) stays as it is.
       if (r.cells.length < n) continue;
-      [...r.cells].forEach((c, i) => !keep.has(i) && c.remove());
+      [...r.cells].forEach((c, i) => (keep.has(i) ? (c.dataset.ccRank = order.indexOf(i)) : c.remove()));
     }
+    // A fixed layout's column widths go with their columns.
+    const colEls = [...table.querySelectorAll(':scope > colgroup > col')];
+    if (colEls.length === n) colEls.forEach((c, i) => !keep.has(i) && c.remove());
     if (cut > 0) {
       const td = table.tBodies[0].insertRow().insertCell();
       td.colSpan = keep.size;
       td.className = 'dim cc-more';
       td.textContent = `and ${fmt(cut)} more`;
+    }
+  }
+}
+
+/**
+ * A cut table still wider than the card (long Tsum names, wide figures) loses
+ * its least important column, by rank, until it fits; the first two stay.
+ * Run once the card is in the page, so the table can be measured.
+ */
+function fitTables(body) {
+  for (const table of body.querySelectorAll('table')) {
+    for (;;) {
+      if (table.offsetWidth <= body.clientWidth) break;
+      const ranks = [...(table.tBodies[0]?.rows[0]?.cells ?? [])].map(c => Number(c.dataset.ccRank ?? -1));
+      const worst = Math.max(...ranks);
+      if (ranks.length <= 2 || worst < 2) break;
+      table.querySelectorAll(`[data-cc-rank="${worst}"]`).forEach(c => c.remove());
+      table.querySelectorAll('.cc-more').forEach(c => (c.colSpan -= 1));
     }
   }
 }
@@ -111,6 +147,25 @@ function redrawCharts(body, from) {
     const svg = box.querySelector('svg');
     if (svg?.style.height) box.style.height = svg.style.height;
   });
+}
+
+/**
+ * A chart drawn in rows from the top (items, ranked Tsums) fills only part of
+ * its box; the card ends it below what was drawn instead of keeping the box's
+ * empty height. Run once the card is in the page, so the shapes can be measured.
+ */
+function trimCharts(body) {
+  for (const box of body.querySelectorAll('.chart')) {
+    const svg = box.querySelector(':scope > svg');
+    const vb = svg?.viewBox.baseVal;
+    if (!vb?.height || !svg.children.length) continue;
+    const r = svg.getBoundingClientRect();
+    const bottom = Math.max(...[...svg.querySelectorAll('rect, text, line, path, circle, image')].map(c => c.getBoundingClientRect().bottom));
+    const h = Math.ceil((bottom - r.top) * (vb.width / r.width) + 12);
+    if (h >= vb.height - 24) continue;
+    svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.width} ${h}`);
+    svg.style.height = box.style.height = `${h}px`;
+  }
 }
 
 /** What the charts' stylesheet rules set on svg shapes and text, which the picture library leaves out: copied onto each. */
@@ -164,7 +219,7 @@ function buildCard({title, sub, from, info, nameOf}) {
   body.querySelector(':scope > .panel-head')?.remove();
   body.classList.remove('panel', 'expanded', 'anchor', 'wide');
   body.classList.add('cc-body');
-  condenseTables(body);
+  condenseTables(body, info.unit);
   body.querySelectorAll(DROP).forEach(n => n.remove());
   // A Tsum name that is a button in the page is plain text in the picture.
   body.querySelectorAll('button').forEach(b => b.replaceWith(...b.childNodes));
@@ -209,6 +264,8 @@ async function render(opts) {
     const {card, body} = buildCard(opts);
     h.append(card);
     redrawCharts(body, opts.from);
+    trimCharts(body);
+    fitTables(body);
     await inlineImages(card);
     inlineSvgStyles(card);
     const blob = await toBlob(card, {pixelRatio: 2});

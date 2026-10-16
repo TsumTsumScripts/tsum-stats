@@ -7,7 +7,7 @@
   columns: TanStack column defs, plus
     header: string, or () → string for one that changes;
     cell(row) → text, or snippet: a snippet taking the row, for markup;
-    meta: {num, cls, hidden, title, search, show() → false to drop the column for now}.
+    meta: {num, cls (or cls() for one that follows the data), hidden, title, search, show() → false to drop the column for now}.
   key saves the column choices (and a client table's sort and page size) per browser.
 -->
 <script>
@@ -106,6 +106,7 @@
     const {pageIndex, pageSize: size} = ts.pagination;
     const pages = Math.max(1, Math.ceil(n / size));
     return {
+      n,
       headers: table.getHeaderGroups().flatMap(g => g.headers).map(h => ({
         id: h.id, label: headerOf(h.column), sorted: sortName(h.column.getIsSorted()), meta: h.column.columnDef.meta || {},
         toggle: h.column.getCanSort() ? h.column.getToggleSortingHandler() : null,
@@ -126,7 +127,7 @@
   });
 
   let menu;
-  const cellClass = m => [m?.num ? 'num' : '', m?.cls || ''].join(' ').trim() || null;
+  const cellClass = m => [m?.num ? 'num' : '', (typeof m?.cls === 'function' ? m.cls() : m?.cls) || ''].join(' ').trim() || null;
 </script>
 
 <svelte:document onclick={e => { if (menu && !menu.contains(e.target)) menu.open = false; }} />
@@ -149,8 +150,9 @@
     </details>
   </div>
 
+  <!-- data-rows: every row, not just this page's; a copied card says how many it left out. -->
   <div class="table-wrap">
-    <table>
+    <table data-rows={view.n}>
       <thead>
         <tr>
           {#each view.headers as h (h.id)}

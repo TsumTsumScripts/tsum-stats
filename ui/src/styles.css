@@ -804,20 +804,28 @@ td.medal .bd-bar > span.best { background: var(--medal); }
 .cc-body .chart { height: 240px; overflow: visible; }
 .cc-body .chart.tall { height: 340px; }
 .cc-body .chart.square { height: 280px; }
-.cc-body.kpis, .cc-body .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.cc-body .kpi { padding: 9px 11px; box-shadow: none; max-width: none; }
-.cc-body .kpi.hero { grid-column: span 2; grid-row: span 2; }
+/* Three across: four left the labels three lines deep and the notes under the themes' corners. */
+.cc-body.kpis, .cc-body .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.cc-body .kpi { box-shadow: none; max-width: none; }
+.cc-body .kpi.hero { grid-column: span 2; }
 .cc-body .kpi .label { font-size: 11px; }
 .cc-body .kpi .value { font-size: 16px; }
 .cc-body .kpi.hero .value { font-size: 38px; margin-top: 10px; }
 .cc-body .kpi .note { font-size: 10px; }
 .cc-body .kpi::after { transform: scale(0.7); transform-origin: top right; }
-.copy-card .tsum-overview { gap: 8px; }
+/* The Tsum page's tiles and insights run on as one grid, with no gap after the tiles' last row. */
+.cc-body.tsum-overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.cc-body.tsum-overview > .kpis { display: contents; }
 .cc-body .table-wrap { overflow: visible; max-height: none; }
 .cc-body table { font-size: 12px; width: 100%; }
 .cc-body .table-wrap { margin: 0; }
 .cc-body td, .cc-body th { padding: 5px 8px; white-space: nowrap; }
 .cc-body th { font-size: 11px; }
+/* A breakdown's page widths are for its eight columns; the card's five size to their figures. */
+.cc-body .breakdown { table-layout: auto; min-width: 0; }
+/* Head to head: its labels and Tsum names wrap so every Tsum's column fits. */
+.cc-body .versus th { white-space: normal; }
+.cc-body .versus .versus-tsum { font-size: 13px; }
 .cc-body .tsum-name { display: inline-block; max-width: 190px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
 .cc-body .avatar { width: 22px; height: 22px; }
 .cc-more { text-align: center; font-style: italic; }
