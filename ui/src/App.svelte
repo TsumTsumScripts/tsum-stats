@@ -173,7 +173,7 @@
         {/each}
       </nav>
       <div class="spacer"></div>
-      {#if !snapshot}<LivePills />{/if}
+      {#if !readOnly}<LivePills />{/if}
       {#if readOnly}
         <ThemePicker />
         {#if globalSite}
