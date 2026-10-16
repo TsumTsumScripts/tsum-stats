@@ -391,15 +391,13 @@ export function createEngine(loader) {
     // With medals as the primary stat the two sets are the same rounds and column.
     const medals = f.medals ? main : statSet(await select(f, {onlyMedals: true}), 'medals');
 
-    const daily = new Map(), dailyTsums = new Map(), hours = new Map(), mix = new Map();
+    const daily = new Map(), dailyTsums = new Map(), mix = new Map();
     const dayOf = at => sqlTime(at + shift).slice(0, 10);
     each(sel, (sh, i) => {
-      const at = sh.at[i] + shift;
       const day = dayOf(sh.at[i]);
       const tsum = sh.dict.tsum[sh.tsum[i]];
-      const hour = new Date(at * 1000).getUTCHours();
-      for (const [map, key] of [[daily, day], [dailyTsums, day + '\u0000' + tsum], [hours, hour]]) {
-        if (!map.has(key)) map.set(key, {a: acc(), day, tsum, hour});
+      for (const [map, key] of [[daily, day], [dailyTsums, day + '\u0000' + tsum]]) {
+        if (!map.has(key)) map.set(key, {a: acc(), day, tsum});
         add(map.get(key).a, sh, i, c);
       }
       const build = sh.dict.build[sh.build[i]];
@@ -419,9 +417,6 @@ export function createEngine(loader) {
       tsums: main.tsums,
       dailyTsums: [...dailyTsums.values()].sort((a, b) => byKey(a, b, 'day')).map(({a, day, tsum}) => ({
         day, tsum, rounds: a.rounds, coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), coinsPerSec: rate(a),
-      })),
-      hours: [...hours.values()].sort((a, b) => a.hour - b.hour).map(({a, hour}) => ({
-        hour, rounds: a.rounds, coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), coinsPerSec: rate(a),
       })),
       mix: [...mix.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, items}) => ({
         build, tsum, items, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,

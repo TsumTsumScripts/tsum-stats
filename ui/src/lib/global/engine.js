@@ -517,8 +517,6 @@ export function createGlobalEngine(loader) {
       dailyTsums: [...dailyTsums.values()].sort((a, b) => byKey(a, b, 'day')).map(({a, day, tsum}) => ({
         day, tsum, rounds: a.rounds, coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), coinsPerSec: rate(a),
       })),
-      // Bots play around the clock and a day's cells have no hours.
-      hours: [],
       mix: [...mix.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, items}) => ({
         build, tsum, items, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
         rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null,

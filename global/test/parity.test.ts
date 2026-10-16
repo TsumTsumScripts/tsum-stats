@@ -110,7 +110,6 @@ function takeSpreads(want: any, got: any, on: boolean, net: boolean, path: strin
 function compareSummary(c: Case, want: any, got: any): string[] {
   const out: string[] = [];
   const { primary, medals } = c.spreads!;
-  if (got.hours.length) out.push(".hours: the global site has no hours");
   if (got.global?.approx !== true || got.global?.spreads !== primary) out.push(`.global: ${JSON.stringify(got.global)}`);
   // The histogram's buckets come from approximate quartiles, so only its rounds are compared.
   const rounds = (h: any) => h.bins.reduce((n: number, b: any) => n + b.rounds, 0);
@@ -118,7 +117,6 @@ function compareSummary(c: Case, want: any, got: any): string[] {
     out.push(`.histogram: ${rounds(got.histogram)} rounds, the server counts ${want.totals.coinRounds}`);
   }
   for (const v of [want, got]) {
-    delete v.hours;
     delete v.global;
     delete v.histogram;
     v.tsums = sortTsums(v.tsums);

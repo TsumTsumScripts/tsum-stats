@@ -17,7 +17,6 @@ type Summary struct {
 	Daily      []DayStat     `json:"daily"`
 	Tsums      []TsumStat    `json:"tsums"`
 	DailyTsums []DayTsumStat `json:"dailyTsums"`
-	Hours      []HourStat    `json:"hours"`
 	Mix        []MixStat     `json:"mix"`
 	Histogram  CoinHistogram `json:"histogram"`
 	// Medals are the same totals and per-Tsum figures for medals, over the
@@ -102,15 +101,6 @@ type TsumStat struct {
 type DayTsumStat struct {
 	Day         string   `db:"day" json:"day"`
 	Tsum        string   `db:"tsum" json:"tsum"`
-	Rounds      int64    `db:"rounds" json:"rounds"`
-	Coins       *int64   `db:"coins" json:"coins"`
-	AvgCoins    *float64 `db:"avg_coins" json:"avgCoins"`
-	CoinsPerSec *float64 `db:"coins_per_sec" json:"coinsPerSec"`
-}
-
-// HourStat is one hour of the viewer's day, across every day in the filter.
-type HourStat struct {
-	Hour        int      `db:"hour" json:"hour"`
 	Rounds      int64    `db:"rounds" json:"rounds"`
 	Coins       *int64   `db:"coins" json:"coins"`
 	AvgCoins    *float64 `db:"avg_coins" json:"avgCoins"`
@@ -219,11 +209,11 @@ func stddev(v *float64) *float64 {
 }
 
 // Summarize aggregates in SQL, so the page gets a few thousand numbers however
-// many rounds match. tzMinutes shifts the per-day and per-hour buckets to the
+// many rounds match. tzMinutes shifts the per-day buckets to the
 // viewer's clock. The queries run at once, so db must be the pool (app.DB()),
 // not a transaction.
 func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
-	s := Summary{Daily: []DayStat{}, DailyTsums: []DayTsumStat{}, Hours: []HourStat{}, Mix: []MixStat{}}
+	s := Summary{Daily: []DayStat{}, DailyTsums: []DayTsumStat{}, Mix: []MixStat{}}
 	c := f.col()
 	where, p := f.where()
 	p["shift"] = strconv.Itoa(tzMinutes) + " minutes"
@@ -249,11 +239,6 @@ func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
 		func() error {
 			return db.NewQuery(`SELECT ` + day + ` AS day, tsum, COUNT(*) AS rounds, SUM(` + c + `) AS coins,
 				AVG(` + c + `) AS avg_coins, ` + rateExpr(c) + ` AS coins_per_sec FROM ts_rounds` + where + ` GROUP BY day, tsum ORDER BY day`).Bind(p).All(&s.DailyTsums)
-		},
-		func() error {
-			return db.NewQuery(`SELECT CAST(strftime('%H', played_at, {:shift}) AS INTEGER) AS hour, COUNT(*) AS rounds,
-				SUM(` + c + `) AS coins, AVG(` + c + `) AS avg_coins, ` + rateExpr(c) + ` AS coins_per_sec
-				FROM ts_rounds` + where + ` GROUP BY hour ORDER BY hour`).Bind(p).All(&s.Hours)
 		},
 		func() error {
 			return db.NewQuery(`SELECT build, tsum, ` + itemsSQL + ` AS items, COUNT(*) AS rounds, SUM(` + c + `) AS coins,

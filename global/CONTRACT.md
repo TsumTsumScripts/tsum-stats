@@ -909,7 +909,6 @@ cells' rounds.
 - **Histogram**: `histBounds` from the min/max and the approximate q1/q3,
   each bin's rounds put in the bucket holding its value, clamped to its
   Tsum's min and max.
-- `hours` is always `[]`.
 
 **Outlier ranges.** The coin range applies to the primary coin stat as
 `queries.go` has it (base or final, net under `net=1`, base coins in medals

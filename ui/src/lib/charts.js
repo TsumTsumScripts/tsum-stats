@@ -441,50 +441,6 @@ export function drawShare(container, view, rows, ctx, metric) {
   return view === 'sunburst' ? drawSunburst(container, rows, ctx, metric) : drawDonut(container, rows, ctx, metric);
 }
 
-// ---- Radial: coins by hour of day ----
-
-const HOUR = {
-  rate: {get: h => h.coinsPerSec, fmt: fmtRate, name: () => `${U}/s`},
-  avg: {get: h => h.avgCoins, fmt, name: () => `avg ${U}`},
-  rounds: {get: h => h.rounds, fmt, name: () => 'rounds'},
-};
-
-export function drawHours(container, hours, metric) {
-  const m = HOUR[metric] || HOUR.rate;
-  const f = frame(container, {top: 0, right: 0, bottom: 0, left: 0});
-  const {svg, width, height} = f;
-  const byHour = new Map(hours.map(h => [h.hour, h]));
-  const vals = hours.map(m.get).filter(v => v !== null);
-  if (!vals.length) return empty(f);
-  const R = Math.min(width, height) / 2 - 22, r0 = R * 0.34;
-  const g = svg.append('g').attr('transform', `translate(${width / 2},${height / 2})`);
-  const a = d3.scaleBand().domain(d3.range(24)).range([0, 2 * Math.PI]).paddingInner(0.14);
-  const y = d3.scaleRadial().domain([0, d3.max(vals)]).range([r0, R]).nice();
-  for (const t of y.ticks(3).slice(1)) {
-    g.append('circle').attr('r', y(t)).attr('fill', 'none').attr('stroke', css('--grid-line'));
-  }
-  g.append('g').selectAll('path').data(d3.range(24)).join('path').attr('fill', css('--chart-track'))
-    .attr('d', h => d3.arc()({innerRadius: r0, outerRadius: R, startAngle: a(h), endAngle: a(h) + a.bandwidth()}));
-  const bars = g.append('g').selectAll('path').data(d3.range(24).filter(h => byHour.has(h) && m.get(byHour.get(h)) !== null)).join('path')
-    .attr('fill', css('--coin'))
-    .attr('d', h => d3.arc().cornerRadius(3)({innerRadius: r0, outerRadius: Math.max(r0 + 2, y(m.get(byHour.get(h)))), startAngle: a(h), endAngle: a(h) + a.bandwidth()}));
-  hoverable(bars, h => {
-    const s = byHour.get(h);
-    return [[b(`${hourName(h)}–${hourName((h + 1) % 24)}`)], [`${fmt(s.rounds)} rounds`],
-      [b(fmtRate(s.coinsPerSec)), ` ${U}/s · average ${fmt(s.avgCoins)} ${U}`]];
-  });
-  for (const h of [0, 3, 6, 9, 12, 15, 18, 21]) {
-    const ang = a(h) + a.bandwidth() / 2;
-    g.append('text').attr('class', 'tick-label').attr('text-anchor', 'middle').attr('dy', '0.35em')
-      .attr('x', Math.sin(ang) * (R + 12)).attr('y', -Math.cos(ang) * (R + 12)).text(hourName(h));
-  }
-  const best = hours.filter(h => m.get(h) !== null).sort((p, q) => m.get(q) - m.get(p))[0];
-  g.append('text').attr('class', 'center-label').attr('text-anchor', 'middle').attr('dy', '-0.6em').text('Best hour');
-  g.append('text').attr('class', 'center-value sm').attr('text-anchor', 'middle').attr('dy', '0.55em').text(hourName(best.hour));
-  g.append('text').attr('class', 'center-label').attr('text-anchor', 'middle').attr('dy', '2.6em').text(`${m.fmt(m.get(best))} ${m.name()}`);
-  return [];
-}
-
 // ---- Radial rings: coins by boost items used ----
 
 const ITEM_METRIC = {

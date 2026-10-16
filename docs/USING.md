@@ -264,7 +264,6 @@ a card shows initials in their place until it does.
 | Coin efficiency by Tsum | Ranked bars (coins/s, average, median or best); Spread, a box plot of the 12 most played; Bubbles, average coins × coins/s sized by rounds |
 | Coins per day | Stacked by Tsum (top 7 + Other); coins/s; average with the day's range |
 | Where the coins come from | Donut by Tsum (top 8 + Other), or a sunburst of game › Tsum › items used; by coins, rounds or time |
-| By hour of day | Radial bars in the viewer's time: coins/s, average or rounds |
 | By items used | Radial rings for the six most played item sets |
 | Coins per round | Histogram stacked by Tsum, with median, average and P90 lines |
 | Tsums | Table: every statistic per Tsum; search, sort, choose columns, tick rows to compare |
@@ -337,7 +336,7 @@ Incomplete rounds are left out, as on Stats.
   value; chains per scan, max chain length and bubble strategy first. Settings often changed together, so a difference is not proof of cause.
 - **By skill type**, **By script version** and **By device**, when there is
   more than one.
-- The KPI tiles, per-day, histogram, items and hour charts, as on Stats, for
+- The KPI tiles, per-day, histogram and items charts, as on Stats, for
   this Tsum alone, and its ten best rounds by coins, rate or score.
 
 Every panel, and the overview tiles with the insights under them, can be copied
@@ -591,9 +590,9 @@ everyone's rounds, and in the *Midnight Felt* theme until you pick another:
   level with its spread chart, per day, the histogram, by items and *Do the
   items pay?*, and *By script setting* for chains per scan, max chain length
   and bubble strategy. Not there: recent form, boxes to the next skill, other settings,
-  versions, devices, best rounds and By hour of day. The Catalog links each
+  versions, devices and best rounds. The Catalog links each
   played Tsum to it.
-- **Not there:** the Rounds table, By hour of day, Help, and anything about
+- **Not there:** the Rounds table, Help, and anything about
   one player's collection. The Catalog lists every Tsum with its global
   rounds.
 

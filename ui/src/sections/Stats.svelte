@@ -3,7 +3,7 @@
   the rounds table. The server filters, sorts, pages and aggregates, so the
   page never holds more than one page of rounds however many there are.
   On the global site there are no rounds, only their sums per UTC day (the
-  day each round began) and their 2 % bins: no rounds table or hours, filters
+  day each round began) and their 2 % bins: no rounds table, filters
   by skill level and items instead of devices, and coin and medal ranges only.
 -->
 <script>
@@ -17,7 +17,7 @@
   import Panel from '../components/Panel.svelte';
   import Seg from '../components/Seg.svelte';
   import TsumCell from '../components/TsumCell.svelte';
-  import {drawCompare, drawDaily, drawEfficiency, drawHistogram, drawHours, drawItems, drawShare} from '../lib/charts.js';
+  import {drawCompare, drawDaily, drawEfficiency, drawHistogram, drawItems, drawShare} from '../lib/charts.js';
   import {cardContext} from '../lib/card.js';
   import {expand, shared, toast} from '../lib/ui.svelte.js';
   import {
@@ -88,7 +88,7 @@
 
   // Chart views are a per-browser preference, not part of the link.
   const VIEW_KEY = 'tsum-stats.views';
-  const defaultViews = {compare: 'rate', eff: 'rate', effMetric: 'rate', daily: 'stack', share: 'donut', shareMetric: 'coins', hour: 'rate', items: 'rate'};
+  const defaultViews = {compare: 'rate', eff: 'rate', effMetric: 'rate', daily: 'stack', share: 'donut', shareMetric: 'coins', items: 'rate'};
   const views = $state({...defaultViews, ...loadPref(VIEW_KEY, {})});
   function setView(key, v) {
     views[key] = v;
@@ -377,7 +377,6 @@
     eff: [views.eff, byRounds, spreadCtx, views.effMetric],
     daily: [summary.daily, summary.dailyTsums, ctx, views.daily],
     share: [views.share, views.share === 'sunburst' ? summary.mix : summary.tsums, ctx, views.shareMetric],
-    hours: [summary.hours, views.hour],
     items: [summary.mix, views.items],
     hist: [summary.histogram, summary.totals, spreadCtx],
   });
@@ -594,16 +593,7 @@
     </Panel>
 
     <div class="charts anchor" id="s-when">
-      <!-- The global site's cells are whole days, and bots play around the clock anyway. -->
-      {#if !globalSite}
-        <Panel title="By hour of day" sub="your time, across every day in the filter">
-          {#snippet tools()}
-            <Seg sm label="Measure" value={views.hour} onpick={v => setView('hour', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
-          {/snippet}
-          <Chart draw={drawHours} args={args?.hours} {unit} size="square" />
-        </Panel>
-      {/if}
-      <Panel class={globalSite ? 'wide' : ''} title="By items used" sub="every item set, best first">
+      <Panel class="wide" title="By items used" sub="every item set, best first">
         {#snippet tools()}
           <Seg sm label="Measure" value={views.items} onpick={v => setView('items', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
         {/snippet}

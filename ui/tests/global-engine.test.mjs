@@ -405,7 +405,6 @@ async function check(engine, q, {spreads = true, medalSpreads = spreads, range =
   const got = await engine.call('summary', q);
   const want = await expected(ROUNDS, q);
   assert.deepEqual(got.global, {approx: true, spreads, range, ignored}, 'global note');
-  assert.deepEqual(got.hours, [], 'hours');
   // The server's orders, before the open ties are fixed.
   for (const list of [got.tsums, got.medals.tsums, got.mix]) {
     assert.ok(list.every((t, i) => !i || list[i - 1].rounds >= t.rounds), 'most rounds first');
@@ -413,8 +412,8 @@ async function check(engine, q, {spreads = true, medalSpreads = spreads, range =
   assert.ok(got.daily.every((d, i) => !i || got.daily[i - 1].day < d.day), 'days in order');
   assert.ok(got.histogram.bins.every((b, i) => !i || got.histogram.bins[i - 1].from <= b.from), 'buckets in order');
 
-  const {global, hours, histogram, ...rest} = got;
-  const [w, g] = [normalize({...want, hours: undefined, histogram: undefined}), normalize(structuredClone({...rest, hours: undefined, histogram: undefined}))];
+  const {global, histogram, ...rest} = got;
+  const [w, g] = [normalize({...want, histogram: undefined}), normalize(structuredClone({...rest, histogram: undefined}))];
   if (cut) { aboutOnly(w, spreads, medalSpreads); aboutOnly(g); }
   else markBinned(w, q);
   const problems = [...diff({...w, medals: undefined}, {...g, medals: undefined}, spreads), ...diff(w.medals, g.medals, medalSpreads, '.medals')];

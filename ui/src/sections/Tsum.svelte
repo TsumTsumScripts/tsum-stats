@@ -13,7 +13,7 @@
   import Chart from '../components/Chart.svelte';
   import Panel from '../components/Panel.svelte';
   import Seg from '../components/Seg.svelte';
-  import {drawDaily, drawHistogram, drawHours, drawItems, drawSkillSpread} from '../lib/charts.js';
+  import {drawDaily, drawHistogram, drawItems, drawSkillSpread} from '../lib/charts.js';
   import {toMax} from '../lib/boxes.js';
   import {cardContext} from '../lib/card.js';
   import {shared} from '../lib/ui.svelte.js';
@@ -39,7 +39,7 @@
   const filter = $state(blank());
 
   const VIEW_KEY = 'tsum-stats.tsum-views';
-  const views = $state({daily: 'rate', hour: 'rate', items: 'rate', best: 'coins', ...loadPref(VIEW_KEY, {})});
+  const views = $state({daily: 'rate', items: 'rate', best: 'coins', ...loadPref(VIEW_KEY, {})});
   function setView(key, v) {
     views[key] = v;
     savePref(VIEW_KEY, {...views});
@@ -263,7 +263,6 @@
     skills: [detail.skillBins, s.histogram],
     daily: [s.daily, s.dailyTsums, ctx, views.daily],
     hist: [s.histogram, s.totals, ctx],
-    hours: [s.hours, views.hour],
     items: [s.mix, views.items],
   });
   const dailySub = $derived({rate: `${basis} per second of play`, avg: `average ${basis} per round, with the day's lowest–highest band`, stack: `total ${basis} each day`}[views.daily]
@@ -439,21 +438,12 @@
       </Panel>
 
       <div class="charts">
-        <Panel class={globalSite ? 'wide' : ''} title="By items used" sub="every item set, best first">
+        <Panel class="wide" title="By items used" sub="every item set, best first">
           {#snippet tools()}
             <Seg sm label="Measure" value={views.items} onpick={v => setView('items', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
           {/snippet}
           <Chart draw={drawItems} args={args?.items} {unit} size="square" />
         </Panel>
-        <!-- The global site's cells are whole days. -->
-        {#if !globalSite}
-          <Panel title="By hour of day" sub="your time, across every day in the filter">
-            {#snippet tools()}
-              <Seg sm label="Measure" value={views.hour} onpick={v => setView('hour', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
-            {/snippet}
-            <Chart draw={drawHours} args={args?.hours} {unit} size="square" />
-          </Panel>
-        {/if}
       </div>
 
       {#if filter.coins !== 'medals'}

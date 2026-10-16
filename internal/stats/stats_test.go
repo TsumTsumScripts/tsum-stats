@@ -184,8 +184,8 @@ func TestCoinEfficiency(t *testing.T) {
 	if items[1] != 1 || items[3] != 1 || items[0] != 1 || items[-1] != 1 {
 		t.Fatalf("items: %+v", s.Mix)
 	}
-	if s.Histogram.Width != 20 || s.Histogram.Cap != nil || len(s.Hours) != 1 || s.Hours[0].Hour != 10 {
-		t.Fatalf("histogram %d, hours %+v", s.Histogram.Width, s.Hours)
+	if s.Histogram.Width != 20 || s.Histogram.Cap != nil {
+		t.Fatalf("histogram %d", s.Histogram.Width)
 	}
 
 	// abu's 5000 is past Q3 + 1.5 × IQR, so it lands in the capped last bucket.
