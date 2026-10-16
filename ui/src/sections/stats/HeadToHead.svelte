@@ -30,7 +30,7 @@
       ...(coins !== 'medals' ? [
         ['Medals per hour', r => perHour(r.m), fmt, 'high', 'medal'],
         ['Average medals', r => r.m?.avgCoins, fmt, 'high', 'medal'],
-        ['Rounds with medals', r => (r.m && r.rounds ? r.m.rounds / r.rounds : null), pct, 'high', 'medal'],
+        ['Rounds that earn medals', r => (r.m?.rounds ? r.m.earnedRounds / r.m.rounds : null), pct, 'high', 'medal'],
       ] : []),
     ];
     const wins = new Map(picked.map(id => [id, 0]));

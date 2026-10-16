@@ -33,7 +33,7 @@
   const globalSite = isGlobal();
 
   // coins is the primary stat: '' base coins (before the coin bonus), 'final' final
-  // coins, 'medals' medals (the server then keeps only rounds that earned medals).
+  // coins, 'medals' medals (the server then keeps medal Tsums' rounds, one that earned none as 0).
   // net '1' subtracts what the round's boost items cost from its coins (not from medals).
   // tsum is a comma list: one Tsum focuses on it, several compare them head to head.
   // device is a comma list of device names; empty is every device.
@@ -369,7 +369,7 @@
     ...extra, meta: {num: true, ...extra.meta},
   });
 
-  // The same figures for medals, over the rounds that earned any (row.m). With
+  // The same figures for medals, over medal Tsums' rounds, 0s included (row.m). With
   // medals as the primary stat the columns above already are these, so they drop out.
   const medal = (id, header, get, format = fmt, meta = {}) =>
     num(id, header, r => (r.m ? get(r.m) : null), format, {meta: {show: coinMode, ...meta}});
@@ -400,12 +400,12 @@
     num('avgSeconds', 'Avg time', r => r.avgSeconds, fmtDuration),
     num('avgScore', 'Avg score', r => r.avgScore, fmt, {meta: {cls: 'score'}}),
     num('maxScore', 'Best score', r => r.maxScore, fmt, {meta: {hidden: true}}),
-    medal('medalRounds', 'Medal rounds', m => m.rounds, fmt, {hidden: true, title: 'Rounds that earned medals'}),
+    medal('medalRounds', 'Medal rounds', m => m.earnedRounds, fmt, {hidden: true, title: 'Rounds that earned medals'}),
     medal('medalShare', 'Medal share', m => m.share, pct, {hidden: true, title: "This Tsum's part of all medals in the filter"}),
     medal('medals', 'Total medals', m => m.coins, fmt, {cls: 'medal'}),
-    medal('medalsPerSec', 'Medals/s', m => m.coinsPerSec, fmtRate, {cls: 'medal', hidden: true, title: 'Medals per second of play, in rounds that earned medals'}),
+    medal('medalsPerSec', 'Medals/s', m => m.coinsPerSec, fmtRate, {cls: 'medal', hidden: true, title: 'Medals per second of play, a round that earned none counting as 0'}),
     medal('medalsPerHour', 'Medals/h', m => (m.coinsPerSec === null ? null : m.coinsPerSec * 3600), fmt, {cls: 'medal'}),
-    medal('avgMedals', 'Avg medals', m => m.avgCoins, fmt, {cls: 'medal', title: 'Average of the rounds that earned medals'}),
+    medal('avgMedals', 'Avg medals', m => m.avgCoins, fmt, {cls: 'medal', title: 'Average medals a round, a round that earned none counting as 0'}),
     medal('medianMedals', approxName('Median medals'), m => m.medianCoins, fmt, {hidden: true, title: approxTitle('')}),
     medal('minMedals', 'Lowest medals', m => m.minCoins, fmt, {hidden: true}),
     medal('maxMedals', 'Highest medals', m => m.maxCoins, fmt, {hidden: true}),

@@ -216,19 +216,26 @@ func TestMedalStat(t *testing.T) {
 	add("3", m(0), 60)
 	add("4", nil, 60)
 
-	// Only the two rounds that earned medals count, and the figures are medals.
+	// A Tsum that never earns medals has no medal figures at all.
+	if err := upsertRound(app.DB(), Round{ID: "5", PlayedAt: "2026-09-01 10:00:00", Tsum: "pooh", Build: "global",
+		BaseCoins: m(900), Medals: m(0), Duration: new(60.0), Source: SourceCSV}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The medal Tsum's rounds with medals read count, the one that earned none
+	// as 0, so the rate is over all three rounds' time; the figures are medals.
 	s, err := Summarize(app.DB(), Filter{Medals: true}, 0)
-	if err != nil || s.Totals.Rounds != 2 || *s.Totals.TotalCoins != 8 || *s.Totals.MinCoins != 3 || *s.Totals.CoinsPerSec != 8.0/120 {
+	if err != nil || s.Totals.Rounds != 3 || *s.Totals.TotalCoins != 8 || *s.Totals.MinCoins != 0 || *s.Totals.CoinsPerSec != 8.0/180 {
 		t.Fatalf("medal totals: %+v %v", s.Totals, err)
 	}
-	if s.Medals.Totals.Rounds != 2 || len(s.Medals.Tsums) != 1 {
+	if s.Medals.Totals.Rounds != 3 || s.Totals.Earned != 2 || len(s.Medals.Tsums) != 1 || s.Medals.Tsums[0].Earned != 2 {
 		t.Fatalf("medal set in medal mode: %+v", s.Medals)
 	}
 
-	// With coins primary, the medal set still counts only the rounds with medals.
+	// With coins primary, the medal set counts the same rounds.
 	s, _ = Summarize(app.DB(), Filter{}, 0)
 	mt := s.Medals.Totals
-	if s.Totals.Rounds != 4 || *s.Totals.TotalCoins != 4000 || mt.Rounds != 2 || *mt.TotalCoins != 8 || *mt.Median != 3 || *s.Medals.Tsums[0].MaxCoins != 5 {
+	if s.Totals.Rounds != 5 || *s.Totals.TotalCoins != 4900 || mt.Rounds != 3 || *mt.TotalCoins != 8 || *mt.Median != 3 || *s.Medals.Tsums[0].MaxCoins != 5 {
 		t.Fatalf("medal set beside coins: %+v / %+v", s.Totals, mt)
 	}
 	if f := ParseFilter(url.Values{"coins": {"medals"}}); !f.Medals || f.FinalCoins {

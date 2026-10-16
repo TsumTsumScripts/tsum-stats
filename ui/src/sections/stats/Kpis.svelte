@@ -6,7 +6,7 @@
   import CopyButton from '../../components/CopyButton.svelte';
   import {cap, fmt, fmtDuration, fmtRate, pct} from '../../lib/util.js';
 
-  // t: the summary's totals; m: the same over rounds that earned medals.
+  // t: the summary's totals; m: the same over medal Tsums' rounds, 0s included.
   // noMedals drops the medal tiles when no round earned any (a Tsum that never does).
   // approx marks the median, quartile and P90 as estimates (the global site's);
   // missing says why they are not there, when they are not.
@@ -29,15 +29,15 @@
     [`Highest ${u}`, fmt(t.maxCoins), unitCls, spread('one in ten over', t.p90Coins)],
     ['Spread', t.stdCoins === null ? '—' : `± ${fmt(t.stdCoins)}`, '', `standard deviation of ${u}`],
     [`Total ${u}`, fmt(t.totalCoins), unitCls, medals || bonus === null ? '' : `coin bonus added ${pct(bonus)}`],
-    [medals ? 'Rounds with medals' : 'Rounds', fmt(t.rounds), '', t.totalSeconds ? `${fmtRate(t.totalSeconds / 3600)} h played` : ''],
+    ['Rounds', fmt(t.rounds), '', [t.totalSeconds ? `${fmtRate(t.totalSeconds / 3600)} h played` : '', medals && t.rounds ? `${pct(t.earnedRounds / t.rounds)} earned medals` : ''].filter(Boolean).join(' · ')],
     ['Average round', fmtDuration(t.avgSeconds), '', ''],
     ['Average score', fmt(t.avgScore), 'score', t.maxScore === null ? '' : `best ${fmt(t.maxScore)}`],
-    // Medals beside coins, over the rounds that earned any; with medals primary the tiles above are these.
+    // Medals beside coins, over medal Tsums' rounds (0s included); with medals primary the tiles above are these.
     ...(medals || (noMedals && !m.rounds) ? [] : [
       ['Medals per hour', fmt(perHour(m.coinsPerSec)), 'medal', m.coinsPerSec === null ? '' : `${fmtRate(m.coinsPerSec)} a second`],
       ['Average medals', fmt(m.avgCoins), 'medal', m.medianCoins === null && m.rounds ? missing : spread('median', m.medianCoins)],
       ['Highest medals', fmt(m.maxCoins), 'medal', spread('one in ten over', m.p90Coins)],
-      ['Total medals', fmt(m.totalCoins), 'medal', t.rounds ? `from ${fmt(m.rounds)} rounds (${pct(m.rounds / t.rounds)})` : ''],
+      ['Total medals', fmt(m.totalCoins), 'medal', m.rounds ? `earned in ${fmt(m.earnedRounds)} of ${fmt(m.rounds)} rounds (${pct(m.earnedRounds / m.rounds)})` : ''],
     ]),
   ]);
 </script>

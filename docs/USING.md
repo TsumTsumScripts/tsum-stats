@@ -158,8 +158,11 @@ round time, counting only rounds that have both. The rail's **Primary stat**
 switch picks what every figure and chart count:
 **Base coins** (before the coin bonus, the default), **Final coins**
 (`coins=final` in the link and the `/api/stats/summary` and `/api/stats/rounds`
-queries) or **Medals** (`coins=medals`), which also keeps only rounds that
-earned medals (`medals > 0`) and relabels the page. Coins per hour is the same
+queries) or **Medals** (`coins=medals`), which also keeps only medal Tsums'
+rounds with medals read, and relabels the page. A round that earned no medals
+counts as 0, so medals an hour is what the Tsum pays over all its play, not
+over its lucky rounds; the Rounds tile says what share earned any. Coins per
+hour is the same
 rate × 3600. The spread figures (quartiles, median, 90th percentile) are
 nearest-rank values, so each is a real round's coins.
 
@@ -192,7 +195,8 @@ the page's alone: every total, share and other chart still counts their
 rounds.
 
 With coins as the primary stat, the summary also carries `medals`: the same
-totals and per-Tsum figures for medals, over the rounds that earned any. They
+totals and per-Tsum figures for medals, over the same medal Tsums' rounds,
+0s included, with `earnedRounds` the rounds that earned any. They
 fill the medal KPI tiles and the Tsum table's medal columns, which drop out in
 Medals mode because the coin columns already show medals.
 

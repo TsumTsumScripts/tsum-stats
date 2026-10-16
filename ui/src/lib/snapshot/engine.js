@@ -188,7 +188,8 @@ export function createEngine(loader) {
         if (!within(coins[i], f.minCoins, f.maxCoins)) continue;
         if (!within(sh.score[i], f.minScore, f.maxScore)) continue;
         if (medalRange && medalTsum[sh.tsum[i]] && !within(sh.medals[i], f.minMedals, f.maxMedals)) continue;
-        if ((f.medals || onlyMedals) && !(sh.medals[i] !== null && sh.medals[i] > 0)) continue;
+        // Medal figures (queries.go: medalRoundsSQL): a medal Tsum's rounds with medals read, 0s included.
+        if ((f.medals || onlyMedals) && !(sh.medals[i] !== null && medalTsum[sh.tsum[i]])) continue;
         idx.push(i);
       }
       if (idx.length) out.push({sh, idx});
@@ -206,7 +207,7 @@ export function createEngine(loader) {
     scoreN: 0, scoreSum: 0, scoreMin: null, scoreMax: null,
     baseN: 0, baseSum: 0, finalN: 0, finalSum: 0,
     secsN: 0, secsSum: 0, rateCoins: 0, rateSecs: 0, rateN: 0,
-    medalsN: 0, medalsSum: 0, first: null, last: null,
+    medalsN: 0, medalsSum: 0, earned: 0, first: null, last: null,
   });
 
   function add(a, sh, i, c) {
@@ -232,7 +233,7 @@ export function createEngine(loader) {
     // Rate: coins and seconds over the rounds that have both.
     if (v !== null && d !== null && d > 0) { a.rateN++; a.rateCoins += v; a.rateSecs += d; }
     const m = sh.medals[i];
-    if (m !== null) { a.medalsN++; a.medalsSum += m; }
+    if (m !== null) { a.medalsN++; a.medalsSum += m; if (m > 0) a.earned++; }
     const at = sh.at[i];
     if (a.first === null || at < a.first) a.first = at;
     if (a.last === null || at > a.last) a.last = at;
@@ -250,7 +251,7 @@ export function createEngine(loader) {
     avgBaseCoins: avg(a.baseSum, a.baseN), avgFinalCoins: avg(a.finalSum, a.finalN),
     coinRounds: a.n, totalCoins: a.n ? a.sum : null,
     totalSeconds: a.secsN ? a.secsSum : null, avgSeconds: avg(a.secsSum, a.secsN),
-    coinsPerSec: rate(a), totalMedals: a.medalsN ? a.medalsSum : null,
+    coinsPerSec: rate(a), totalMedals: a.medalsN ? a.medalsSum : null, earnedRounds: a.earned,
     first: a.first === null ? null : sqlTime(a.first), last: a.last === null ? null : sqlTime(a.last),
   });
 
@@ -259,7 +260,7 @@ export function createEngine(loader) {
     avgCoins: avg(a.sum, a.n), minCoins: a.min, maxCoins: a.max,
     avgBaseCoins: avg(a.baseSum, a.baseN), avgFinalCoins: avg(a.finalSum, a.finalN),
     coins: a.n ? a.sum : null, totalSeconds: a.secsN ? a.secsSum : null, avgSeconds: avg(a.secsSum, a.secsN),
-    coinsPerSec: rate(a),
+    coinsPerSec: rate(a), earnedRounds: a.earned,
   });
 
   /**

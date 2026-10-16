@@ -807,8 +807,12 @@ cells' sums (per-cell `n` = `rounds` for base and final; net coins are base or
 final less `cost(items)` per round, so a cell's net sum = sum − rounds·cost,
 min/max = min/max − cost, sq = sq − 2·cost·sum + rounds·cost², and a cell with
 `items = -1` has no net coins; medals use the `medals*` columns with the rate
-over `medalsSecs`). Medals mode (`coins=medals`) and the `medals` set use only
-`medal = 1` cells.
+over `medalsSecs`). Medals mode (`coins=medals`) and the `medals` set use the
+manifest's `medalTsums`' cells with `medalsN > 0`, `medal = 0` ones included
+(`summary.go: medalRoundsSQL`): a round that earned none counts as 0. Such a
+cell has no medal bins (§5), but every round in it is a 0, so the page stands
+them all in bin 0 with the cell's own sums. `earnedRounds` is the `medal = 1`
+cells' rounds.
 
 - **Exact**: every count, sum, average, min, max, `coinsPerSec`,
   `stdCoins` (population variance from `Σsq/n − (Σ/n)²`), `first`, `last`,

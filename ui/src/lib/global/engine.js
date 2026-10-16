@@ -87,6 +87,13 @@ function decodePart(files) {
       const i = at.get(key(b, j));
       if (i !== undefined) for (const k of KINDS) bins[k][i] = binList(b[k][j]);
     }
+    // A cell of rounds that earned no medals has no medal bins (CONTRACT §5),
+    // but every one of its rounds read is a 0: its one bin is the cell's own.
+    for (let i = 0; i < c.n; i++) {
+      if (c.medal[i] || !c.medalsN[i] || bins.medals[i] === null || bins.medals[i].length) continue;
+      const all = c.medalsN[i] === c.rounds[i];
+      bins.medals[i] = all ? [[0, c.rounds[i], c.secs[i], c.scoreSum[i], c.baseSum[i], c.finalSum[i], 0]] : null;
+    }
   }
   return cellsOf(c, bins);
 }
@@ -241,8 +248,8 @@ export function createGlobalEngine(loader) {
   /**
    * The cells a filter keeps, as {p, idx}: a part's cells and the cell numbers
    * in it. Under an outlier range, each part's kept cells are cut by it into
-   * cells of their own. onlyMedals keeps the rounds that earned medals, as
-   * medals mode does.
+   * cells of their own. onlyMedals keeps medal Tsums' rounds with medals
+   * read, 0s included (queries.go: medalRoundsSQL), as medals mode does.
    */
   async function select(f, {onlyMedals = false} = {}) {
     const sets = {
@@ -250,13 +257,13 @@ export function createGlobalEngine(loader) {
       skill: f.skills.length ? new Set(f.skills) : null,
       items: f.items.length ? new Set(f.items) : null,
     };
-    const medalTsums = f.range?.kind === 'medals' ? new Set((await getManifest()).medalTsums ?? []) : null;
+    const medalTsums = new Set((await getManifest()).medalTsums ?? []);
     const out = [];
     for (const c of await partsFor(f)) {
       const idx = [];
       for (let i = 0; i < c.n; i++) {
         if (!keeps(f, c, i, sets)) continue;
-        if ((f.medals || onlyMedals) && !c.medal[i]) continue;
+        if ((f.medals || onlyMedals) && !(c.medalsN[i] && medalTsums.has(c.tsum[i]))) continue;
         idx.push(i);
       }
       if (!idx.length) continue;
@@ -282,7 +289,7 @@ export function createGlobalEngine(loader) {
   const acc = () => ({
     rounds: 0, n: 0, sum: 0, sumSq: 0, sqKnown: true, min: null, max: null,
     scoreSum: 0, scoreMin: null, scoreMax: null, baseSum: 0, finalSum: 0, secs: 0,
-    rateCoins: 0, rateSecs: 0, rateN: 0, medalsN: 0, medalsSum: 0, first: null, last: null,
+    rateCoins: 0, rateSecs: 0, rateN: 0, medalsN: 0, medalsSum: 0, earned: 0, first: null, last: null,
   });
 
   function add(a, c, i, s) {
@@ -302,6 +309,7 @@ export function createGlobalEngine(loader) {
     if (a.scoreMax === null || c.scoreMax[i] > a.scoreMax) a.scoreMax = c.scoreMax[i];
     a.baseSum += c.baseSum[i]; a.finalSum += c.finalSum[i]; a.secs += c.secs[i];
     a.medalsN += c.medalsN[i]; a.medalsSum += c.medalsSum[i];
+    if (c.medal[i]) a.earned += c.rounds[i];
     if (a.first === null || c.first[i] < a.first) a.first = c.first[i];
     if (a.last === null || c.last[i] > a.last) a.last = c.last[i];
   }
@@ -319,7 +327,7 @@ export function createGlobalEngine(loader) {
     avgBaseCoins: avg(a.baseSum, a.rounds), avgFinalCoins: avg(a.finalSum, a.rounds),
     coinRounds: a.n, totalCoins: a.n ? a.sum : null,
     totalSeconds: a.rounds ? a.secs : null, avgSeconds: avg(a.secs, a.rounds),
-    coinsPerSec: rate(a), totalMedals: a.medalsN ? a.medalsSum : null,
+    coinsPerSec: rate(a), totalMedals: a.medalsN ? a.medalsSum : null, earnedRounds: a.earned,
     first: a.first === null ? null : sqlTime(a.first), last: a.last === null ? null : sqlTime(a.last),
   });
 
@@ -328,7 +336,7 @@ export function createGlobalEngine(loader) {
     avgCoins: avg(a.sum, a.n), minCoins: a.min, maxCoins: a.max,
     avgBaseCoins: avg(a.baseSum, a.rounds), avgFinalCoins: avg(a.finalSum, a.rounds),
     coins: a.n ? a.sum : null, totalSeconds: a.rounds ? a.secs : null, avgSeconds: avg(a.secs, a.rounds),
-    coinsPerSec: rate(a),
+    coinsPerSec: rate(a), earnedRounds: a.earned,
   });
 
   /**

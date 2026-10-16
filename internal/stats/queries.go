@@ -31,12 +31,12 @@ type Filter struct {
 	// recorded before items were has no net coins.
 	Net bool
 	// Medals makes medals the primary stat instead of coins, and keeps only
-	// rounds that earned medals.
+	// medal Tsums' rounds with a medal figure (medalRoundsSQL), 0s included.
 	Medals bool
 
 	// stat, when set, is the column the summary aggregates instead of coin();
-	// onlyMedals keeps only rounds that earned medals. Both are for the
-	// summary's medal figures, never read from the request.
+	// onlyMedals keeps only medal Tsums' rounds, as Medals does. Both are for
+	// the summary's medal figures, never read from the request.
 	stat       string
 	onlyMedals bool
 }
@@ -49,7 +49,7 @@ func (f Filter) col() string {
 	return f.coin()
 }
 
-// medalView is f for the summary's medal figures: medals, over rounds that earned any.
+// medalView is f for the summary's medal figures: medals, over medal Tsums' rounds.
 func (f Filter) medalView() Filter {
 	f.stat, f.onlyMedals = "medals", true
 	return f
@@ -79,6 +79,11 @@ func (f Filter) coins() string {
 // medalTsumsSQL is every Tsum that has earned medals in any round. Its rounds
 // need a medal figure to be complete; other Tsums' rounds may leave it blank.
 const medalTsumsSQL = "SELECT tsum FROM ts_rounds WHERE medals > 0"
+
+// medalRoundsSQL keeps the rounds medal figures count: a medal Tsum's, with
+// medals read. A round that earned none counts as 0, so a medal rate is what
+// the Tsum earns an hour, not what its lucky rounds do.
+const medalRoundsSQL = "medals IS NOT NULL AND tsum IN (" + medalTsumsSQL + ")"
 
 // completeSQL keeps rounds with an identified Tsum and every figure read.
 const completeSQL = "tsum <> '' AND score IS NOT NULL AND base_coins IS NOT NULL AND final_coins IS NOT NULL" +
@@ -195,7 +200,7 @@ func (f Filter) where() (string, dbx.Params) {
 		parts = append(parts, "(tsum NOT IN ("+medalTsumsSQL+") OR ("+strings.Join(in, " AND ")+"))")
 	}
 	if f.Medals || f.onlyMedals {
-		parts = append(parts, "medals > 0")
+		parts = append(parts, medalRoundsSQL)
 	}
 	if len(parts) == 0 {
 		return "", p

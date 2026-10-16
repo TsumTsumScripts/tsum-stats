@@ -201,7 +201,7 @@
           <div class="field">Game
             <Seg label="Game build" value={filter.build} onpick={v => set({build: v})} options={[['', 'All'], ['global', 'INTL'], ['jp', 'JP']]} />
           </div>
-          <div class="field" title="Base coins are before the coin bonus; final coins are what the round paid; medals counts only rounds that earned medals">Primary stat
+          <div class="field" title="Base coins are before the coin bonus; final coins are what the round paid; medals counts the rounds of Tsums that earn them, a round that earned none as 0">Primary stat
             <Seg label="Primary stat" value={filter.coins} onpick={v => set({coins: v})}
               options={[['', 'Base', 'coin'], ['final', 'Final', 'coin'], ['medals', '', 'medal', 'Medals']]} />
             {#if filter.coins !== 'medals'}

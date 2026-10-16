@@ -49,6 +49,9 @@ type Totals struct {
 	AvgSecs     *float64 `db:"avg_secs" json:"avgSeconds"`
 	CoinsPerSec *float64 `db:"coins_per_sec" json:"coinsPerSec"`
 	TotalMedals *int64   `db:"total_medals" json:"totalMedals"`
+	// Earned is the rounds that earned medals (medals > 0): with a medal Tsum's
+	// 0-medal rounds counted, how often its rounds pay out.
+	Earned      int64    `db:"earned" json:"earnedRounds"`
 	First       *string  `db:"first" json:"first"`
 	Last        *string  `db:"last" json:"last"`
 	Spread
@@ -91,6 +94,7 @@ type TsumStat struct {
 	TotalSecs   *float64 `db:"total_secs" json:"totalSeconds"`
 	AvgSecs     *float64 `db:"avg_secs" json:"avgSeconds"`
 	CoinsPerSec *float64 `db:"coins_per_sec" json:"coinsPerSec"`
+	Earned      int64    `db:"earned" json:"earnedRounds"`
 	Spread
 }
 
@@ -280,12 +284,12 @@ func statSet(db dbx.Builder, f Filter) (StatSet, error) {
 		func() error {
 			return db.NewQuery(`SELECT COUNT(*) AS rounds, AVG(score) AS avg_score, MAX(score) AS max_score, ` + coinStats(c) + `,
 				COUNT(` + c + `) AS coin_rounds, SUM(` + c + `) AS total_coins, SUM(duration_seconds) AS total_secs,
-				AVG(duration_seconds) AS avg_secs, SUM(medals) AS total_medals, MIN(played_at) AS first, MAX(played_at) AS last
+				AVG(duration_seconds) AS avg_secs, SUM(medals) AS total_medals, `+earnedSQL+`, MIN(played_at) AS first, MAX(played_at) AS last
 				FROM ts_rounds` + where).Bind(p).One(&set.Totals)
 		},
 		func() error {
 			return db.NewQuery(`SELECT tsum, COUNT(*) AS rounds, AVG(score) AS avg_score, MAX(score) AS max_score, ` + coinStats(c) + `,
-				SUM(` + c + `) AS coins, SUM(duration_seconds) AS total_secs, AVG(duration_seconds) AS avg_secs
+				SUM(` + c + `) AS coins, SUM(duration_seconds) AS total_secs, AVG(duration_seconds) AS avg_secs, ` + earnedSQL + `
 				FROM ts_rounds` + where + ` GROUP BY tsum ORDER BY rounds DESC`).Bind(p).All(&set.Tsums)
 		},
 		func() (err error) { spreads, err = coinSpreads(db, f, "tsum"); return err },
@@ -308,6 +312,9 @@ func statSet(db dbx.Builder, f Filter) (StatSet, error) {
 	}
 	return set, nil
 }
+
+// earnedSQL counts the rounds that earned medals.
+const earnedSQL = "COUNT(CASE WHEN medals > 0 THEN 1 END) AS earned"
 
 // runAll runs the steps at once and returns the first error. Each step fills
 // its own field; on 50k rounds this takes the summary from about 0.7 s one
