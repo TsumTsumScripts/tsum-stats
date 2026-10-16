@@ -12,7 +12,8 @@ export const fmt1 = v => (v === null || v === undefined ? '—' : nf1.format(v))
 
 export function fmtDuration(sec) {
   if (sec === null || sec === undefined) return '—';
-  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  // Rounded to the second first, so 239.6 s is 4:00, not 3:60.
+  const r = Math.round(sec), m = Math.floor(r / 60), s = r % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
