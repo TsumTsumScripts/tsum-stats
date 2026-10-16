@@ -344,6 +344,8 @@ function binnedSpreads(rounds, valueOf, costOf, lo, hi) {
 }
 
 /** A round's stat before any items' cost, and the cost (0 unless net; null when its items are unknown). */
+/** A round medal figures count (queries.go: medalRoundsSQL): a medal Tsum's, with medals read, 0s included. */
+const medalRound = r => r.medals !== null && MEDAL_TSUMS.has(r.tsum);
 const grossOf = (r, q) => (q.coins === 'medals' ? r.medals : q.coins === 'final' ? r.final : r.base);
 const costOf = (r, q) => (q.coins !== 'medals' && q.net === '1' ? itemCost(r.items < 0 ? null : r.items) : 0);
 
@@ -359,7 +361,7 @@ function expectedHistogram(rounds, q, got) {
   const groups = new Map();
   for (const r of cutRounds(rounds.filter(r => keepRound(r, q)), q)) {
     const v = grossOf(r, q), cost = costOf(r, q);
-    if (v === null || cost === null || (q.coins === 'medals' && !(v > 0))) continue;
+    if (v === null || cost === null || (q.coins === 'medals' && !medalRound(r))) continue;
     const k = `${r.tsum}|${bin(v)}|${cost}`;
     if (!groups.has(k)) groups.set(k, {tsum: r.tsum, cost, n: 0, sum: 0});
     const g = groups.get(k);
@@ -387,9 +389,9 @@ function markBinned(want, q) {
     for (const t of set.tsums) Object.assign(t, {net, binned: clampTo(of(rounds.filter(r => r.tsum === t.tsum)), t)});
   };
   const clampTo = (s, g) => s && Object.fromEntries(Object.entries(s).map(([k, v]) => [k, Math.min(g.maxCoins, Math.max(g.minCoins, v))]));
-  const primary = q.coins === 'medals' ? kept.filter(r => r.medals > 0) : kept;
+  const primary = q.coins === 'medals' ? kept.filter(medalRound) : kept;
   mark(want, primary, r => grossOf(r, q), r => costOf(r, q), q.net === '1' && q.coins !== 'medals');
-  mark(want.medals, kept.filter(r => r.medals > 0), r => r.medals, () => 0, false);
+  mark(want.medals, kept.filter(medalRound), r => r.medals, () => 0, false);
 }
 /** markBinned's notes, taken out again. */
 const unmark = set => [set.totals, ...set.tsums].forEach(g => { delete g.net; delete g.binned; });
@@ -541,7 +543,11 @@ test('a Tsum with one round has its spreads exact', async () => {
   // Its bin's middle is off the round's own figure; the group's lowest and highest pull it back.
   const solo = {...ROUNDS[0], tsum: 'solo', base: 12345, final: 23456, medals: 150, playedAt: day0 + 3600};
   assert.notEqual(mid(bin(solo.base)), solo.base);
-  const engine = createGlobalEngine(loaderOf(publish([solo, ...ROUNDS]).files));
+  // A medal Tsum, as the catalog says, so medals mode counts it.
+  const published = publish([solo, ...ROUNDS]).files;
+  const man = JSON.parse(published.get('manifest.json'));
+  published.set('manifest.json', JSON.stringify({...man, medalTsums: [...man.medalTsums, 'solo']}));
+  const engine = createGlobalEngine(loaderOf(published));
   for (const [coins, v] of [['', 12345], ['final', 23456], ['medals', 150]]) {
     const s = await engine.call('summary', {tsum: 'solo', coins});
     for (const k of SPREADS) assert.equal(s.totals[k], v, `${coins || 'base'} ${k}`);
