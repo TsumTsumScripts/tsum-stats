@@ -5,3 +5,5 @@ ui/node_modules/
 build/
 # A local `go run . serve`
 pb_data/
+# Finder's folder metadata on macOS: the global stats deploy refuses a tree with files the commit lacks
+.DS_Store
