@@ -51,9 +51,9 @@ type Totals struct {
 	TotalMedals *int64   `db:"total_medals" json:"totalMedals"`
 	// Earned is the rounds that earned medals (medals > 0): with a medal Tsum's
 	// 0-medal rounds counted, how often its rounds pay out.
-	Earned      int64    `db:"earned" json:"earnedRounds"`
-	First       *string  `db:"first" json:"first"`
-	Last        *string  `db:"last" json:"last"`
+	Earned int64   `db:"earned" json:"earnedRounds"`
+	First  *string `db:"first" json:"first"`
+	Last   *string `db:"last" json:"last"`
 	Spread
 }
 
@@ -284,7 +284,7 @@ func statSet(db dbx.Builder, f Filter) (StatSet, error) {
 		func() error {
 			return db.NewQuery(`SELECT COUNT(*) AS rounds, AVG(score) AS avg_score, MAX(score) AS max_score, ` + coinStats(c) + `,
 				COUNT(` + c + `) AS coin_rounds, SUM(` + c + `) AS total_coins, SUM(duration_seconds) AS total_secs,
-				AVG(duration_seconds) AS avg_secs, SUM(medals) AS total_medals, `+earnedSQL+`, MIN(played_at) AS first, MAX(played_at) AS last
+				AVG(duration_seconds) AS avg_secs, SUM(medals) AS total_medals, ` + earnedSQL + `, MIN(played_at) AS first, MAX(played_at) AS last
 				FROM ts_rounds` + where).Bind(p).One(&set.Totals)
 		},
 		func() error {
