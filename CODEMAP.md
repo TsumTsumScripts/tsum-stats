@@ -166,7 +166,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `ui/src/lib/util.js` | Formats, `api()`, the catalog, Tsum colours, `IMAGE_URL` |
 | `ui/src/lib/ui.svelte.js` | Shared page state: catalog, devices, tooltip, toasts, expanded panel, theme |
 | `ui/src/lib/realtime.js` | PocketBase realtime over SSE, resubscribing on reconnect |
-| `ui/src/lib/card.js` | Copy as an image: the compact card (title, condensed panel, the page's `cardContext`: Tsum, filters, rounds), drawn with html-to-image, onto the clipboard |
+| `ui/src/lib/card.js` | Copy as an image: the compact card, or the Tsum page's one tall card of every panel (Copy all) (title, condensed panel, the page's `cardContext`: Tsum, filters, rounds), drawn with html-to-image, onto the clipboard |
 | `ui/src/lib/charts.js` | The d3 charts; each returns legend items |
 | `ui/src/lib/boxes.js` | Skill boxes left to max a Tsum, from the catalog's `boxes` |
 | `ui/src/lib/snapshot/engine.js` | **The server's `/api/stats` answers in the browser**, from a snapshot's monthly files. Held to Go by `TestSnapshotParity` |

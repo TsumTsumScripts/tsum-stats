@@ -194,6 +194,33 @@ function avatar(id, name) {
   return a;
 }
 
+/** A stat container cloned for the card: no title row or frame, tables cut, controls gone. */
+function cardBody(from, info) {
+  // The panel's own title row is the card's head; its frame is the card's.
+  const body = from.cloneNode(true);
+  body.removeAttribute('id');
+  body.removeAttribute('style');
+  body.querySelector(':scope > .panel-head')?.remove();
+  body.classList.remove('panel', 'expanded', 'anchor', 'wide');
+  body.classList.add('cc-body');
+  condenseTables(body, info.unit);
+  body.querySelectorAll(DROP).forEach(n => n.remove());
+  // A Tsum name that is a button in the page is plain text in the picture.
+  body.querySelectorAll('button').forEach(b => b.replaceWith(...b.childNodes));
+  return body;
+}
+
+/** The footer: filters and rounds counted, then the brand line. */
+function cardFoot(info) {
+  const foot = el('div', 'cc-foot');
+  foot.append(el('span', 'cc-filters', info.filters.filter(Boolean).join(' · ')));
+  const rounds = el('span', 'cc-rounds');
+  rounds.append(el('b', '', fmt(info.rounds ?? 0)), ` ${info.rounds === 1 ? 'round' : 'rounds'}`);
+  foot.append(rounds);
+  const brand = el('div', 'cc-brand', `${isGlobal() ? 'Tsum Tsum Global Stats' : 'Tsum Tsum Stats'} · ${new Date().toLocaleDateString(undefined, {dateStyle: 'medium'})}`);
+  return [foot, brand];
+}
+
 /**
  * The card for a stat container: title, the cloned content (from), and what the
  * page's card context says. nameOf names the Tsum.
@@ -212,27 +239,57 @@ function buildCard({title, sub, from, info, nameOf}) {
   if (sub) words.append(el('div', 'cc-sub', sub));
   head.append(words);
 
-  // The panel's own title row is the card's head; its frame is the card's.
-  const body = from.cloneNode(true);
-  body.removeAttribute('id');
-  body.removeAttribute('style');
-  body.querySelector(':scope > .panel-head')?.remove();
-  body.classList.remove('panel', 'expanded', 'anchor', 'wide');
-  body.classList.add('cc-body');
-  condenseTables(body, info.unit);
-  body.querySelectorAll(DROP).forEach(n => n.remove());
-  // A Tsum name that is a button in the page is plain text in the picture.
-  body.querySelectorAll('button').forEach(b => b.replaceWith(...b.childNodes));
+  const body = cardBody(from, info);
 
-  const foot = el('div', 'cc-foot');
-  foot.append(el('span', 'cc-filters', info.filters.filter(Boolean).join(' · ')));
-  const rounds = el('span', 'cc-rounds');
-  rounds.append(el('b', '', fmt(info.rounds ?? 0)), ` ${info.rounds === 1 ? 'round' : 'rounds'}`);
-  foot.append(rounds);
-  const brand = el('div', 'cc-brand', `${isGlobal() ? 'Tsum Tsum Global Stats' : 'Tsum Tsum Stats'} · ${new Date().toLocaleDateString(undefined, {dateStyle: 'medium'})}`);
-
+  const [foot, brand] = cardFoot(info);
   card.append(head, body, foot, brand);
   return {card, body};
+}
+
+
+/**
+ * Every stat of a page in one tall card: the Tsum's name and facts, then each
+ * section (the overview tiles, then each panel) under its own heading. Panels
+ * that are hidden or still empty are left out. Each section's charts and
+ * tables are fitted on their own, as in a single card.
+ */
+function buildFullCard({root, info, nameOf}) {
+  const card = el('div', 'copy-card full');
+  card.style.width = `${CARD_W}px`;
+  const head = el('div', 'cc-head');
+  if (info.tsum) head.append(avatar(info.tsum, nameOf(info.tsum)));
+  const words = el('div', 'cc-title');
+  words.append(el('div', 'cc-tsum', info.tsum ? nameOf(info.tsum) : 'Tsum Tsum'));
+  words.append(el('h2', '', 'Everything'));
+  head.append(words);
+  card.append(head);
+  const facts = root.querySelector('.tsum-facts')?.cloneNode(true);
+  if (facts) {
+    facts.querySelectorAll('[title]').forEach(n => n.removeAttribute('title'));
+    card.append(facts);
+    facts.classList.add('cc-facts');
+  }
+
+  const sections = [];
+  for (const from of root.querySelectorAll(':scope > .tsum-overview, :scope > .panel:not(.tsum-head), :scope > .charts > .panel')) {
+    if (from.hidden || from.classList.contains('empty-state')) continue;
+    const title = from.querySelector(':scope > .panel-head h2')?.textContent ?? '';
+    const sub = from.querySelector(':scope > .panel-head .sub')?.textContent ?? '';
+    const sec = el('section', 'cc-section');
+    if (title) {
+      const h = el('div', 'cc-sec-head');
+      h.append(el('h3', '', title));
+      if (sub) h.append(el('div', 'cc-sub', sub));
+      sec.append(h);
+    }
+    const body = cardBody(from, info);
+    sec.append(body);
+    card.append(sec);
+    sections.push({body, from});
+  }
+  const [foot, brand] = cardFoot(info);
+  card.append(foot, brand);
+  return {card, sections};
 }
 
 /**
@@ -261,11 +318,13 @@ async function host() {
 async function render(opts) {
   const h = await host();
   try {
-    const {card, body} = buildCard(opts);
+    const {card, body, sections} = opts.root ? buildFullCard(opts) : buildCard(opts);
     h.append(card);
-    redrawCharts(body, opts.from);
-    trimCharts(body);
-    fitTables(body);
+    for (const {body: b, from} of sections ?? [{body, from: opts.from}]) {
+      redrawCharts(b, from);
+      trimCharts(b);
+      fitTables(b);
+    }
     await inlineImages(card);
     inlineSvgStyles(card);
     const blob = await toBlob(card, {pixelRatio: 2});

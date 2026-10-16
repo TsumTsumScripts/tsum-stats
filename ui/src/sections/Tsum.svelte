@@ -16,6 +16,7 @@
   import {drawDaily, drawHistogram, drawItems, drawSkillSpread} from '../lib/charts.js';
   import {toMax} from '../lib/boxes.js';
   import {cardContext} from '../lib/card.js';
+  import CopyButton from '../components/CopyButton.svelte';
   import {shared} from '../lib/ui.svelte.js';
   import {
     api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref,
@@ -284,6 +285,7 @@
     rounds: s?.totals.rounds ?? 0,
   }));
   let overview = $state();
+  let page = $state();
 
   const statsLink = $derived(`#/stats?${new URLSearchParams(Object.entries({tsum: filter.id, days: filter.days, coins: filter.coins, net: filter.net,
     device: filter.device, skillType: filter.skillType, build: filter.build}).filter(([, v]) => v))}`);
@@ -306,7 +308,7 @@
   export const refresh = debounce(() => { loadOptions(); load(); }, 800);
 </script>
 
-<section id="tsum" class="stack" class:loading {hidden}>
+<section id="tsum" class="stack" class:loading {hidden} bind:this={page}>
   <div class="panel tsum-head" style:--tsum={filter.id ? colorOf(filter.id) : null}>
     {#if filter.id}
       <Avatar id={filter.id} {name} large />
@@ -351,6 +353,7 @@
       <input class="search" list="tsum-page-options" placeholder="Find a Tsum…" autocomplete="off" aria-label="Show another Tsum"
         bind:this={box} onchange={pick} oninput={pickSoon}>
       {#if filter.id}<a class="btn" href={statsLink} title="This Tsum on the Stats page, with its rounds table">Open in Stats</a>{/if}
+      {#if filter.id && s?.totals.rounds}<CopyButton title="Everything" label="Copy all" root={() => page} />{/if}
     </div>
     <!-- The filters are the header's last row rather than a panel of their own. -->
     {#if filter.id}

@@ -801,6 +801,14 @@ td.medal .bd-bar > span.best { background: var(--medal); }
 .cc-tsum + h2 { color: var(--muted); font-size: 15px; font-weight: 700; }
 .cc-sub { color: var(--faint); font-size: 12px; margin-top: 2px; }
 .cc-body { margin: 0; }
+.copy-btn .copy-label { margin-left: 6px; font-weight: 700; font-size: 13px; }
+/* The full card: sections stacked under their own headings. */
+.cc-facts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+.cc-facts b { color: var(--ink); }
+.cc-section { margin-top: 16px; padding-top: 12px; border-top: 1.5px dashed var(--seam); }
+.cc-sec-head { margin-bottom: 8px; }
+.cc-sec-head h3 { margin: 0; font-size: 16px; font-family: var(--font-display); }
+.cc-sec-head .cc-sub { margin-top: 2px; }
 .cc-body .chart { height: 240px; overflow: visible; }
 .cc-body .chart.tall { height: 340px; }
 .cc-body .chart.square { height: 280px; }
