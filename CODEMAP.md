@@ -93,7 +93,7 @@ Cloudflare account only, never the GAP one (`global/README.md`,
 | `internal/stats/events.go` | `Events`: the TCP listener (and dialler) for the script's live events, live devices, a round end stored as a row |
 | `internal/stats/adb.go` | `Puller`: Import from devices over adb -- find adb, connect emulators, pull the device's files into the importer |
 | `internal/stats/adb_install.go` | Downloading platform-tools when no adb is found |
-| `internal/stats/queries.go` | `Filter` (`ParseFilter`, the WHERE), the rounds page and its sort columns, played Tsums and devices, the latest Tsum list |
+| `internal/stats/queries.go` | `Filter` (`ParseFilter`, the WHERE), the play settings (`PlaySettings`, `playSettingSQL`), the rounds page and its sort columns, played Tsums, devices, skill types and play settings, the latest Tsum list |
 | `internal/stats/summary.go` | `Summarize`: everything above the tables (KPIs, per day / hour / Tsum / mix, spreads, the coin histogram); item sets and their cost (`itemBits`) |
 | `internal/stats/tsum.go` | `DescribeTsum`: the Tsum page's answer (by setting, version, device; form, skill bins, rank) |
 | `internal/stats/art.go` | `Art`: Tsum portraits fetched for the page at `/api/stats/art/{id}` (their origin sends no CORS headers), kept in memory |

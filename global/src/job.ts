@@ -10,7 +10,8 @@
 //   render            days whose tables changed and whose part is still to be published again
 //   part:<from>       a published part: {from, to, rounds, first, last, tsums, skills, bytes, files: [{file, sha, rounds, bytes}]}
 //   parts_at          when a part pointer last changed (ms): a manifest older than that is written again
-//   totals            {tsums: {tsum: rounds}, skills: {skill: rounds}, skillTypes: {type: rounds}} over every part, kept up as the pointers change
+//   totals            {tsums: {tsum: rounds}, skills: {skill: rounds}, skillTypes: {type: rounds}, scan, chain, bubble: {value: rounds}}
+//                     over every part, kept up as the pointers change
 //   people            {contributors, devices, tsums: {tsum: contributors}, catalog}: the manifest's counts of people
 //   trash             [[R2 key, ms]] replaced parts, deleted once no cached manifest names them
 //   archived_through  the newest day whose rounds are in the archive

@@ -6,12 +6,14 @@
   import Seg from '../../components/Seg.svelte';
   import TsumChip from '../../components/TsumChip.svelte';
   import {isGlobal} from '../../lib/global/client.js';
-  import {debounce, fmt, itemsLabel, skillTypeName, skillTypeValue} from '../../lib/util.js';
+  import {PLAY, byPlayValue, debounce, fmt, itemsLabel, playValue, playValueName, skillTypeName, skillTypeValue} from '../../lib/util.js';
 
   // skillTypes: the script's skill types with rounds, [{skillType, rounds}]; pickedTypes: the filter's, '-' for none.
+  // playChoices: each play setting's values with rounds, {scan: [{value, rounds}], ...}; pickedPlay: the filter's, '-' for not recorded.
   // skills: the global site's skill levels; itemChoices: its item sets, [{items, rounds}].
   let {
-    filter, range, outliers, chips, picked, played, playedDevices, pickedDevices, skillTypes = [], pickedTypes = [], comparing,
+    filter, range, outliers, chips, picked, played, playedDevices, pickedDevices, skillTypes = [], pickedTypes = [],
+    playChoices = {}, pickedPlay = {}, comparing,
     skills = [], pickedSkills = [], itemChoices = [], pickedItems = [],
     set, reset, addTsum, dropTsum, matchTsum, nameOf, colorOf, open = $bindable(false),
   } = $props();
@@ -137,6 +139,23 @@
             </details>
           </div>
         {/if}
+        {#each PLAY as p (p.param)}
+          {@const choices = [...(playChoices[p.param] ?? [])].sort(byPlayValue)}
+          {@const on = pickedPlay[p.param] ?? []}
+          {#if choices.length > 1 || on.length}
+            <div class="field devices-field" title="Tick one or more values of the script's {p.name.toLowerCase()} setting to count only rounds played with them">{p.name}
+              <details class="devices">
+                <summary>{on.length > 2 ? `${on.length} values` : on.length ? on.map(v => playValueName(p.param, v)).join(', ') : 'Any'}</summary>
+                <div class="device-list">
+                  {#each choices as c (c.value)}
+                    <label title={playValueName(p.param, c.value)}><input type="checkbox" checked={on.includes(playValue(c.value))}
+                      onchange={e => toggleIn(p.param, on, playValue(c.value), e.target.checked)}><span class="device-name">{playValueName(p.param, c.value)}</span><span class="sub">{fmt(c.rounds)}</span></label>
+                  {/each}
+                </div>
+              </details>
+            </div>
+          {/if}
+        {/each}
         {#if globalSite}
           {#if skills.length}
             <div class="field devices-field" title="Tick one or more skill levels to count only rounds played at them">Skill level

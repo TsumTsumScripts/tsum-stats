@@ -94,8 +94,10 @@ describe("what is stored", () => {
   it("keeps each accepted round with its derived fields, keyed without the device tag", async () => {
     const c = await joinNew();
     const recs = [
-      record({ at: NOW - 7200_000, tsum: "mickeyplus", medals: 150, skill: 6, skillType: "pair_tsum", items: ["bonusCoin", "bonusScore"], build: "jp" }),
-      record({ at: NOW - 3600_000, tsum: "mickey", items: null, skill: 12, tag: TAG_B }),
+      record({ at: NOW - 7200_000, tsum: "mickeyplus", medals: 150, skill: 6, skillType: "pair_tsum", items: ["bonusCoin", "bonusScore"], build: "jp",
+        scan: 6, chain: "15.0", bubble: "save_one_mid_chain" }),
+      // Play settings past playValue's rule are not recorded; the settings keep them as sent.
+      record({ at: NOW - 3600_000, tsum: "mickey", items: null, skill: 12, tag: TAG_B, scan: "2.5", chain: "1000", bubble: "all mid" }),
       record({ at: NOW - 1800_000, tsum: "no such" }),
     ];
     const up = await upload(c.key, recs);
@@ -107,12 +109,12 @@ describe("what is stored", () => {
     expect(got).toEqual([
       {
         key: recs[0].id.replace(/-/g, "").slice(0, 20) + (await hashOf(TAG_A)), contributor: c.id, played_at: (NOW - 7200_000) / 1000,
-        build: 1, tsum: "mickeyplus", skill: 6, skill_type: "pair_tsum", items: 17, version: "3.0b4", settings: expect.any(Number), duration: 181.5,
+        build: 1, tsum: "mickeyplus", skill: 6, skill_type: "pair_tsum", items: 17, scan: 6, chain: 15, bubble: "save_one_mid_chain", version: "3.0b4", settings: expect.any(Number), duration: 181.5,
         score: 12345678, base: 3000, final: 4500, medals: 150, bin_base: bin(3000), bin_final: bin(4500), bin_medals: bin(150),
       },
       {
         key: recs[1].id.replace(/-/g, "").slice(0, 20) + (await hashOf(TAG_B)), contributor: c.id, played_at: (NOW - 3600_000) / 1000,
-        build: 0, tsum: "mickey", skill: -1, skill_type: "", items: -1, version: "3.0b4", settings: expect.any(Number), duration: 181.5,
+        build: 0, tsum: "mickey", skill: -1, skill_type: "", items: -1, scan: -1, chain: -1, bubble: "", version: "3.0b4", settings: expect.any(Number), duration: 181.5,
         score: 12345678, base: 3000, final: 4500, medals: null, bin_base: bin(3000), bin_final: bin(4500), bin_medals: null,
       },
     ].sort((a, b) => (a.key < b.key ? -1 : 1)));

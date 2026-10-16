@@ -70,13 +70,21 @@ func fillRounds(t *testing.T, add func(Round)) int {
 			settings["linkReach"] = []float64{1.5, 2, 190}[i%3]
 			settings["fan"] = nil
 			settings["nested"] = map[string]int{"a": i % 2}
+			// Play settings: some past the rule (a fraction, a name with a space), some not there.
+			settings["maxChainsPerScan"] = []any{2, 3, 6, 3.5, nil}[i%5]
+			if i%7 != 0 {
+				settings["maxChain"] = []any{4, 15, 1000}[i%3]
+			}
+			if i%9 == 0 {
+				settings["bubbleStrategy"] = "all mid"
+			}
 			data, _ := json.Marshal(settings)
 			r.Settings = string(data)
 		}
 		// A whole number written as a real, and settings that are not an object.
 		switch i % 50 {
 		case 0:
-			r.Settings = `{"skillLevel": 3.0, "bubbleStrategy": "save_one"}`
+			r.Settings = `{"skillLevel": 3.0, "bubbleStrategy": "save_one", "maxChainsPerScan": 6.0}`
 		case 25:
 			r.Settings = `[1, 2]`
 		}
@@ -298,6 +306,10 @@ func TestSnapshotParity(t *testing.T) {
 	summary("one device and a Tsum", map[string]string{"device": "tab-s8", "tsum": "mickey"})
 	summary("skill types and none", map[string]string{"skillType": "pair_tsum, -"})
 	summary("one skill type, medals", map[string]string{"skillType": "burst", "coins": "medals"})
+	summary("one scan", map[string]string{"scan": "3"})
+	summary("scans and not recorded", map[string]string{"scan": "6, -"})
+	summary("chain and bubble", map[string]string{"chain": "15", "bubble": "save_one,one_mid_chain", "coins": "final"})
+	summary("bubble not recorded", map[string]string{"bubble": "-"})
 	summary("final coins", map[string]string{"coins": "final"})
 	summary("medals", map[string]string{"coins": "medals", "tz": "60"})
 	summary("minimums", map[string]string{"minCoins": "3000", "minScore": "1000000"})
@@ -355,12 +367,18 @@ func TestSnapshotParity(t *testing.T) {
 	tsumCase("tsum param ignored", map[string]string{"id": "elsa", "tsum": "mickey"})
 	tsumCase("unknown", map[string]string{"id": "nope"})
 	tsumCase("mickey, one skill type", map[string]string{"id": "mickey", "skillType": "pair_tsum"})
+	tsumCase("mickey, one chain", map[string]string{"id": "mickey", "chain": "4,-"})
 
 	tsums, _ := PlayedTsums(app.DB())
 	devices, _ := PlayedDevices(app.DB())
 	cases = append(cases, testCase{Name: "played devices", Route: "round-devices", Params: map[string]any{}, Expected: roundtrip(devices)})
 	types, _ := PlayedSkillTypes(app.DB())
 	cases = append(cases, testCase{Name: "played skill types", Route: "skill-types", Params: map[string]any{}, Expected: roundtrip(types)})
+	play, _ := PlayedPlaySettings(app.DB())
+	if len(play["scan"]) < 4 || len(play["bubble"]) < 3 {
+		t.Fatalf("too few play setting values to test with: %v", play)
+	}
+	cases = append(cases, testCase{Name: "played play settings", Route: "play-settings", Params: map[string]any{}, Expected: roundtrip(play)})
 	srcs, _ := TsumListSources(app.DB())
 	cases = append(cases, testCase{Name: "owned sources", Route: "owned-sources", Params: map[string]any{}, Expected: roundtrip(srcs)})
 	for _, src := range srcs {

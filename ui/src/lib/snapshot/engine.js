@@ -85,16 +85,44 @@ function intCell(s) {
   return s.trim() !== '' && Number.isFinite(f) ? Math.trunc(f) : null;
 }
 
-/** The query parameters as the server reads them. */
 /** How the skillType list names the rounds without a skill type (queries.go: NoSkillType). */
 export const NO_SKILL_TYPE = '-';
 
+/**
+ * The script settings the filters and the global site's cells go by, under
+ * their query parameters (queries.go: PlaySettings): how many chains a board
+ * scan may take, the longest chain, and how bubbles are spent.
+ */
+export const PLAY_SETTINGS = [
+  {param: 'scan', key: 'maxChainsPerScan', number: true},
+  {param: 'chain', key: 'maxChain', number: true},
+  {param: 'bubble', key: 'bubbleStrategy', number: false},
+];
+const PLAY_ID = /^[A-Za-z0-9_.-]{1,64}$/;
+
+/**
+ * A play setting's value in a settings object, as text (queries.go:
+ * playSettingSQL): a number setting's whole value 0–999, an id setting's
+ * value of letters, digits, `_`, `.` and `-`, at most 64; anything else, or
+ * none, is '' (not recorded). The global site keeps it per round the same way.
+ */
+export function playValue(settings, ps) {
+  const v = settings?.[ps.key];
+  if (ps.number) return Number.isInteger(v) && v >= 0 && v <= 999 ? String(v) : '';
+  return typeof v === 'string' && PLAY_ID.test(v) ? v : '';
+}
+
+/** The query parameters as the server reads them. */
+
 export function parseFilter(q) {
-  const f = {tsums: [], devices: [], skillTypes: [], build: '', from: null, to: null, finalCoins: false, medals: false, net: false};
+  const f = {tsums: [], devices: [], skillTypes: [], play: {}, build: '', from: null, to: null, finalCoins: false, medals: false, net: false};
   f.tsums = String(q.tsum ?? '').split(',').map(t => t.trim()).filter(Boolean);
   f.devices = String(q.device ?? '').split(',').map(d => d.trim()).filter(Boolean);
   // NO_SKILL_TYPE (queries.go: NoSkillType) is the rounds sent without one.
   f.skillTypes = String(q.skillType ?? '').split(',').map(s => s.trim()).filter(Boolean).map(s => (s === NO_SKILL_TYPE ? '' : s));
+  // Each play setting's values, NO_SKILL_TYPE ('-') for not recorded (queries.go: Filter.Play).
+  f.play = Object.fromEntries(PLAY_SETTINGS.map(ps => [ps.param,
+    String(q[ps.param] ?? '').split(',').map(s => s.trim()).filter(Boolean).map(s => (s === NO_SKILL_TYPE ? '' : s))]));
   if (q.build === 'global' || q.build === 'jp') f.build = q.build;
   f.from = q.from ? parseTime(q.from) : null;
   f.to = q.to ? parseTime(q.to) : null;
@@ -173,12 +201,15 @@ export function createEngine(loader) {
     const tsumSet = f.tsums.length ? new Set(f.tsums) : null;
     const deviceSet = f.devices.length ? new Set(f.devices) : null;
     const skillTypeSet = f.skillTypes.length ? new Set(f.skillTypes) : null;
+    const playSets = PLAY_SETTINGS.filter(ps => f.play[ps.param]?.length).map(ps => [ps, new Set(f.play[ps.param])]);
     const out = [];
     for (const sh of await monthsFor(f)) {
       const deviceOk = deviceSet ? sh.dict.device.map(d => deviceSet.has(d)) : null;
       const tsumOk = tsumSet ? sh.dict.tsum.map(t => tsumSet.has(t)) : null;
       const buildOk = f.build ? sh.dict.build.map(b => b === f.build) : null;
       const skillTypeOk = skillTypeSet ? sh.dict.skillType.map(s => skillTypeSet.has(s)) : null;
+      // Each play setting picked: whether each of the month's settings objects (and none, '') has a value it keeps.
+      const playOk = playSets.map(([ps, set]) => [set.has(''), sh.dict.settings.map(o => set.has(playValue(o, ps)))]);
       const medalTsum = sh.dict.tsum.map(t => medalSet.has(t));
       const idx = [];
       const coins = sh[coinsCol];
@@ -190,6 +221,7 @@ export function createEngine(loader) {
         if (deviceOk && !deviceOk[sh.device[i]]) continue;
         if (buildOk && !buildOk[sh.build[i]]) continue;
         if (skillTypeOk && !skillTypeOk[sh.skillType[i]]) continue;
+        if (playOk.length && !playOk.every(([none, ok]) => (sh.settings[i] === null ? none : ok[sh.settings[i]]))) continue;
         // Complete (queries.go: completeSQL): a Tsum and every figure read; medals only for a medal Tsum.
         if (f.complete && (sh.dict.tsum[sh.tsum[i]] === '' || sh.score[i] === null || sh.baseCoins[i] === null
           || sh.finalCoins[i] === null || sh.duration[i] === null || (sh.medals[i] === null && medalTsum[sh.tsum[i]]))) continue;
@@ -562,6 +594,12 @@ export function createEngine(loader) {
     return (await getManifest()).skillTypes ?? [];
   }
 
+  /** queries.go: PlayedPlaySettings; an older snapshot lists none. */
+  async function playSettings() {
+    const ps = (await getManifest()).playSettings ?? {};
+    return Object.fromEntries(PLAY_SETTINGS.map(({param}) => [param, ps[param] ?? []]));
+  }
+
   // One device's newest list for a build; null when it has none.
   async function owned(q) {
     const man = await getManifest();
@@ -591,6 +629,7 @@ export function createEngine(loader) {
         case 'tsums': return tsums();
         case 'round-devices': return roundDevices();
         case 'skill-types': return skillTypes();
+        case 'play-settings': return playSettings();
         case 'owned': return owned(params);
         case 'owned-sources': return ownedSources();
         case 'status': return status();

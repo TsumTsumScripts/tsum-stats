@@ -29,6 +29,7 @@ const idList = (ids: Iterable<number>) => "," + [...ids].join(",") + ",";
 // or larger, when new rounds come.
 const CELLS: [string, string, string][] = [
   ["build", "build", ""], ["tsum", "tsum", ""], ["skill", "skill", ""], ["skill_type", "skill_type", ""], ["items", "items", ""],
+  ["scan", "scan", ""], ["chain", "chain", ""], ["bubble", "bubble", ""],
   ["medal", "coalesce(medals > 0, 0)", ""],
   ["rounds", "count(*)", "+"], ["secs", "sum(duration)", "+"],
   ["score_sum", "sum(score)", "+"], ["score_min", "min(score)", "min"], ["score_max", "max(score)", "max"],
@@ -41,18 +42,18 @@ const CELLS: [string, string, string][] = [
   ["medals_min", "min(medals)", "min"], ["medals_max", "max(medals)", "max"],
   ["medals_secs", "coalesce(sum(CASE WHEN medals IS NOT NULL THEN duration END), 0)", "+"],
 ];
-const CELLS_KEY = 6;
+const CELLS_KEY = 9;
 const cellNames = CELLS.map(([c]) => c);
 
 /** The rounds of day ?1-?2 (dayRange), as columns the aggregates read. */
-const DAY_SOURCE = `(SELECT contributor, played_at, build, tsum, skill, skill_type, items, duration, score, base, final, medals,
+const DAY_SOURCE = `(SELECT contributor, played_at, build, tsum, skill, skill_type, items, scan, chain, bubble, duration, score, base, final, medals,
     bin_base, bin_final, bin_medals, substr(key, 21) AS device FROM rounds WHERE ${DAY_ROUNDS})`;
 
 /** A pending sum its day's last full recompute already read (state skip: {day: seq}); `day` names its day. */
 const notSkipped = (day: string) => `p.seq > coalesce((SELECT value FROM state WHERE key = 'skip') ->> ('$."' || ${day} || '"'), 0)`;
 
 /** The cell_bins2 columns: the key (the cells2'), then a bins object per figure. */
-const BIN_KEY = ["build", "tsum", "skill", "skill_type", "items", "medal"];
+const BIN_KEY = ["build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal"];
 const BIN_KINDS = ["base", "final", "medals"];
 /** A bin's figures (CONTRACT §5), in order: rounds, secs, score, base, final, medals. */
 const FIGURES = 6;
@@ -68,17 +69,18 @@ const mergeBins = (col: string) => `${col} = json_patch(${col}, (SELECT json_gro
 /** The cell_bins2 rows of `source` where `where`, for day `day` (an expression): per cell, each bin's figures. */
 const binsSelect = (day: string, source: string, where: string) => {
   const of = (k: number, v: string, also = "") =>
-    `SELECT build, tsum, skill, skill_type, items, coalesce(medals > 0, 0) AS medal, ${k} AS k, ${v} AS v, duration, score, base, final, medals
+    `SELECT build, tsum, skill, skill_type, items, scan, chain, bubble, coalesce(medals > 0, 0) AS medal, ${k} AS k, ${v} AS v, duration, score, base, final, medals
       FROM ${source} WHERE ${where}${also}`;
-  return `SELECT ${day} AS day, build, tsum, skill, skill_type, items, medal,
+  const key = BIN_KEY.join(", ");
+  return `SELECT ${day} AS day, ${key},
     json_group_object(b, json(f)) FILTER (WHERE k = 0) AS base,
     json_group_object(b, json(f)) FILTER (WHERE k = 1) AS final,
     json_group_object(b, json(f)) FILTER (WHERE k = 2) AS medals
-  FROM (SELECT build, tsum, skill, skill_type, items, medal, k, CAST(v AS TEXT) AS b,
+  FROM (SELECT ${key}, k, CAST(v AS TEXT) AS b,
       json_array(count(*), sum(duration), sum(score), sum(base), sum(final), coalesce(sum(medals), 0)) AS f
     FROM (${of(0, "bin_base")} UNION ALL ${of(1, "bin_final")} UNION ALL ${of(2, "bin_medals", " AND bin_medals IS NOT NULL")})
-    GROUP BY build, tsum, skill, skill_type, items, medal, k, v ORDER BY build, tsum, skill, skill_type, items, medal, k, v)
-  WHERE true GROUP BY build, tsum, skill, skill_type, items, medal`;
+    GROUP BY ${key}, k, v ORDER BY ${key}, k, v)
+  WHERE true GROUP BY ${key}`;
 };
 
 /** The contrib_cells rows of `source` where `where`: one per device first, so the devices come out sorted and counted. */

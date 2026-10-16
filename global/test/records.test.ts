@@ -2,8 +2,9 @@
 import { describe, expect, it } from "vitest";
 import { hmacHex, hmacKey, fromHex, sha256Hex } from "../src/crypto";
 import { bin } from "../src/days";
-import { SETTINGS_MAX, checkRecords } from "../src/records";
-import { DAY_MS, NOW, TAG_A, TAG_B, record, uuid7 } from "./helpers";
+import { PLAY_SETTINGS, playValue } from "../../ui/src/lib/snapshot/engine.js";
+import { SETTINGS_MAX, checkRecords, playSQL } from "../src/records";
+import { DAY_MS, NOW, TAG_A, TAG_B, env, record, uuid7 } from "./helpers";
 
 const key = () => hmacKey("test-device-key");
 const check = async (records: Record<string, unknown>[], now = NOW) => checkRecords(records, now, 60, await key());
@@ -137,6 +138,22 @@ describe("rejections", () => {
 });
 
 describe("derived fields", () => {
+  it("reads the play settings in SQL as playValue does, and so does migration 0003", async () => {
+    const values: unknown[] = [3, 0, 999, 1000, -1, 3.5, 3.0, 1e3, "3", true, null, [4], { a: 1 },
+      "all_mid_chain", "save_one", "a.b-c_9", "", "all mid", "x".repeat(64), "x".repeat(65), "é", "a\"b"];
+    for (const ps of PLAY_SETTINGS) {
+      for (const v of [...values, undefined]) {
+        const json = JSON.stringify(v === undefined ? { other: 1 } : { [ps.key]: v });
+        const want = playValue(JSON.parse(json), ps);
+        const got = (await env.DB.prepare(`SELECT ${playSQL(ps, "?1")} AS v`).bind(json).first<{ v: number | string }>())!.v;
+        expect(got, `${ps.key} = ${json}`).toBe(ps.number ? (want === "" ? -1 : Number(want)) : want);
+      }
+      // The migration fills the rounds stored before it with these very words.
+      const m = env.TEST_MIGRATIONS.find(x => x.name.startsWith("0003"))!;
+      expect(m.queries.join("\n"), ps.key).toContain(`${ps.param} = ${playSQL(ps, "s.json")}`);
+    }
+  });
+
   it("builds the round as D1 keeps it", async () => {
     const rec = record({ at: NOW - 3600_000, took: 200, base: 3000, final: 4500, items: ["bonusCoin", "bonusTime", "bonusCombo"] });
     const [r] = (await check([rec])).rounds;

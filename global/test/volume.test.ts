@@ -28,20 +28,25 @@ describe("volume", () => {
     const each = Math.ceil(ROUNDS / PLAYERS);
     const step = Math.floor(86400_000 / each);
     const rounds = people.map((_, p) => {
-      // A player's Tsums each have their own skill level; a player keeps to one build and two item sets.
+      // A player's Tsums each have their own skill level and play settings; a player keeps to one build and two item sets.
       const favourites = Array.from({ length: 6 }, () => coin[Math.floor(rnd() * 80)]);
       const skills = favourites.map(() => 1 + Math.floor(rnd() * 6));
       const build = rnd() < 0.7 ? "global" : "jp";
       const sets = [["bonusCoin", "bonusTime"], rnd() < 0.5 ? ["bonusCoin"] : []];
+      // Each Tsum has its play settings, and one in five rounds tries another.
+      const play = favourites.map(() => [[2, 3, 6][Math.floor(rnd() * 3)], [4, 5, 15][Math.floor(rnd() * 3)],
+        ["all_mid_chain", "one_mid_chain", "save_one_mid_chain"][Math.floor(rnd() * 3)]] as const);
+      const other = [12, 6, "all_asap"] as const;
       const devices = rnd() < 0.3 ? 2 : 1;
       // From an hour before the day, so the first passes bring the day before's last rounds too.
       return Array.from({ length: each }, (_, i) => {
         const at = t0 - HOUR + Math.floor((i + 0.5) * (step - 800)) + 200;
         const base = 1500 + Math.floor(rnd() * 4000);
         const t = Math.floor(rnd() * rnd() * 6);
+        const [scan, chain, bubble] = rnd() < 0.2 ? other : play[t];
         return record({
           at, took: 70, duration: 61 + Math.floor(rnd() * 8), tag: `0f${String(p).padStart(6, "0")}${(i % devices).toString().padStart(4, "0")}`,
-          tsum: favourites[t], build, skill: skills[t], items: sets[rnd() < 0.7 ? 0 : 1],
+          tsum: favourites[t], build, skill: skills[t], items: sets[rnd() < 0.7 ? 0 : 1], scan, chain, bubble,
           base, final: Math.floor(base * (1.2 + rnd())), score: Math.floor(rnd() * 20_000_000),
         });
       });
@@ -104,15 +109,18 @@ describe("volume", () => {
     // The final day was archived along the way, from a few scans of it.
     expect((await one<{ value: string }>("SELECT value FROM state WHERE key = 'archived_through'")).value >= final).toBe(true);
     expect(jobBy.get([...jobBy.keys()].find(q => q.startsWith("INSERT INTO archive_parts"))!)!.read).toBeLessThan(3 * ROUNDS);
-    // Reads: well under D1 Free's 5,000,000 a day. About 850k, 11 a round
-    // (ingest 3, the job 8), against an aim of 1.5M.
-    expect(read, heaviest).toBeLessThan(1_000_000);
+    // Reads: well under D1 Free's 5,000,000 a day. About 1.37M, 17 a round
+    // (ingest 4, the job 13), against an aim of 1.5M: the play settings
+    // split a day's cells about 2.2 times (686 to 1,496 here), and the
+    // hourly part of the day reads them all.
+    expect(read, heaviest).toBeLessThan(1_500_000);
     expect(ingestRead / sentToday).toBeLessThan(4);
     // No run passes Workers Free's 50 queries, and none carries much more
-    // than RUN_BYTES (2 MB) from D1 to R2, where its CPU goes.
+    // than RUN_BYTES (2 MB) from D1 to R2, where its CPU goes, but for a
+    // run's first part, which goes whole: the day's, about 3.2 MB here.
     expect(maxQueries).toBeLessThanOrEqual(45);
     expect(maxR2).toBeLessThanOrEqual(40);
-    expect(maxBytes).toBeLessThan(2_500_000);
+    expect(maxBytes).toBeLessThan(3_500_000);
     // Every row written is counted, by day, as D1 counts it.
     expect((await budgeted()) - before).toBe(ingestWritten + jobWritten);
     // And the day's figures are all in: every round sent is in a cell.

@@ -110,6 +110,11 @@ Derived from an accepted record:
 - **medals**: null stays null (a non-medal Tsum's unread medals).
 - **version**: `script_version`, in full (trimmed, as every cell is).
 - **skill type**: `skill_type`, in full; `""` when the record has none.
+- **play settings** (`snapshot/engine.js: PLAY_SETTINGS`, `playValue`;
+  `queries.go: PlaySettings`): **scan** from `maxChainsPerScan` and
+  **chain** from `maxChain`, each a whole number 0–999, else **-1**;
+  **bubble** from `bubbleStrategy`, a string of 1–64 letters, digits, `_`,
+  `.` or `-`, else `""`. The settings keep the value as sent either way.
 - **settings id**: the settings object as canonical JSON (keys sorted,
   `JSON.stringify` of the sorted object) → its SHA-256 hex `hash` → the
   `settings` row with that hash (inserted once).
@@ -441,7 +446,10 @@ CREATE TABLE rounds (
   bin_base INTEGER NOT NULL,
   bin_final INTEGER NOT NULL,
   bin_medals INTEGER,                    -- NULL unless medals > 0
-  skill_type TEXT NOT NULL DEFAULT ''    -- 0003: as sent; '' for none, and for every round stored before 0003
+  skill_type TEXT NOT NULL DEFAULT '',   -- 0003: as sent; '' for none, and for every round stored before 0003
+  scan INTEGER NOT NULL DEFAULT -1,      -- 0003: the play settings (§1.2), -1 and '' not recorded;
+  chain INTEGER NOT NULL DEFAULT -1,     --   made from their settings for the rounds stored before
+  bubble TEXT NOT NULL DEFAULT ''
 ) WITHOUT ROWID;
 
 -- Days to recompute in full from their rounds: a ban, a changed round, a rebuild, a restore.
@@ -457,7 +465,7 @@ CREATE TABLE pending (
   tsums TEXT NOT NULL,                   -- {tsum: the newest of those days with a round of it}
   cells TEXT NOT NULL,                   -- the cells2 rows they add to (the catalog's Tsums only)
   bins TEXT NOT NULL,                    -- '[]': the per-skill bins of before 0002, no longer written
-  cell_bins TEXT NOT NULL DEFAULT '[]',  -- the cell_bins2 rows they add to: [day, build, tsum, skill, skill_type, items, medal, {base}, {final}, {medals}]
+  cell_bins TEXT NOT NULL DEFAULT '[]',  -- the cell_bins2 rows they add to: [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, {base}, {final}, {medals}]
   cc TEXT NOT NULL                       -- [day, build, tsum, device, rounds, secs, base, final, medals]
 );
 
@@ -474,10 +482,11 @@ CREATE TABLE join_limits (ip_hash TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NO
   PRIMARY KEY (ip_hash, day)) WITHOUT ROWID;
 CREATE TABLE state (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
 
--- Public: one row per day × build × Tsum × skill × skill type × items × (medals > 0) (0003).
+-- Public: one row per day × build × Tsum × skill × skill type × items × scan × chain × bubble × (medals > 0) (0003).
 CREATE TABLE cells2 (
   day TEXT NOT NULL, build INTEGER NOT NULL, tsum TEXT NOT NULL, skill INTEGER NOT NULL, skill_type TEXT NOT NULL,
-  items INTEGER NOT NULL, medal INTEGER NOT NULL,           -- medal: 1 when medals > 0
+  items INTEGER NOT NULL, scan INTEGER NOT NULL, chain INTEGER NOT NULL, bubble TEXT NOT NULL,
+  medal INTEGER NOT NULL,                                   -- medal: 1 when medals > 0
   rounds INTEGER NOT NULL, secs REAL NOT NULL,
   score_sum INTEGER NOT NULL, score_min INTEGER NOT NULL, score_max INTEGER NOT NULL,
   first INTEGER NOT NULL, last INTEGER NOT NULL,            -- epoch s
@@ -485,21 +494,21 @@ CREATE TABLE cells2 (
   final_sum INTEGER NOT NULL, final_sq REAL NOT NULL, final_min INTEGER NOT NULL, final_max INTEGER NOT NULL,
   medals_n INTEGER NOT NULL, medals_sum INTEGER NOT NULL, medals_sq REAL NOT NULL,
   medals_min INTEGER, medals_max INTEGER, medals_secs REAL NOT NULL,
-  PRIMARY KEY (day, build, tsum, skill, skill_type, items, medal)
+  PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal)
 ) WITHOUT ROWID;
 
 -- Public: one row per cells2 row (its key), each a JSON object {"<bin>": [rounds, secs, score, base, final, medals]}.
 CREATE TABLE cell_bins2 (
   day TEXT NOT NULL, build INTEGER NOT NULL, tsum TEXT NOT NULL, skill INTEGER NOT NULL, skill_type TEXT NOT NULL,
-  items INTEGER NOT NULL, medal INTEGER NOT NULL,
+  items INTEGER NOT NULL, scan INTEGER NOT NULL, chain INTEGER NOT NULL, bubble TEXT NOT NULL, medal INTEGER NOT NULL,
   base TEXT NOT NULL, final TEXT NOT NULL, medals TEXT NOT NULL,  -- medals: {} unless medal = 1
-  PRIMARY KEY (day, build, tsum, skill, skill_type, items, medal)
+  PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal)
 ) WITHOUT ROWID;
 
--- Before 0003: cells2 and cell_bins2 without skill_type (cell_bins from 0002). Kept, no longer
+-- Before 0003: cells2 and cell_bins2 without skill_type or the play settings (cell_bins from 0002). Kept, no longer
 -- written or read, so a Worker rolled back to before 0003 still finds them.
-CREATE TABLE cells (… cells2's columns but skill_type …, PRIMARY KEY (day, build, tsum, skill, items, medal)) WITHOUT ROWID;
-CREATE TABLE cell_bins (… cell_bins2's columns but skill_type …, PRIMARY KEY (day, build, tsum, skill, items, medal)) WITHOUT ROWID;
+CREATE TABLE cells (… cells2's columns but skill_type, scan, chain and bubble …, PRIMARY KEY (day, build, tsum, skill, items, medal)) WITHOUT ROWID;
+CREATE TABLE cell_bins (… cell_bins2's columns but skill_type, scan, chain and bubble …, PRIMARY KEY (day, build, tsum, skill, items, medal)) WITHOUT ROWID;
 
 -- Before 0002: histogram bins per day × build × Tsum × skill, {"<bin>": rounds}. Kept, no longer
 -- written or read, so a Worker rolled back to before 0002 still finds it.
@@ -517,7 +526,8 @@ CREATE TABLE archive_parts (
   key TEXT NOT NULL, played_at TEXT NOT NULL, build TEXT NOT NULL, tsum TEXT NOT NULL, skill TEXT NOT NULL,
   items TEXT NOT NULL, version TEXT NOT NULL, settings TEXT NOT NULL, duration TEXT NOT NULL, score TEXT NOT NULL,
   base TEXT NOT NULL, final TEXT NOT NULL, medals TEXT NOT NULL,
-  skill_type TEXT NOT NULL DEFAULT '',   -- 0003
+  skill_type TEXT NOT NULL DEFAULT '',   -- 0003, with scan, chain and bubble
+  scan TEXT NOT NULL DEFAULT '', chain TEXT NOT NULL DEFAULT '', bubble TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (day, contributor, part)
 ) WITHOUT ROWID;
 
@@ -553,15 +563,19 @@ each one into `cell_bins` and publish it again in part format 2. A day whose
 rounds have left D1 (`dropped_through`) cannot be recomputed, and keeps no
 bins (none had when it was added).
 
-`0003_skill_type.sql` adds `rounds.skill_type` and `archive_parts.skill_type`,
-and `cells2` and `cell_bins2` in place of `cells` and `cell_bins` (whose key
-cannot grow in place), copying every row in under skill type `''`, which is
-what every round stored before it holds; so a day whose rounds have left D1
-keeps its figures. Waiting uploads summed their rounds without a skill type,
-so their days are marked dirty and their `pending` rows deleted: the
-recompute makes from the rounds everything the fold would have. A round's
-skill type arrives when its contributor's forwarder sends it again (§2.2:
-`keeps`, §7.2), which changes the round and recomputes its day.
+`0003_skill_type.sql` adds `skill_type` and the play settings (`scan`,
+`chain`, `bubble`) to `rounds` and `archive_parts`, and `cells2` and
+`cell_bins2` in place of `cells` and `cell_bins` (whose key cannot grow in
+place). The rounds stored before it get their play settings from their
+settings, in SQL with `records.ts: playSQL`'s words (held to `playValue` by
+`test/records.test.ts`). Every `cells` row is copied in under skill type `''`
+and no play settings, so a day whose rounds have left D1 keeps its figures,
+and every day is marked dirty, so a day whose rounds are still in D1 is made
+again from them, play settings and all. Waiting uploads summed their rounds
+without either, so their days are marked dirty too and their `pending` rows
+deleted: the recompute makes from the rounds everything the fold would have.
+A round's skill type arrives when its contributor's forwarder sends it again
+(§2.2: `keeps`, §7.2), which changes the round and recomputes its day.
 
 `rounds` has no secondary index on purpose: one row written per round. Every
 scan of `rounds` is a key range (§1.1); none reads it by contributor.
@@ -655,16 +669,17 @@ The steps:
 The counts of people (`state` `people`) are made again only when they can
 have moved: from `recent` (the newest day per contributor and Tsum), the
 catalog's Tsums only, banned contributors left out at that time; and
-`devices` seen in the last 30 days. The rounds per Tsum, per skill level and
-per skill type (`state` `totals`) move with the changed pointers' old and new summaries, and
+`devices` seen in the last 30 days. The rounds per Tsum, per skill level,
+per skill type and per value of each play setting (`state` `totals`) move with the changed pointers' old and new summaries, and
 are made afresh with each day's first manifest.
 
 `state` keys the job keeps (`job.ts` lists them too): `recompute` (claimed
 days), `skip`, `render`, `part:<from>` (a part's pointer: `{from, to, rounds,
 first, last, tsums: {tsum: rounds}, skills: {skill: rounds}, skillTypes:
-{type: rounds}, bytes, files: [{file, sha, rounds, bytes}]}`; a pointer
-from before 0003 has no `skillTypes`), `parts_at`, `totals` (`{tsums,
-skills, skillTypes}`),
+{type: rounds}, scan, chain, bubble: {value: rounds}, bytes, files: [{file,
+sha, rounds, bytes}]}`, each count leaving out what is not recorded; a
+pointer from before 0003 has no `skillTypes` or play settings), `parts_at`,
+`totals` (`{tsums, skills, skillTypes, scan, chain, bubble}`),
 `people` (`{contributors, devices, tsums: {tsum: contributors}, catalog}`),
 `trash` (`[[R2 key, ms]]`), `archived_through`, `dropped_through`, `held`
 (`[[day, rounds]]`), `archive` (the day in progress), `restored` (`[[day,
@@ -694,13 +709,15 @@ manifest with `public, max-age=300`, both `application/json`.
 ```json
 {"kind": "tsum-global-archive", "format": 2, "day": "2026-08-20", "contributor": 17, "n": 2,
  "key": ["…32 hex…"], "playedAt": [1787250000], "build": [0], "tsum": ["beastda"], "skill": [5],
- "skillType": ["beastda"], "items": [7], "version": ["3.0b4"], "settings": [12], "duration": [181.5],
+ "skillType": ["beastda"], "items": [7], "scan": [3], "chain": [-1], "bubble": ["all_mid_chain"],
+ "version": ["3.0b4"], "settings": [12], "duration": [181.5],
  "score": [12345678], "base": [3000], "final": [4500], "medals": [null]}
 ```
 
 Every field a round was stored with is in its file, so a restore loses
-nothing. Format 1 (before `0003_skill_type.sql`) has no `skillType`: a
-restore files its rounds with skill type `''`.
+nothing. Format 1 (before `0003_skill_type.sql`) has no `skillType`,
+`scan`, `chain` or `bubble`: a restore files its rounds with skill type `''`
+and their play settings made from their settings (`records.ts: playSQL`).
 
 `contributor` is null in a `u` or `b` file. `<hex>` is the first 16 hex digits
 of an HMAC (`DEVICE_KEY`) of what the file holds, so it names no one and a
@@ -736,6 +753,8 @@ into it; 0 for a contributor being unlinked or no longer there; never for one
   "medalTsums": ["…"],
   "skills": [2, 3, 4, 5, 6],
   "skillTypes": [{"skillType": "burst", "rounds": 80000}, {"skillType": "beastda", "rounds": 5000}],
+  "playSettings": {"scan": [{"value": "3", "rounds": 60000}], "chain": [{"value": "4", "rounds": 50000}],
+                   "bubble": [{"value": "all_mid_chain", "rounds": 70000}]},
   "minContributors": 3
 }
 ```
@@ -755,30 +774,33 @@ into it; 0 for a contributor being unlinked or no longer there; never for one
 - `medalTsums`: the catalog's `medal: true` ids. `skills`: the distinct
   skill levels (not -1) in the cells, ascending. `skillTypes`: every skill
   type (not `''`) in the cells, most rounds first; the rest of `rounds` have
-  none. Only the parts published since `0003_skill_type.sql` count, until the
-  day's first manifest makes the totals afresh.
+  none. `playSettings`: per play setting (§1.2), every value recorded in
+  the cells, as text, most rounds first; the rest of `rounds` have it not
+  recorded. Only the parts published since `0003_skill_type.sql` count,
+  until the day's first manifest makes the totals afresh.
 - `minContributors`: below this the page flags a Tsum "few players".
 
 ### 4.2 Part files
 
 One day (`day-…`) or one month (`month-…`), columnar like the snapshot's
-month files. Format 3 (since `0003_skill_type.sql`) keys every cell and
-bins row by skill type too (`skillType`); format 2 (since `0002_cell_bins.sql`)
-has no `skillType`, and the page reads its cells and bins as skill type
-`''`. Both have bins per cell, each with its figures; format 1 had bins per
+month files. Format 4 (since `0003_skill_type.sql`) keys every cell and
+bins row by skill type (`skillType`) and the play settings (`scan`, `chain`,
+`bubble`) too; format 3 had the skill type only, and format 2 (since
+`0002_cell_bins.sql`) neither: the page reads what a part lacks as not
+recorded (`''`, -1). Each has bins per cell, each with its figures; format 1 had bins per
 day × build × Tsum × skill, counts only, and the page reads a format 1 part's
 cells but none of its bins:
 
 ```json
 {
-  "kind": "tsum-global-part", "format": 3, "from": "2026-10-14", "to": "2026-10-15",
+  "kind": "tsum-global-part", "format": 4, "from": "2026-10-14", "to": "2026-10-15",
   "cells": {"n": 2, "day": ["2026-10-14", "…"], "build": [0, 1], "tsum": ["beastda", "…"], "skill": [5, -1],
-            "skillType": ["beastda", ""], "items": [7, -1], "medal": [0, 1], "rounds": [], "secs": [], "scoreSum": [], "scoreMin": [], "scoreMax": [],
+            "skillType": ["beastda", ""], "items": [7, -1], "scan": [3, -1], "chain": [4, -1], "bubble": ["all_mid_chain", ""], "medal": [0, 1], "rounds": [], "secs": [], "scoreSum": [], "scoreMin": [], "scoreMax": [],
             "first": [], "last": [], "baseSum": [], "baseSq": [], "baseMin": [], "baseMax": [],
             "finalSum": [], "finalSq": [], "finalMin": [], "finalMax": [],
             "medalsN": [], "medalsSum": [], "medalsSq": [], "medalsMin": [], "medalsMax": [], "medalsSecs": []},
-  "bins": {"n": 1, "day": ["2026-10-14"], "build": [0], "tsum": ["beastda"], "skill": [5], "skillType": ["beastda"], "items": [7], "medal": [0],
-           "base": [{"231": [4, 726.5, 48020000, 3801, 5702, 0]}], "final": [{"…": […]}], "medals": [{}]}
+  "bins": {"n": 1, "day": ["2026-10-14"], "build": [0], "tsum": ["beastda"], "skill": [5], "skillType": ["beastda"], "items": [7],
+           "scan": [3], "chain": [4], "bubble": ["all_mid_chain"], "medal": [0], "base": [{"231": [4, 726.5, 48020000, 3801, 5702, 0]}], "final": [{"…": […]}], "medals": [{}]}
 }
 ```
 
@@ -836,6 +858,7 @@ can touch, several for one part included, and adds them up.
 | `summary` | The server's `Summary` shape (`summary.go`), from the cells, see §6.2 |
 | `tsums` | `manifest.tsums` (`{tsum, rounds, contributors}`) |
 | `skill-types` | `manifest.skillTypes`, and `{skillType: "", rounds}` for the rest of `manifest.rounds`; most rounds first (`queries.go: PlayedSkillTypes`) |
+| `play-settings` | Per play setting, `manifest.playSettings`'s values, and `{value: "", rounds}` for the rest of `manifest.rounds`; most rounds first (`queries.go: PlayedPlaySettings`) |
 | `status` | `{global: true, rounds, contributors, devices, generatedAt, first, last, minContributors, skills}` |
 | `themes` | The built-in themes in `site.go: themeOrder` order, `[{file, name}]` |
 | `devices`, `round-devices`, `owned-sources` | `[]` |
@@ -847,7 +870,9 @@ can touch, several for one part included, and adds them up.
 
 Parameters as `queries.go: ParseFilter`, plus two:
 
-- Kept: `tsum` (comma list), `skillType` (comma list; `-` = none), `build`,
+- Kept: `tsum` (comma list), `skillType` (comma list; `-` = none), `scan`,
+  `chain` and `bubble` (comma lists of the play settings' values as text;
+  `-` = not recorded; a cell matches by its value, -1 and `''` as `-`), `build`,
   `from`, `to`, `coins` (`final` / `medals`), `net=1`, and the coin and medal
   outlier ranges (`minCoins`, `maxCoins`, `minMedals`, `maxMedals`), one at a
   time (below).
@@ -926,9 +951,11 @@ reload the manifest once and retry.
 answer has `tsum.go: TsumDetail`'s fields, plus `global: {approx: true}`:
 
 - `summary`: `summary` with `tsum = id`.
-- `settings`: the skill level only (the cells' `skill`, `-1` left out), as
-  `{setting: 'skillLevel', key, rounds, avgCoins, maxCoins, coinsPerSec,
-  avgScore, first, last}`. `versions`, `devices` and `form` are `[]`: the
+- `settings`: the skill level (the cells' `skill`, `-1` left out) and the
+  play settings (`maxChainsPerScan`, `maxChain`, `bubbleStrategy`, their
+  values as text, not recorded left out), as `{setting, key, rounds,
+  avgCoins, maxCoins, coinsPerSec, avgScore, first, last}`, by setting and
+  then key, as text. `versions`, `devices` and `form` are `[]`: the
   cells keep no versions, devices or rounds.
 - `skillTypes`: by the cells' `skillType` (`''` included), as `tsum.go`'s,
   most rounds first.

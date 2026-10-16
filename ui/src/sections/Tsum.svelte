@@ -19,7 +19,7 @@
   import {shared} from '../lib/ui.svelte.js';
   import {
     api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref,
-    skillTypeName, skillTypeValue, tsumColor, tsumName,
+    PLAY, playValueName, skillTypeName, skillTypeValue, tsumColor, tsumName,
   } from '../lib/util.js';
   import Kpis from './stats/Kpis.svelte';
   import Legend from '../components/Legend.svelte';
@@ -224,10 +224,15 @@
   const valueLabel = v => ({true: 'On', false: 'Off', null: 'Not set'}[v] ?? v.replace(/_/g, ' '));
   const byValue = (a, b) => (Number.isFinite(Number(a.key)) && Number.isFinite(Number(b.key)) ? Number(a.key) - Number(b.key) : a.key.localeCompare(b.key));
 
+  // The play settings (chains per scan, chain length, bubble strategy) by the script's names, and first.
+  const playOf = k => PLAY.find(p => p.key === k);
+  const playLabel = p => v => (['true', 'false', 'null'].includes(v) ? valueLabel(v) : playValueName(p.param, v));
   /** Script settings that took more than one value for this Tsum. */
   const settings = $derived.by(() => {
     const keys = [...new Set((detail?.settings ?? []).map(r => r.setting))].filter(k => !shownElsewhere(k));
-    return keys.map(k => ({key: k, label: words(k), rows: settingRows(k, valueLabel).sort(byValue)}))
+    const first = k => (playOf(k) ? PLAY.indexOf(playOf(k)) : PLAY.length);
+    return keys.sort((a, b) => first(a) - first(b))
+      .map(k => ({key: k, label: playOf(k)?.name ?? words(k), rows: settingRows(k, playOf(k) ? playLabel(playOf(k)) : valueLabel).sort(byValue)}))
       .filter(g => g.rows.length > 1);
   });
   const versions = $derived((detail?.versions ?? []).map(r => ({...r, label: r.key || 'Unknown'})));
@@ -458,7 +463,7 @@
       {/if}
 
       {#if settings.length}
-        <Panel title="By script setting" sub="settings that changed while this Tsum played · change is against the most played value · settings often changed together, and with the skill level, so read these with care" expandable={false}>
+        <Panel title="By script setting" sub="settings that changed while this Tsum played · change is against the most played value · settings often changed together, and with the skill level, so read these with care{globalSite ? ' · the global site breaks down by the chain and bubble settings only' : ''}" expandable={false}>
           <div class="stack settings-list">
             {#each settings as g (g.key)}
               <Breakdown rows={g.rows} {unit} head={g.label} />

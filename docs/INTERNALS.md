@@ -190,7 +190,7 @@ length, and the two sites' per-day figures differ where rounds cross midnight.
 **The rollup.** Each upload adds up its own new rounds as the day tables keep
 them, into one `pending` row. Every hour (cron `5 * * * *`) the job folds
 those into `cells2` (sums per day × build × Tsum × skill × skill type × items
-× medals > 0), `cell_bins2` (each cell's histogram bins, 2 % wide) and the
+× chains per scan × max chain × bubble strategy × medals > 0), `cell_bins2` (each cell's histogram bins, 2 % wide) and the
 private `contrib_cells`, and
 recomputes a day in full from its key range only when something else changed
 it (a ban, a changed round, a merge, a rebuild, a restore). It renders the

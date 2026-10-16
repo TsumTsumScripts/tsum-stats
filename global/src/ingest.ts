@@ -32,6 +32,9 @@ interface Stored {
   skill: number;
   skill_type: string;
   items: number;
+  scan: number;
+  chain: number;
+  bubble: string;
   version: string;
   hash: string | null;
   duration: number;
@@ -43,23 +46,24 @@ interface Stored {
 
 /** The figures a re-send may change: everything but the key and who sent it first. */
 const FIGURES = [
-  "played_at", "build", "tsum", "skill", "skill_type", "items", "version", "settings",
+  "played_at", "build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "version", "settings",
   "duration", "score", "base", "final", "medals", "bin_base", "bin_final", "bin_medals",
 ];
 
 const same = (s: Stored, r: Round) =>
   s.played_at === r.playedAt && s.build === r.build && s.tsum === r.tsum && s.skill === r.skill && s.skill_type === r.skillType &&
-  s.items === r.items && s.version === r.version && s.hash === r.settingsHash && s.duration === r.duration &&
+  s.items === r.items && s.scan === r.scan && s.chain === r.chain && s.bubble === r.bubble && s.version === r.version && s.hash === r.settingsHash && s.duration === r.duration &&
   s.score === r.score && s.base === r.base && s.final === r.final && s.medals === r.medals;
 
 // One row per round in json_each(?1): [key, played_at, build, tsum, skill, skill type,
-// items, version, settings hash, duration, score, base, final, medals, bins...]. The
+// items, scan, chain, bubble, version, settings hash, duration, score, base, final,
+// medals, bins...]. The
 // settings ids are looked up once, as a map, for the batch's hashes ?3. A
 // conflict updates only this contributor's row, and only when it changed.
 const UPSERT_ROUNDS = `INSERT INTO rounds (key, contributor, ${FIGURES.join(", ")})
-  SELECT r->>0, ?2, r->>1, r->>2, r->>3, r->>4, r->>5, r->>6, r->>7,
-    (SELECT json_group_object(hash, id) FROM settings WHERE hash IN (SELECT value FROM json_each(?3))) ->> ('$."' || (r->>8) || '"'),
-    r->>9, r->>10, r->>11, r->>12, r->>13, r->>14, r->>15, r->>16
+  SELECT r->>0, ?2, r->>1, r->>2, r->>3, r->>4, r->>5, r->>6, r->>7, r->>8, r->>9, r->>10,
+    (SELECT json_group_object(hash, id) FROM settings WHERE hash IN (SELECT value FROM json_each(?3))) ->> ('$."' || (r->>11) || '"'),
+    r->>12, r->>13, r->>14, r->>15, r->>16, r->>17, r->>18, r->>19
   FROM (SELECT value AS r FROM json_each(?1)) WHERE true
   ON CONFLICT (key) DO UPDATE SET ${FIGURES.map(f => `${f} = excluded.${f}`).join(", ")}
   WHERE rounds.contributor = excluded.contributor
@@ -77,7 +81,7 @@ const RACED = "INSERT OR IGNORE INTO dirty_days (day) SELECT value FROM json_eac
 const PENDING = "INSERT INTO pending (contributor, n, days, tsums, cells, bins, cell_bins, cc) VALUES (?1, ?2, ?3, ?4, ?5, '[]', ?6, ?7)";
 
 const row = (r: Round) => [
-  r.key, r.playedAt, r.build, r.tsum, r.skill, r.skillType, r.items, r.version, r.settingsHash,
+  r.key, r.playedAt, r.build, r.tsum, r.skill, r.skillType, r.items, r.scan, r.chain, r.bubble, r.version, r.settingsHash,
   r.duration, r.score, r.base, r.final, r.medals, r.binBase, r.binFinal, r.binMedals,
 ];
 
@@ -92,7 +96,7 @@ export type BinFigures = [number, number, number, number, number, number];
  */
 export function aggregate(rounds: Round[]) {
   const cells = new Map<string, (string | number | null)[]>();
-  const bins = new Map<string, [string, number, string, number, string, number, number, ...Record<string, BinFigures>[]]>();
+  const bins = new Map<string, (string | number | Record<string, BinFigures>)[]>();
   const cc = new Map<string, (string | number)[]>();
   const min = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.min(a, b));
   const max = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.max(a, b));
@@ -100,29 +104,32 @@ export function aggregate(rounds: Round[]) {
     const day = keyDay(r.key);
     const medal = r.medals !== null && r.medals > 0 ? 1 : 0;
     if (r.known) {
-      const k = JSON.stringify([day, r.build, r.tsum, r.skill, r.skillType, r.items, medal]);
+      // The cell's key (rollup.ts: CELLS), then its figures from K on.
+      const key = [day, r.build, r.tsum, r.skill, r.skillType, r.items, r.scan, r.chain, r.bubble, medal];
+      const K = key.length;
+      const k = JSON.stringify(key);
       const m = r.medals, read = m !== null;
       const c = cells.get(k);
       if (!c) {
-        cells.set(k, [day, r.build, r.tsum, r.skill, r.skillType, r.items, medal, 1, r.duration, r.score, r.score, r.score, r.playedAt, r.playedAt,
+        cells.set(k, [...key, 1, r.duration, r.score, r.score, r.score, r.playedAt, r.playedAt,
           r.base, r.base * r.base, r.base, r.base, r.final, r.final * r.final, r.final, r.final,
           read ? 1 : 0, m ?? 0, read ? m! * m! : 0, m, m, read ? r.duration : 0]);
       } else {
         const v = c as number[];
-        v[7]++; v[8] += r.duration; v[9] += r.score; v[10] = Math.min(v[10], r.score); v[11] = Math.max(v[11], r.score);
-        v[12] = Math.min(v[12], r.playedAt); v[13] = Math.max(v[13], r.playedAt);
-        v[14] += r.base; v[15] += r.base * r.base; v[16] = Math.min(v[16], r.base); v[17] = Math.max(v[17], r.base);
-        v[18] += r.final; v[19] += r.final * r.final; v[20] = Math.min(v[20], r.final); v[21] = Math.max(v[21], r.final);
+        v[K]++; v[K + 1] += r.duration; v[K + 2] += r.score; v[K + 3] = Math.min(v[K + 3], r.score); v[K + 4] = Math.max(v[K + 4], r.score);
+        v[K + 5] = Math.min(v[K + 5], r.playedAt); v[K + 6] = Math.max(v[K + 6], r.playedAt);
+        v[K + 7] += r.base; v[K + 8] += r.base * r.base; v[K + 9] = Math.min(v[K + 9], r.base); v[K + 10] = Math.max(v[K + 10], r.base);
+        v[K + 11] += r.final; v[K + 12] += r.final * r.final; v[K + 13] = Math.min(v[K + 13], r.final); v[K + 14] = Math.max(v[K + 14], r.final);
         if (read) {
-          v[22]++; v[23] += m!; v[24] += m! * m!; v[27] += r.duration;
-          c[25] = min(c[25] as number | null, m); c[26] = max(c[26] as number | null, m);
+          v[K + 15]++; v[K + 16] += m!; v[K + 17] += m! * m!; v[K + 20] += r.duration;
+          c[K + 18] = min(c[K + 18] as number | null, m); c[K + 19] = max(c[K + 19] as number | null, m);
         }
       }
       // The cell's bins: each of its rounds counted in the bin of its base
       // coins, of its final coins and, when it earned any, of its medals.
       let g = bins.get(k);
-      if (!g) bins.set(k, (g = [day, r.build, r.tsum, r.skill, r.skillType, r.items, medal, {}, {}, {}]));
-      for (const [kind, b] of [[7, r.binBase], [8, r.binFinal], [9, r.binMedals]] as const) {
+      if (!g) bins.set(k, (g = [...key, {}, {}, {}]));
+      for (const [kind, b] of [[K, r.binBase], [K + 1, r.binFinal], [K + 2, r.binMedals]] as const) {
         if (b === null) continue;
         const o = g[kind] as Record<string, BinFigures>;
         const f = (o[b] ??= [0, 0, 0, 0, 0, 0]);
@@ -168,7 +175,7 @@ export async function postRounds(req: Request, env: Env, c: Contributor, nowMs: 
   const tags = [...new Set(rounds.map(r => r.device))];
   if (rounds.length) {
     const [had, settings, devices] = await db.batch([
-      db.prepare(`SELECT r.key, r.contributor, r.played_at, r.build, r.tsum, r.skill, r.skill_type, r.items, r.version, s.hash,
+      db.prepare(`SELECT r.key, r.contributor, r.played_at, r.build, r.tsum, r.skill, r.skill_type, r.items, r.scan, r.chain, r.bubble, r.version, s.hash,
           r.duration, r.score, r.base, r.final, r.medals
         FROM json_each(?1) j JOIN rounds r ON r.key = j.value LEFT JOIN settings s ON s.id = r.settings`)
         .bind(JSON.stringify(rounds.map(r => r.key))),

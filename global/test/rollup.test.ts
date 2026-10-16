@@ -16,6 +16,7 @@ interface Manifest {
   kind: string; format: number; generatedAt: string; rounds: number; contributors: number; devices: number;
   first: string | null; last: string | null; parts: { from: string; to: string; file: string; rounds: number; sha: string }[];
   tsums: { tsum: string; rounds: number; contributors: number }[]; medalTsums: string[]; skills: number[]; minContributors: number;
+  playSettings: Record<"scan" | "chain" | "bubble", { value: string; rounds: number }[]>;
 }
 type Columns = Record<string, unknown[]> & { n: number };
 interface PartFile { kind: string; format: number; from: string; to: string; cells: Columns; bins: Columns }
@@ -61,6 +62,16 @@ describe("recompute", () => {
     for (const c of want.cells) perTsum.set(c.tsum, (perTsum.get(c.tsum) ?? 0) + c.rounds);
     expect(m.tsums).toEqual([...perTsum].map(([tsum, rounds]) => ({ tsum, rounds, contributors: 2 }))
       .sort((a, b) => b.rounds - a.rounds || (a.tsum < b.tsum ? -1 : 1)));
+    // Each play setting's values, by rounds, not recorded left out.
+    const values = (col: "scan" | "chain" | "bubble", known: (v: number | string) => boolean) => {
+      const n = new Map<string, number>();
+      for (const c of want.cells) if (known(c[col])) n.set(String(c[col]), (n.get(String(c[col])) ?? 0) + c.rounds);
+      return [...n].map(([value, rounds]) => ({ value, rounds })).sort((a, b) => b.rounds - a.rounds || (a.value < b.value ? -1 : 1));
+    };
+    expect(m.playSettings).toEqual({
+      scan: values("scan", v => (v as number) >= 0), chain: values("chain", v => (v as number) >= 0), bubble: values("bubble", v => v !== ""),
+    });
+    expect(m.playSettings.scan.map(v => v.value).sort()).toEqual(["12", "2", "3", "6"]);
     expect(m.parts.map(p => [p.from, p.to])).toEqual([
       ["2026-10-11", "2026-10-12"], ["2026-10-12", "2026-10-13"], ["2026-10-13", "2026-10-14"], ["2026-10-14", "2026-10-15"],
     ]);
@@ -164,11 +175,11 @@ describe("render", () => {
       expect(p.sha).toBe(sha);
       expect(p.file).toBe(`day-${p.from}.${sha}.json`);
       const part = JSON.parse(new TextDecoder().decode(bytes)) as PartFile;
-      expect(part).toMatchObject({ kind: "tsum-global-part", format: 3, from: p.from, to: p.to });
-      expect(Object.keys(part.cells)).toEqual(["n", "day", "build", "tsum", "skill", "skillType", "items", "medal", "rounds", "secs",
+      expect(part).toMatchObject({ kind: "tsum-global-part", format: 4, from: p.from, to: p.to });
+      expect(Object.keys(part.cells)).toEqual(["n", "day", "build", "tsum", "skill", "skillType", "items", "scan", "chain", "bubble", "medal", "rounds", "secs",
         "scoreSum", "scoreMin", "scoreMax", "first", "last", "baseSum", "baseSq", "baseMin", "baseMax", "finalSum", "finalSq",
         "finalMin", "finalMax", "medalsN", "medalsSum", "medalsSq", "medalsMin", "medalsMax", "medalsSecs"]);
-      expect(Object.keys(part.bins)).toEqual(["n", "day", "build", "tsum", "skill", "skillType", "items", "medal", "base", "final", "medals"]);
+      expect(Object.keys(part.bins)).toEqual(["n", "day", "build", "tsum", "skill", "skillType", "items", "scan", "chain", "bubble", "medal", "base", "final", "medals"]);
       const dayCells = cells.filter(c => c.day === p.from);
       sameRows(partRows(part.cells), dayCells, CELL_KEY);
       sameRows(partRows(part.bins), bins.filter(b => b.day === p.from), BIN_KEY);

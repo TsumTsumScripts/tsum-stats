@@ -194,6 +194,15 @@ script's way of playing the skill, such as `burst` or a Tsum's own
 (`beastda`). *Not recorded* (`-`) is the rounds that came without one. It
 shows when the rounds have more than one.
 
+**Chains per scan, max chain length, bubble strategy.** Three of the script's
+settings have lists of their own on the rail, the same way (`scan`, `chain`
+and `bubble` in the link): how many chains the script takes from one look at
+the board (*Chains per board scan*), the longest chain it draws (*Maximum
+Chain Number*) and how it spends bubbles (*One Bubble Mid Chain*, *All
+Bubbles Mid Chain* and so on). *Not recorded* (`-`) is the rounds without
+the setting, or with a value that is not a whole number up to 999 (a strategy:
+not a plain name). Each shows when the rounds have more than one value.
+
 **Min rounds per Tsum.** The rail's box (`minRounds` in the link) leaves
 Tsums with fewer rounds in the filter out of the Tsum table and the efficiency
 chart, so a Tsum played a handful of times does not top the rankings. It is
@@ -325,7 +334,7 @@ Incomplete rounds are left out, as on Stats.
   Hidden in Medals mode.
 - **By script setting:** every other setting that took more than one value
   for this Tsum (the boost items have their own chart), against the most played
-  value. Settings often changed together, so a difference is not proof of cause.
+  value; chains per scan, max chain length and bubble strategy first. Settings often changed together, so a difference is not proof of cause.
 - **By skill type**, **By script version** and **By device**, when there is
   more than one.
 - The KPI tiles, per-day, histogram, items and hour charts, as on Stats, for
@@ -559,7 +568,8 @@ everyone's rounds, and in the *Midnight Felt* theme until you pick another:
   bins 2 % wide, so each is within 2 % of the exact figure, and exact under
   100. Every count, total, average, best and rate is exact.
 - **Filters:** Tsums, game, dates, skill type, primary stat, *Less item costs*
-  and min rounds per Tsum, as here, plus **skill level** and **items used**. No
+  and min rounds per Tsum, as here (chains per scan, max chain length and
+  bubble strategy too), plus **skill level** and **items used**. No
   device or incomplete-round filters. Rounds sent before the global site kept
   skill types have none (*Not recorded*) until their player's app sends them
   again, which it does once by itself; rounds older than 60 days by then keep
@@ -579,7 +589,8 @@ everyone's rounds, and in the *Midnight Felt* theme until you pick another:
   rate among every Tsum, its share of all rounds and its players, the KPI
   tiles, consistency and rounds under a target (≈, from the bins), by skill
   level with its spread chart, per day, the histogram, by items and *Do the
-  items pay?*. Not there: recent form, boxes to the next skill, settings,
+  items pay?*, and *By script setting* for chains per scan, max chain length
+  and bubble strategy. Not there: recent form, boxes to the next skill, other settings,
   versions, devices, best rounds and By hour of day. The Catalog links each
   played Tsum to it.
 - **Not there:** the Rounds table, By hour of day, Help, and anything about

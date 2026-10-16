@@ -1,7 +1,7 @@
 // An upload's records → rounds (CONTRACT §1): each record is a stats CSV row
 // keyed by its header, read as csv.go reads it, checked in §1.2's order, and
 // re-keyed so the device's hardware tag is never kept.
-import { parseTime } from "../../ui/src/lib/snapshot/engine.js";
+import { PLAY_SETTINGS, parseTime, playValue } from "../../ui/src/lib/snapshot/engine.js";
 import { TSUMS, isMedalTsum } from "./catalog";
 import { fromHex, hmacHex, sha256Hex } from "./crypto";
 import { DAY, bin, dayStart } from "./days";
@@ -39,6 +39,14 @@ export interface Round {
   /** The script's skill type (`skill_type`), as sent; "" when it sent none. */
   skillType: string;
   items: number;
+  /**
+   * The play settings (CONTRACT §1.2), from the settings as the engines read
+   * them (playValue): chains per board scan and the longest chain, -1 when not
+   * recorded, and the bubble strategy, "" when not.
+   */
+  scan: number;
+  chain: number;
+  bubble: string;
   version: string;
   /** The settings object as canonical JSON, and its SHA-256. */
   settings: string;
@@ -84,6 +92,20 @@ export const SETTINGS_MAX = { columns: 64, name: 64, value: 256, json: 4096 };
  */
 export const FIELD_MAX = 64;
 const CONTROL = /[\u0000-\u001f\u007f]/;
+
+/**
+ * A play setting of the settings JSON `json` (an SQL expression) as the
+ * rounds table keeps it, in SQL: playValue's rule, -1 for a number setting
+ * not recorded. Restores and migrations/0003_skill_type.sql make it this way.
+ */
+export function playSQL(ps: { key: string; number: boolean }, json: string): string {
+  const v = `json_extract(${json}, '$.${ps.key}')`, t = `json_type(${json}, '$.${ps.key}')`;
+  return ps.number
+    ? `(CASE WHEN ${t} IN ('integer', 'real') AND ${v} BETWEEN 0 AND 999 AND ${v} = CAST(${v} AS INTEGER) THEN CAST(${v} AS INTEGER) ELSE -1 END)`
+    : `(CASE WHEN ${t} = 'text' AND length(${v}) BETWEEN 1 AND 64 AND ${v} NOT GLOB '*[^A-Za-z0-9_.-]*' THEN ${v} ELSE '' END)`;
+}
+/** The play settings at their longest in an archive file: two numbers ("999", "-1") and a quoted 64-character id, with their commas. */
+export const PLAY_BYTES = 2 * 4 + 64 + 3;
 const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
 /** A cell, trimmed as csv.go: cell does. The format sends text; a number is taken as its text. */
@@ -166,6 +188,7 @@ function readRecord(rec: Record<string, unknown>, now: number, oldest: number): 
     (medals !== null && (medals < 0 || medals > MAX.medals))) return "range";
 
   const skill = settings.skillLevel;
+  const [scan, chain, bubble] = PLAY_SETTINGS.map(ps => playValue(settings, ps));
   let items = -1;
   if (Object.hasOwn(settings, "bonusCoin")) {
     items = 0;
@@ -177,6 +200,9 @@ function readRecord(rec: Record<string, unknown>, now: number, oldest: number): 
     build: build === "jp" ? 1 : 0,
     skill: Number.isInteger(skill) && (skill as number) >= 1 && (skill as number) <= 10 ? (skill as number) : -1,
     skillType,
+    scan: scan === "" ? -1 : Number(scan),
+    chain: chain === "" ? -1 : Number(chain),
+    bubble,
     version,
     settings: json,
     duration, score, base, final, medals,

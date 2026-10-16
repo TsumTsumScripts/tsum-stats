@@ -17,7 +17,8 @@ import { DAY, DAY_ROUNDS, addDays, dayOf, dayParams, dayRange, dayStart, hex48, 
 import type { Env } from "./env";
 import { HttpError } from "./http";
 import type { Job } from "./job";
-import { FIELD_MAX } from "./records";
+import { PLAY_SETTINGS } from "../../ui/src/lib/snapshot/engine.js";
+import { FIELD_MAX, PLAY_BYTES, playSQL } from "./records";
 import { Run } from "./run";
 
 export const ARCHIVE = "archive/";
@@ -51,20 +52,29 @@ export const namedPrefix = (day: string, id: number) => archiveKey(day, `c${id}.
 // was sent with, so a restore loses nothing.
 const COLUMNS: [string, string][] = [
   ["key", "key"], ["playedAt", "played_at"], ["build", "build"], ["tsum", "tsum"], ["skill", "skill"],
-  ["skillType", "skill_type"], ["items", "items"], ["version", "version"], ["settings", "settings"],
+  ["skillType", "skill_type"], ["items", "items"], ["scan", "scan"], ["chain", "chain"], ["bubble", "bubble"],
+  ["version", "version"], ["settings", "settings"],
   ["duration", "duration"], ["score", "score"], ["base", "base"], ["final", "final"], ["medals", "medals"],
 ];
-/** Archive format 2 has skillType; a format 1 file has none, and its rounds come back with "". */
-const OPTIONAL = new Set(["skillType"]);
+/**
+ * Columns archive format 2 has and format 1 lacks, as a format 1 file's
+ * rounds come back: no skill type (""), and the play settings made from the
+ * round's settings, as the upload made them (records.ts: playSQL).
+ */
+const OPTIONAL = new Map([
+  ["skillType", "''"],
+  ...PLAY_SETTINGS.map(ps => [ps.param, playSQL(ps, "(SELECT json FROM settings WHERE id = c_settings.v)")] as [string, string]),
+]);
 
 /**
  * How long one round can be in a file, at most: a 48-character Tsum id,
  * every figure at its longest (174 characters), and a version and a skill
  * type of FIELD_MAX characters each with every one escaped (`"` or `\\`; a
- * control character rejects the record), quoted. A share of a day is sized
+ * control character rejects the record), quoted, and the play settings at
+ * their longest (PLAY_BYTES). A share of a day is sized
  * by it, so no piece passes the value limit.
  */
-const ROUND_BYTES = 174 + 2 * (2 * FIELD_MAX + 3);
+const ROUND_BYTES = 174 + 2 * (2 * FIELD_MAX + 3) + PLAY_BYTES;
 
 /**
  * Share ?5 of day ?3 into archive_parts: the ?4 rounds after the last key
@@ -113,14 +123,14 @@ const binSQL = (v: string) => `CASE WHEN ${v} < 100 THEN ${v} ELSE 100 + CAST(fl
  * A file's rounds back into D1 as contributor ?2. Each column becomes a table
  * of (position, value), joined on the position, so the Worker never parses
  * the file. (D1 allows only five terms in a compound SELECT, so not a UNION.)
- * A column an older format lacks (OPTIONAL) comes back as "". A round D1
+ * A column an older format lacks comes back as OPTIONAL says. A round D1
  * already has is left alone.
  */
 const RESTORE = `WITH ${COLUMNS.map(([j]) => `c_${j} AS MATERIALIZED (SELECT key AS i, value AS v FROM json_each(?1, '$.${j}'))`).join(",\n    ")}
   INSERT OR IGNORE INTO rounds (key, contributor, ${COLUMNS.slice(1).map(([, c]) => c).join(", ")}, bin_base, bin_final, bin_medals)
   SELECT key, ?2, ${COLUMNS.slice(1).map(([, c]) => c).join(", ")},
     ${binSQL("base")}, ${binSQL("final")}, CASE WHEN medals > 0 THEN ${binSQL("medals")} END
-  FROM (SELECT ${COLUMNS.map(([j, c]) => (OPTIONAL.has(j) ? `coalesce(c_${j}.v, '') AS ${c}` : `c_${j}.v AS ${c}`)).join(", ")}
+  FROM (SELECT ${COLUMNS.map(([j, c]) => (OPTIONAL.has(j) ? `coalesce(c_${j}.v, ${OPTIONAL.get(j)}) AS ${c}` : `c_${j}.v AS ${c}`)).join(", ")}
     FROM c_key ${COLUMNS.slice(1).map(([j]) => `${OPTIONAL.has(j) ? "LEFT JOIN" : "JOIN"} c_${j} ON c_${j}.i = c_key.i`).join(" ")})`;
 
 /** A file to put together: [contributor, first part, after its last part, its number, its bytes]. */

@@ -18,9 +18,12 @@ type Filter struct {
 	// SkillTypes are the script's skill types (skill_type) to keep; empty is
 	// every one, and "" is the rounds sent without one.
 	SkillTypes []string
-	Build      string
-	From       string // sqlTime, inclusive, UTC
-	To         string // sqlTime, exclusive, UTC
+	// Play is the values to keep of each play setting, by its parameter
+	// (PlaySettings); "" is the rounds where it is not recorded.
+	Play  map[string][]string
+	Build string
+	From  string // sqlTime, inclusive, UTC
+	To    string // sqlTime, exclusive, UTC
 	// The outlier ranges, each bound inclusive. Coins are base or final coins
 	// (never medals); the medal range only judges medal Tsums' rounds.
 	MinCoins, MaxCoins   *int64
@@ -94,8 +97,38 @@ const completeSQL = "tsum <> '' AND score IS NOT NULL AND base_coins IS NOT NULL
 
 var sqlTimeRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
 
-// NoSkillType is how the skillType list names the rounds without a skill type.
+// NoSkillType is how the skillType list names the rounds without a skill
+// type, and a play setting's list the rounds where it is not recorded.
 const NoSkillType = "-"
+
+// PlaySetting is a script setting the filters, and the global site's cells,
+// go by: Key in the settings, Param its query parameter. A Number setting is
+// a whole number, else an id.
+type PlaySetting struct {
+	Param, Key string
+	Number     bool
+}
+
+// PlaySettings are how many chains a board scan may take, the longest chain,
+// and how bubbles are spent (the engines' PLAY_SETTINGS).
+var PlaySettings = []PlaySetting{
+	{"scan", "maxChainsPerScan", true}, {"chain", "maxChain", true}, {"bubble", "bubbleStrategy", false},
+}
+
+// playSettingSQL is a round's value of ps as text, as the engines' playValue
+// and the global site keep it: a Number setting's whole value 0-999, an id
+// setting's value of letters, digits, '_', '.' and '-', at most 64; anything
+// else, or none, is ” (not recorded).
+func playSettingSQL(ps PlaySetting) string {
+	v := "json_extract(" + settingsSQL + ", '$." + ps.Key + "')"
+	t := "json_type(" + settingsSQL + ", '$." + ps.Key + "')"
+	if ps.Number {
+		return "(CASE WHEN " + t + " IN ('integer', 'real') AND " + v + " BETWEEN 0 AND 999 AND " + v + " = CAST(" + v + " AS INTEGER)" +
+			" THEN CAST(CAST(" + v + " AS INTEGER) AS TEXT) ELSE '' END)"
+	}
+	return "(CASE WHEN " + t + " = 'text' AND length(" + v + ") BETWEEN 1 AND 64 AND " + v + " NOT GLOB '*[^A-Za-z0-9_.-]*'" +
+		" THEN " + v + " ELSE '' END)"
+}
 
 // ParseFilter reads tsum, device and skillType (comma lists; NoSkillType is
 // the rounds without one), build, from, to, the outlier
@@ -121,6 +154,19 @@ func ParseFilter(q url.Values) Filter {
 			f.SkillTypes = append(f.SkillTypes, "")
 		} else if s != "" {
 			f.SkillTypes = append(f.SkillTypes, s)
+		}
+	}
+	for _, ps := range PlaySettings {
+		for _, s := range strings.Split(q.Get(ps.Param), ",") {
+			if s = strings.TrimSpace(s); s == NoSkillType {
+				s = ""
+			} else if s == "" {
+				continue
+			}
+			if f.Play == nil {
+				f.Play = map[string][]string{}
+			}
+			f.Play[ps.Param] = append(f.Play[ps.Param], s)
 		}
 	}
 	if b := q.Get("build"); b == "global" || b == "jp" {
@@ -184,6 +230,19 @@ func (f Filter) where() (string, dbx.Params) {
 			p[key] = s
 		}
 		parts = append(parts, "skill_type IN ("+strings.Join(names, ",")+")")
+	}
+	for _, ps := range PlaySettings {
+		values := f.Play[ps.Param]
+		if len(values) == 0 {
+			continue
+		}
+		names := make([]string, len(values))
+		for i, v := range values {
+			key := fmt.Sprintf("%s%d", ps.Param, i)
+			names[i] = "{:" + key + "}"
+			p[key] = v
+		}
+		parts = append(parts, playSettingSQL(ps)+" IN ("+strings.Join(names, ",")+")")
 	}
 	if f.Build != "" {
 		parts = append(parts, "build = {:build}")
@@ -307,6 +366,28 @@ func PlayedSkillTypes(db dbx.Builder) ([]SkillTypeCount, error) {
 	out := []SkillTypeCount{}
 	err := db.NewQuery(`SELECT skill_type, COUNT(*) AS rounds FROM ts_rounds GROUP BY skill_type ORDER BY rounds DESC, skill_type`).All(&out)
 	return out, err
+}
+
+// PlayValue is one value of a play setting, "" for not recorded, and how
+// many rounds played with it.
+type PlayValue struct {
+	Value  string `db:"value" json:"value"`
+	Rounds int64  `db:"rounds" json:"rounds"`
+}
+
+// PlayedPlaySettings is each play setting's values with at least one round,
+// not recorded among them as "", by parameter, for the filters' options.
+func PlayedPlaySettings(db dbx.Builder) (map[string][]PlayValue, error) {
+	out := map[string][]PlayValue{}
+	for _, ps := range PlaySettings {
+		values := []PlayValue{}
+		if err := db.NewQuery(`SELECT ` + playSettingSQL(ps) + ` AS value, COUNT(*) AS rounds FROM ts_rounds
+			GROUP BY value ORDER BY rounds DESC, value`).All(&values); err != nil {
+			return nil, err
+		}
+		out[ps.Param] = values
+	}
+	return out, nil
 }
 
 // MedalTsums is every Tsum that has earned medals, by name.

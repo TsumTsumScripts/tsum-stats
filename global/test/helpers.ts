@@ -86,6 +86,10 @@ export interface RoundSpec {
   skill?: number | string;
   /** The script's skill type (`skill_type`); "" by default. */
   skillType?: string;
+  /** The play settings (maxChainsPerScan, maxChain, bubbleStrategy), as sent; left out by default. */
+  scan?: number | string;
+  chain?: number | string;
+  bubble?: string;
   /** Items used, as their setting names; null for settings from before items. */
   items?: string[] | null;
   version?: string;
@@ -112,6 +116,9 @@ export function record(s: RoundSpec = {}): Record<string, string> {
     final_coins: String(s.final ?? 4500),
     medals: s.medals === undefined ? "" : String(s.medals),
     skillLevel: String(s.skill ?? 5),
+    ...(s.scan === undefined ? {} : { maxChainsPerScan: String(s.scan) }),
+    ...(s.chain === undefined ? {} : { maxChain: String(s.chain) }),
+    ...(s.bubble === undefined ? {} : { bubbleStrategy: s.bubble }),
     ...(s.extra ?? {}),
   };
   if (s.items !== null) {

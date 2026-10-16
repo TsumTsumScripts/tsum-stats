@@ -22,7 +22,7 @@
   import {expand, shared, toast} from '../lib/ui.svelte.js';
   import {
     api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsCost, itemsLabel, loadPref, pct, savePref,
-    skillTypeName, tsumColor, tsumName,
+    PLAY, playValueName, skillTypeName, tsumColor, tsumName,
   } from '../lib/util.js';
   import FilterRail from './stats/FilterRail.svelte';
   import FocusBar from './stats/FocusBar.svelte';
@@ -39,12 +39,13 @@
   // tsum is a comma list: one Tsum focuses on it, several compare them head to head.
   // device is a comma list of device names; empty is every device.
   // skillType is a comma list of the script's skill types, '-' the rounds sent without one; empty is every one.
+  // scan, chain and bubble (PLAY) are comma lists of those script settings' values, '-' where not recorded.
   // days is the time range: '7' or '30' (rolling, up to today), 'all', or '' for the from/to dates.
   // min/max Score, Coins and Medals are the outlier ranges (OUTLIERS); incomplete '1' keeps rounds with an unread figure.
   // On the global site, skill and items are comma lists of skill levels and item masks (-1: not recorded).
   // minRounds leaves Tsums with fewer rounds in the filter out of the rankings (the Tsum table and efficiency chart);
   // it is the page's alone, never sent, so every total still counts their rounds.
-  const blank = () => ({tsum: '', device: '', skillType: '', days: '7', from: '', to: '', ...Object.fromEntries(OUTLIER_KEYS.map(k => [k, ''])),
+  const blank = () => ({tsum: '', device: '', skillType: '', ...Object.fromEntries(PLAY.map(p => [p.param, ''])), days: '7', from: '', to: '', ...Object.fromEntries(OUTLIER_KEYS.map(k => [k, ''])),
     incomplete: '', build: '', coins: '', net: '', minRounds: '', sort: '-playedAt', page: 1, perPage: 50, ...(globalSite ? {skill: '', items: ''} : {})});
   /** The outlier ranges: a stat, its link keys and the input step. */
   const OUTLIERS = [['score', 'Score', 'minScore', 'maxScore', 1000], ['coins', 'Coins', 'minCoins', 'maxCoins', 100], ['medals', 'Medals', 'minMedals', 'maxMedals', 10]];
@@ -99,6 +100,8 @@
   let playedDevices = $state([]);
   /** The script's skill types with rounds, [{skillType, rounds}], "" for none. */
   let skillTypes = $state([]);
+  /** Each play setting's values with rounds, {scan: [{value, rounds}], ...}, "" for not recorded. */
+  let playChoices = $state.raw({});
   // The global site's status: its skill levels and the contributors a Tsum needs before its figures are trusted.
   let status = $state.raw(null);
   // The global site's item sets, for the items filter: [{items, rounds}] from the last summary without one.
@@ -125,6 +128,7 @@
   const picked = $derived(listOf(filter.tsum));
   const pickedDevices = $derived(listOf(filter.device));
   const pickedTypes = $derived(listOf(filter.skillType));
+  const pickedPlay = $derived(Object.fromEntries(PLAY.map(p => [p.param, listOf(filter[p.param])])));
   const pickedSkills = $derived(globalSite ? listOf(filter.skill) : []);
   const pickedItems = $derived(globalSite ? listOf(filter.items) : []);
   const unit = $derived(filter.coins === 'medals' ? 'medals' : 'coins');
@@ -158,7 +162,7 @@
   });
 
   const filterParams = () => ({
-    tsum: filter.tsum, device: filter.device, skillType: filter.skillType, build: filter.build, coins: filter.coins, net: net ? '1' : '', incomplete: filter.incomplete,
+    tsum: filter.tsum, device: filter.device, skillType: filter.skillType, ...Object.fromEntries(PLAY.map(p => [p.param, filter[p.param]])), build: filter.build, coins: filter.coins, net: net ? '1' : '', incomplete: filter.incomplete,
     ...Object.fromEntries(OUTLIER_KEYS.map(k => [k, filter[k]])),
     from: localDayStart(range.from), to: localDayEnd(range.to),
     ...(globalSite ? {skill: filter.skill, items: filter.items} : {}),
@@ -190,6 +194,10 @@
     }
     if (pickedTypes.length) {
       out.push({label: pickedTypes.length > 2 ? `${pickedTypes.length} skill types` : pickedTypes.map(skillTypeName).join(', '), clear: () => set({skillType: ''})});
+    }
+    for (const p of PLAY) {
+      const on = pickedPlay[p.param];
+      if (on.length) out.push({label: `${p.short}: ${on.length > 2 ? `${on.length} values` : on.map(v => playValueName(p.param, v)).join(', ')}`, clear: () => set({[p.param]: ''})});
     }
     if (filter.build) out.push({label: buildLabel(filter.build), clear: () => set({build: ''})});
     if (pickedSkills.length) out.push({label: `Skill ${pickedSkills.map(skillName).join(', ')}`, clear: () => set({skill: ''})});
@@ -287,6 +295,8 @@
     playedDevices = await api('round-devices');
     // An older snapshot has no skill types to offer.
     skillTypes = await api('skill-types').catch(() => []);
+    // Nor play settings.
+    playChoices = await api('play-settings').catch(() => ({}));
     played = (await api('tsums')).filter(t => t.tsum);
   }
 
@@ -524,7 +534,7 @@
 <svelte:document onkeydowncapture={onKey} />
 
 <section id="stats" class="stats-layout" class:loading {hidden}>
-  <FilterRail {filter} {range} {chips} outliers={RANGES} {picked} {played} {playedDevices} {pickedDevices} {skillTypes} {pickedTypes} comparing={picked.length > 1}
+  <FilterRail {filter} {range} {chips} outliers={RANGES} {picked} {played} {playedDevices} {pickedDevices} {skillTypes} {pickedTypes} {playChoices} {pickedPlay} comparing={picked.length > 1}
     skills={status?.skills ?? []} {pickedSkills} {itemChoices} {pickedItems}
     {set} reset={() => set({...blank(), coins: filter.coins, net: filter.net})} {addTsum} {dropTsum} {matchTsum} {nameOf} {colorOf} bind:open={railOpen} />
 

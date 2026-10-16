@@ -272,7 +272,8 @@ rewrite. These rules are why some code looks the way it does:
   reported, and the rest still run. A run that stops early, or is cut off,
   loses nothing, and the next run carries on.
 - **Reads are bounded too.** Free reads 5 million rows a day; a day at 80,000
-  rounds reads about 850,000 (`test/volume.test.ts`). `READ_BUDGET_PER_DAY`
+  rounds reads about 1.4 million (`test/volume.test.ts`), most of it the
+  hourly part of the day, whose cells the play settings split about twice over. `READ_BUDGET_PER_DAY`
   makes the job put off full recomputes, unlinks and the archive past 4
   million.
 - **Deletes are put off.** A delete is a row written, so archived days stay in

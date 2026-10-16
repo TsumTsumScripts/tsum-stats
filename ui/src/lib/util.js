@@ -105,6 +105,28 @@ export const skillTypeValue = t => (t === '' ? '-' : t);
 /** A skill type as the script names it, or "Not recorded" ('' or '-'). */
 export const skillTypeName = t => (t === '' || t === '-' ? 'Not recorded' : t);
 
+/**
+ * The play settings the filters go by (the engines' PLAY_SETTINGS), by query
+ * parameter: the setting's key, its name and a short one for a chip.
+ */
+export const PLAY = [
+  {param: 'scan', key: 'maxChainsPerScan', name: 'Chains per scan', short: 'Scan'},
+  {param: 'chain', key: 'maxChain', name: 'Max chain length', short: 'Chain'},
+  {param: 'bubble', key: 'bubbleStrategy', name: 'Bubble strategy', short: 'Bubbles'},
+];
+// The Tsum script's own names for its bubble strategies (bubbleOptions.ts).
+const BUBBLES = {
+  one_mid_chain: 'One bubble mid chain', all_mid_chain: 'All bubbles mid chain', save_one_mid_chain: 'Save one mid chain',
+  save_one: 'Save one', all_asap: 'All bubbles ASAP',
+};
+/** A play setting's value as its filter lists it: '-' where it is not recorded. */
+export const playValue = v => (v === '' ? '-' : v);
+/** A play setting's value as the script names it, or "Not recorded" ('' or '-'). */
+export const playValueName = (param, v) => (v === '' || v === '-' ? 'Not recorded' : param === 'bubble' ? BUBBLES[v] ?? v.replace(/_/g, ' ') : v);
+/** Numbers in order, names by their rounds. */
+export const byPlayValue = (a, b) => (Number.isFinite(Number(a.value)) && Number.isFinite(Number(b.value)) && a.value !== '' && b.value !== ''
+  ? Number(a.value) - Number(b.value) : 0);
+
 // Small rates (medals per second) keep two significant digits instead of rounding to 0.
 const sig2 = new Intl.NumberFormat(undefined, {maximumSignificantDigits: 2});
 export const fmtRate = v => (v === null || v === undefined ? '—' : (Math.abs(v) < 1 ? sig2 : nf1).format(v));

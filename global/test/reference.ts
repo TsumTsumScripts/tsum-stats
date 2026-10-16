@@ -15,6 +15,9 @@ export interface RoundRow {
   skill: number;
   skill_type: string;
   items: number;
+  scan: number;
+  chain: number;
+  bubble: string;
   duration: number;
   score: number;
   base: number;
@@ -36,12 +39,12 @@ const maxOf = (xs: number[]) => (xs.length ? Math.max(...xs) : null);
 /** The cells, bins and contrib_cells the rounds make; hidden contributors are banned, anon ones unlinking. */
 export function reference(rounds: RoundRow[], hidden: Set<number>, anon: Set<number> = new Set()) {
   const pub = rounds.filter(r => !hidden.has(r.contributor));
-  const cells = [...group(pub, r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.skill, r.skill_type, r.items, (r.medals ?? 0) > 0 ? 1 : 0])).entries()]
+  const cells = [...group(pub, r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.skill, r.skill_type, r.items, r.scan, r.chain, r.bubble, (r.medals ?? 0) > 0 ? 1 : 0])).entries()]
     .map(([k, rs]) => {
-      const [day, build, tsum, skill, skill_type, items, medal] = JSON.parse(k);
+      const [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal] = JSON.parse(k);
       const m = rs.filter(r => r.medals !== null);
       return {
-        day, build, tsum, skill, skill_type, items, medal, rounds: rs.length, secs: sum(rs.map(r => r.duration)),
+        day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, rounds: rs.length, secs: sum(rs.map(r => r.duration)),
         score_sum: sum(rs.map(r => r.score)), score_min: minOf(rs.map(r => r.score)), score_max: maxOf(rs.map(r => r.score)),
         first: minOf(rs.map(r => r.played_at)), last: maxOf(rs.map(r => r.played_at)),
         base_sum: sum(rs.map(r => r.base)), base_sq: sum(rs.map(r => r.base ** 2)), base_min: minOf(rs.map(r => r.base)), base_max: maxOf(rs.map(r => r.base)),
@@ -59,11 +62,11 @@ export function reference(rounds: RoundRow[], hidden: Set<number>, anon: Set<num
     }
     return o;
   };
-  const bins = [...group(pub, r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.skill, r.skill_type, r.items, (r.medals ?? 0) > 0 ? 1 : 0])).entries()]
+  const bins = [...group(pub, r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.skill, r.skill_type, r.items, r.scan, r.chain, r.bubble, (r.medals ?? 0) > 0 ? 1 : 0])).entries()]
     .map(([k, rs]) => {
-      const [day, build, tsum, skill, skill_type, items, medal] = JSON.parse(k);
+      const [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal] = JSON.parse(k);
       return {
-        day, build, tsum, skill, skill_type, items, medal, base: figures(rs, r => bin(r.base)), final: figures(rs, r => bin(r.final)),
+        day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, base: figures(rs, r => bin(r.base)), final: figures(rs, r => bin(r.final)),
         medals: figures(rs.filter(r => (r.medals ?? 0) > 0), r => bin(r.medals!)),
       };
     });
@@ -85,7 +88,7 @@ const order = (keys: string[]) => (a: Record<string, unknown>, b: Record<string,
   }
   return 0;
 };
-export const CELL_KEY = ["day", "build", "tsum", "skill", "skill_type", "items", "medal"];
+export const CELL_KEY = ["day", "build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal"];
 export const BIN_KEY = CELL_KEY;
 /** The bins objects: {bin: figures}, secs (figure 1) a REAL sum. */
 const BINS = new Set(["base", "final", "medals"]);
@@ -150,6 +153,14 @@ const TSUMS = ["mickey", "minnie", "donald", "mickeyplus", "aliceplus", "beastda
 const ITEM_SETS: (string[] | null)[] = [null, [], ["bonusCoin"], ["bonusCoin", "bonusTime"], ["bonusTime", "bonusScore", "bonusCombo"], ["bonus5to4", "bonusBubble"]];
 /** Skill types as the script names them, "" for a round sent without one. */
 const SKILL_TYPES = ["", "burst", "burst", "beastda", "pair_tsum"];
+/**
+ * Play settings as sent, a few of them not recorded or past playValue's rule
+ * (a fraction, a bubble strategy with a space): picked by the round's start,
+ * so the random figures stay as they were.
+ */
+const SCANS = [3, 3, 2, 6, "", 3.5, 12];
+const CHAINS = [4, 5, 15, 4, "", 1000, 5, 6];
+const BUBBLES = ["all_mid_chain", "one_mid_chain", "save_one_mid_chain", "", "all mid", "one_mid_chain"];
 
 /**
  * One device's rounds ending between `from` and `to` (ms): each starts 10-200 s
@@ -174,6 +185,10 @@ export function deviceRounds(rnd: () => number, tag: string, from: number, to: n
       skillType: SKILL_TYPES[Math.floor(rnd() * SKILL_TYPES.length)],
       items: ITEM_SETS[Math.floor(rnd() * ITEM_SETS.length)],
     };
+    const k = Math.floor(start / 1000);
+    if (SCANS[k % SCANS.length] !== "") spec.scan = SCANS[k % SCANS.length];
+    if (CHAINS[k % CHAINS.length] !== "") spec.chain = CHAINS[k % CHAINS.length];
+    if (BUBBLES[k % BUBBLES.length] !== "") spec.bubble = BUBBLES[k % BUBBLES.length];
     if (tsum.endsWith("plus")) spec.medals = rnd() < 0.3 ? 0 : Math.floor(rnd() * 400);
     else if (rnd() < 0.05) spec.medals = Math.floor(rnd() * 10);
     out.push(record(spec));

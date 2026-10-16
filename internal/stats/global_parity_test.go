@@ -126,8 +126,19 @@ func globalParityRounds(now time.Time) []parityRound {
 				medals = new(int64)
 			}
 			settings := map[string]any{
-				"skillLevel": 1 + next(6), "jpVersion": build == "jp", "bubbleStrategy": []string{"all_mid_chain", "one_mid_chain"}[next(2)],
+				"skillLevel": 1 + next(6), "jpVersion": build == "jp",
 				"linkReach": []float64{1.5, 2, 190}[next(3)], "fan": nil, "nested": map[string]int{"a": 1},
+			}
+			// The play settings, some not recorded (left out, null) or past
+			// the rule (a fraction, over 999, a name with a space).
+			for key, values := range map[string][]any{
+				"maxChainsPerScan": {2, 3, 3, 6, 12, 3.5, nil, "-"},
+				"maxChain":         {4, 5, 15, 15, 1000, nil, "-"},
+				"bubbleStrategy":   {"all_mid_chain", "one_mid_chain", "save_one_mid_chain", "all mid", nil, "-"},
+			} {
+				if v := values[next(len(values))]; v != "-" {
+					settings[key] = v
+				}
 			}
 			switch next(10) {
 			case 0:
@@ -546,6 +557,12 @@ func TestGlobalParity(t *testing.T) {
 	summary("one skill type", map[string]string{"skillType": "beastda"}, nil, nil)
 	summary("skill types and none, medals", map[string]string{"skillType": "burst, -", "coins": "medals"}, nil, nil)
 	summary("skill type and level", map[string]string{"skillType": "beastda", "skill": "2,4"}, map[string]string{"skillType": "beastda"}, skillIn(2, 4))
+	summary("one scan", map[string]string{"scan": "3"}, nil, nil)
+	summary("scans and not recorded", map[string]string{"scan": "2, 6,-"}, nil, nil)
+	summary("chain and bubble, final", map[string]string{"chain": "15", "bubble": "one_mid_chain,-", "coins": "final"}, nil, nil)
+	summary("scan in medal mode", map[string]string{"scan": "3,12", "coins": "medals", "tsum": "mickeyplus"}, nil, nil)
+	summary("play settings and skill type", map[string]string{"scan": "3", "chain": "4,5", "skillType": "burst"}, nil, nil)
+	summary("a value no round has", map[string]string{"chain": "1000"}, nil, nil)
 	summary("one item set", map[string]string{"items": "5"}, none, itemsIn(5))
 	summary("item sets and unknown", map[string]string{"items": "0,127,-1", "build": "jp"}, map[string]string{"build": "jp"}, itemsIn(0, 127, -1))
 	summary("item set, net", map[string]string{"items": "1", "net": "1"}, map[string]string{"net": "1"}, itemsIn(1))
@@ -562,6 +579,7 @@ func TestGlobalParity(t *testing.T) {
 		map[string]string{"build": "jp", "minCoins": edge(3000)}, skillIn(2, 3))
 	summary("coin range under 100", map[string]string{"maxCoins": "50"}, nil, nil)
 	summary("skill type, coin range", map[string]string{"skillType": "burst", "minCoins": edge(2500)}, nil, nil)
+	summary("bubble, coin range, net", map[string]string{"bubble": "all_mid_chain", "minCoins": edge(2500), "net": "1"}, nil, nil)
 	summary("medal range", map[string]string{"minMedals": edge(150), "maxMedals": below(450)}, nil, nil)
 	summary("medal range in medal mode", map[string]string{"coins": "medals", "minMedals": edge(200)}, nil, nil)
 	summary("medal range keeping 0", map[string]string{"minMedals": "0", "maxMedals": below(300), "coins": "final"}, nil, nil)
@@ -624,6 +642,17 @@ func TestGlobalParity(t *testing.T) {
 		return strings.Compare(a.SkillType, b.SkillType)
 	})
 	cases = append(cases, testCase{Name: "skill types", Route: "skill-types", Params: none, Expected: roundtrip(played)})
+	// Each play setting's values, not recorded among them (queries.go: PlayedPlaySettings).
+	playValues, err := PlayedPlaySettings(union.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ps := range PlaySettings {
+		if len(playValues[ps.Param]) < 4 {
+			t.Fatalf("%s: too few values to test with: %v", ps.Param, playValues[ps.Param])
+		}
+	}
+	cases = append(cases, testCase{Name: "play settings", Route: "play-settings", Params: none, Expected: roundtrip(playValues)})
 	all := summarize(union, none).(map[string]any)["totals"].(map[string]any)
 	cases = append(cases, testCase{Name: "status", Route: "status", Params: none, Expected: map[string]any{
 		"global": true, "rounds": len(final), "contributors": len(everyone), "devices": len(devices),
