@@ -18,7 +18,8 @@
   import {cardContext} from '../lib/card.js';
   import {shared} from '../lib/ui.svelte.js';
   import {
-    api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref, tsumColor, tsumName,
+    api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref,
+    skillTypeName, skillTypeValue, tsumColor, tsumName,
   } from '../lib/util.js';
   import Kpis from './stats/Kpis.svelte';
   import Legend from '../components/Legend.svelte';
@@ -32,8 +33,9 @@
   // The global site's status: the contributors a Tsum needs before its figures are trusted.
   let status = $state.raw(null);
 
-  // id is the Tsum. days, coins, net, device and build mean what they do on the Stats page.
-  const blank = () => ({id: '', days: 'all', coins: '', net: '', device: '', build: ''});
+  // id is the Tsum. days, coins, net, device and build mean what they do on the Stats page;
+  // skillType is one of the script's skill types ('-' for none), or '' for every one.
+  const blank = () => ({id: '', days: 'all', coins: '', net: '', device: '', skillType: '', build: ''});
   const filter = $state(blank());
 
   const VIEW_KEY = 'tsum-stats.tsum-views';
@@ -50,6 +52,8 @@
   const ctx = {nameOf, colorOf, onPick: () => {}};
 
   let detail = $state.raw(null);
+  /** The Tsum's skill types in the filter, without one picked: the select's choices. */
+  let typeChoices = $state.raw([]);
   let skillLegend = $state([]);
   let best = $state.raw([]);
   let played = $state.raw([]);
@@ -101,7 +105,7 @@
       d.setDate(d.getDate() - n + 1);
       from = new Date(`${isoDay(d)}T00:00:00`).toISOString();
     }
-    return {device: filter.device, build: filter.build, coins: filter.coins, net: net ? '1' : '', from};
+    return {device: filter.device, skillType: filter.skillType, build: filter.build, coins: filter.coins, net: net ? '1' : '', from};
   }
 
   function set(patch) {
@@ -128,7 +132,12 @@
     loading = true;
     try {
       const d = await api('tsum', {...filterParams(), id: filter.id, target: target ?? '', tz: -new Date().getTimezoneOffset()});
-      if (mine === seq.detail) { detail = d; error = ''; }
+      if (mine === seq.detail) {
+        detail = d;
+        error = '';
+        // The skill types to pick from are this Tsum's, kept while one is picked.
+        if (!filter.skillType) typeChoices = d.skillTypes.map(r => r.key);
+      }
     } catch (e) {
       if (mine === seq.detail) error = `Could not load: ${e.message}`;
     } finally {
@@ -223,6 +232,10 @@
   });
   const versions = $derived((detail?.versions ?? []).map(r => ({...r, label: r.key || 'Unknown'})));
   const deviceRows = $derived((detail?.devices ?? []).map(r => ({...r, label: r.key || 'No device'})));
+  const typeRows = $derived((detail?.skillTypes ?? []).map(r => ({...r, label: skillTypeName(r.key)})));
+  // A picked skill type the choices lack (a link's) is still offered, so it can be put back.
+  const typeOptions = $derived(filter.skillType && !typeChoices.map(skillTypeValue).includes(filter.skillType)
+    ? [...typeChoices, filter.skillType === '-' ? '' : filter.skillType] : typeChoices);
 
   const ownLine = $derived.by(() => {
     const o = owned?.own;
@@ -262,13 +275,13 @@
     tsum: filter.id,
     build: filter.build,
     filters: [`${daysLabel[filter.days] ?? 'All time'}${globalSite && filter.days !== 'all' ? ' UTC' : ''}`, cap(basis),
-      filter.build ? buildLabel(filter.build) : '', filter.device],
+      filter.build ? buildLabel(filter.build) : '', filter.device, filter.skillType ? skillTypeName(filter.skillType) : ''],
     rounds: s?.totals.rounds ?? 0,
   }));
   let overview = $state();
 
   const statsLink = $derived(`#/stats?${new URLSearchParams(Object.entries({tsum: filter.id, days: filter.days, coins: filter.coins, net: filter.net,
-    device: filter.device, build: filter.build}).filter(([, v]) => v))}`);
+    device: filter.device, skillType: filter.skillType, build: filter.build}).filter(([, v]) => v))}`);
 
   onMount(() => {
     Object.assign(filter, blank(), initial);
@@ -346,6 +359,12 @@
         {/if}
         {#if builds}
           <Seg sm label="Game" value={filter.build} onpick={v => set({build: v})} options={[['', 'Both'], ['global', 'INTL'], ['jp', 'JP']]} />
+        {/if}
+        {#if typeOptions.length > 1}
+          <select class="search" aria-label="Skill type" title="The script's skill type" value={filter.skillType} onchange={e => set({skillType: e.target.value})}>
+            <option value="">All skill types</option>
+            {#each typeOptions as t (t)}<option value={skillTypeValue(t)}>{skillTypeName(t)}</option>{/each}
+          </select>
         {/if}
         {#if devices.length > 1}
           <select class="search" aria-label="Device" value={filter.device} onchange={e => set({device: e.target.value})}>
@@ -445,6 +464,12 @@
               <Breakdown rows={g.rows} {unit} head={g.label} />
             {/each}
           </div>
+        </Panel>
+      {/if}
+
+      {#if typeRows.length > 1}
+        <Panel title="By skill type" sub="how the script played the skill · change is against the most played type{globalSite ? ' · rounds sent before the site kept skill types are not recorded' : ''}" expandable={false}>
+          <Breakdown rows={typeRows} {unit} head="Skill type" />
         </Panel>
       {/if}
 

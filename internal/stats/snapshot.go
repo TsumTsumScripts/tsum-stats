@@ -74,6 +74,8 @@ type snapshotManifest struct {
 	Months      []snapshotMonth `json:"months"`
 	Tsums       []TsumStat      `json:"tsums"`
 	Devices     []DeviceCount   `json:"devices"`
+	// SkillTypes is PlayedSkillTypes, for the filter's options.
+	SkillTypes []SkillTypeCount `json:"skillTypes"`
 	// MedalTsums is medalTsumsSQL, for the engine's completeness and medal range.
 	MedalTsums []string `json:"medalTsums"`
 	Themes     []Theme  `json:"themes"`
@@ -312,6 +314,9 @@ func ExportSnapshot(db dbx.Builder, site fs.FS, dir string, o SnapshotOptions) (
 		if name := namer(d.Device); name != "" {
 			man.Devices = append(man.Devices, DeviceCount{Device: name, Rounds: d.Rounds})
 		}
+	}
+	if man.SkillTypes, err = PlayedSkillTypes(db); err != nil {
+		return res, err
 	}
 	if man.MedalTsums, err = MedalTsums(db); err != nil {
 		return res, err

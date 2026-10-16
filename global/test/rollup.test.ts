@@ -79,7 +79,7 @@ describe("recompute", () => {
     expect(res.body).toMatchObject({ accepted: 3, rejected: {} });
     await rollup();
     // A day's first and last are still its rounds' ends.
-    expect(await rows("SELECT day, sum(rounds) AS n, min(first) AS first, max(last) AS last FROM cells GROUP BY day ORDER BY day")).toEqual([
+    expect(await rows("SELECT day, sum(rounds) AS n, min(first) AS first, max(last) AS last FROM cells2 GROUP BY day ORDER BY day")).toEqual([
       { day: "2026-10-13", n: 2, first: midnight / 1000 + 30, last: midnight / 1000 + 3 * 3600 - 60 },
       { day: "2026-10-14", n: 1, first: midnight / 1000 + 2 * 3600, last: midnight / 1000 + 2 * 3600 },
     ]);
@@ -96,13 +96,13 @@ describe("recompute", () => {
     // A banned contributor still gets the same answers.
     expect((await upload(b.key, series(2, { tag: "0b0000000001", end: NOW - 600_000 }))).body).toMatchObject({ ok: true, accepted: 2 });
     await rollup();
-    expect(await one("SELECT sum(rounds) AS n FROM cells")).toEqual({ n: 5 });
+    expect(await one("SELECT sum(rounds) AS n FROM cells2")).toEqual({ n: 5 });
     expect(await one("SELECT sum(rounds) AS n FROM contrib_cells WHERE contributor = ?1", b.id)).toEqual({ n: 5 });
     expect((await manifest()).contributors).toBe(1);
     await checkAgainstReference(new Set([b.id]));
     await admin("unban", { id: b.id });
     await rollup();
-    expect(await one("SELECT sum(rounds) AS n FROM cells")).toEqual({ n: 10 });
+    expect(await one("SELECT sum(rounds) AS n FROM cells2")).toEqual({ n: 10 });
     expect((await manifest()).contributors).toBe(2);
   });
 
@@ -129,8 +129,8 @@ describe("recompute", () => {
     await upload(c.key, moved);
     await upload(c.key, [{ ...moved[0], tsum: "donald" }]);
     await rollup();
-    expect(await rows("SELECT tsum, rounds FROM cells ORDER BY tsum")).toEqual([{ tsum: "donald", rounds: 1 }, { tsum: "mickey", rounds: 20 }]);
-    expect(await rows("SELECT DISTINCT tsum FROM cell_bins ORDER BY tsum")).toEqual([{ tsum: "donald" }, { tsum: "mickey" }]);
+    expect(await rows("SELECT tsum, rounds FROM cells2 ORDER BY tsum")).toEqual([{ tsum: "donald", rounds: 1 }, { tsum: "mickey", rounds: 20 }]);
+    expect(await rows("SELECT DISTINCT tsum FROM cell_bins2 ORDER BY tsum")).toEqual([{ tsum: "donald" }, { tsum: "mickey" }]);
   });
 
   it("leaves a day whose rounds have left D1 as it is", async () => {
@@ -164,11 +164,11 @@ describe("render", () => {
       expect(p.sha).toBe(sha);
       expect(p.file).toBe(`day-${p.from}.${sha}.json`);
       const part = JSON.parse(new TextDecoder().decode(bytes)) as PartFile;
-      expect(part).toMatchObject({ kind: "tsum-global-part", format: 2, from: p.from, to: p.to });
-      expect(Object.keys(part.cells)).toEqual(["n", "day", "build", "tsum", "skill", "items", "medal", "rounds", "secs",
+      expect(part).toMatchObject({ kind: "tsum-global-part", format: 3, from: p.from, to: p.to });
+      expect(Object.keys(part.cells)).toEqual(["n", "day", "build", "tsum", "skill", "skillType", "items", "medal", "rounds", "secs",
         "scoreSum", "scoreMin", "scoreMax", "first", "last", "baseSum", "baseSq", "baseMin", "baseMax", "finalSum", "finalSq",
         "finalMin", "finalMax", "medalsN", "medalsSum", "medalsSq", "medalsMin", "medalsMax", "medalsSecs"]);
-      expect(Object.keys(part.bins)).toEqual(["n", "day", "build", "tsum", "skill", "items", "medal", "base", "final", "medals"]);
+      expect(Object.keys(part.bins)).toEqual(["n", "day", "build", "tsum", "skill", "skillType", "items", "medal", "base", "final", "medals"]);
       const dayCells = cells.filter(c => c.day === p.from);
       sameRows(partRows(part.cells), dayCells, CELL_KEY);
       sameRows(partRows(part.bins), bins.filter(b => b.day === p.from), BIN_KEY);

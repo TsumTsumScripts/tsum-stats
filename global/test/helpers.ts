@@ -84,6 +84,8 @@ export interface RoundSpec {
   final?: number | string;
   medals?: number | string;
   skill?: number | string;
+  /** The script's skill type (`skill_type`); "" by default. */
+  skillType?: string;
   /** Items used, as their setting names; null for settings from before items. */
   items?: string[] | null;
   version?: string;
@@ -101,7 +103,7 @@ export function record(s: RoundSpec = {}): Record<string, string> {
     id: s.id ?? uuid7(at - took * 1000, s.tag ?? TAG_A),
     datetime: sqlTime(Math.floor(at / 1000)),
     script_version: s.version ?? "3.0b4",
-    skill_type: "",
+    skill_type: s.skillType ?? "",
     tsum: s.tsum ?? "mickey",
     build: s.build ?? "global",
     duration_seconds: String(s.duration ?? 181.5),
@@ -176,8 +178,8 @@ export async function r2keys(prefix: string): Promise<string[]> {
 export async function wipe(): Promise<void> {
   await env.DB.batch([
     "DELETE FROM contributors WHERE id != 0", "DELETE FROM devices", "DELETE FROM settings", "DELETE FROM rounds",
-    "DELETE FROM dirty_days", "DELETE FROM pending", "DELETE FROM budget", "DELETE FROM join_limits", "DELETE FROM state", "DELETE FROM cells",
-    "DELETE FROM bins", "DELETE FROM cell_bins", "DELETE FROM contrib_cells", "DELETE FROM recent",
+    "DELETE FROM dirty_days", "DELETE FROM pending", "DELETE FROM budget", "DELETE FROM join_limits", "DELETE FROM state", "DELETE FROM cells", "DELETE FROM cells2",
+    "DELETE FROM bins", "DELETE FROM cell_bins", "DELETE FROM cell_bins2", "DELETE FROM contrib_cells", "DELETE FROM recent",
   ].map(s => env.DB.prepare(s)));
   const keys = await r2keys("");
   for (let i = 0; i < keys.length; i += 1000) await env.BUCKET.delete(keys.slice(i, i + 1000));

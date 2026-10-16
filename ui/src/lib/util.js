@@ -100,6 +100,11 @@ export function itemsLabel(mask) {
   return ITEMS.filter(i => mask & i.bit).map(i => i.label).join(' · ');
 }
 
+/** A skill type as the skillType filter lists it: '-' for the rounds sent without one (queries.go: NoSkillType). */
+export const skillTypeValue = t => (t === '' ? '-' : t);
+/** A skill type as the script names it, or "Not recorded" ('' or '-'). */
+export const skillTypeName = t => (t === '' || t === '-' ? 'Not recorded' : t);
+
 // Small rates (medals per second) keep two significant digits instead of rounding to 0.
 const sig2 = new Intl.NumberFormat(undefined, {maximumSignificantDigits: 2});
 export const fmtRate = v => (v === null || v === undefined ? '—' : (Math.abs(v) < 1 ? sig2 : nf1).format(v));

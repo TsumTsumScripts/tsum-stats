@@ -189,6 +189,14 @@ func registerRoutes(se *core.ServeEvent, events *Events, importer *Importer, pul
 		return e.JSON(http.StatusOK, t)
 	})
 
+	g.GET("/skill-types", func(e *core.RequestEvent) error {
+		s, err := PlayedSkillTypes(e.App.DB())
+		if err != nil {
+			return e.InternalServerError("", err)
+		}
+		return e.JSON(http.StatusOK, s)
+	})
+
 	g.GET("/round-devices", func(e *core.RequestEvent) error {
 		d, err := PlayedDevices(e.App.DB())
 		if err != nil {

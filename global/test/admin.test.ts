@@ -119,7 +119,7 @@ describe("admin", () => {
     expect(await json(admin("rollup"))).toMatchObject({ ok: true, folded: 2, recomputed: [], manifest: true, more: false, errors: [] });
     await upload(c.key, series(1, { end: NOW - 600_000 }));
     await worker.scheduled(createScheduledController({ scheduledTime: NOW, cron: "5 * * * *" }), env);
-    expect(await one("SELECT sum(rounds) AS n FROM cells")).toEqual({ n: 3 });
+    expect(await one("SELECT sum(rounds) AS n FROM cells2")).toEqual({ n: 3 });
   });
 
   it("refuses to work without DEVICE_KEY", async () => {

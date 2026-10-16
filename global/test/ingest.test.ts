@@ -94,12 +94,12 @@ describe("what is stored", () => {
   it("keeps each accepted round with its derived fields, keyed without the device tag", async () => {
     const c = await joinNew();
     const recs = [
-      record({ at: NOW - 7200_000, tsum: "mickeyplus", medals: 150, skill: 6, items: ["bonusCoin", "bonusScore"], build: "jp" }),
+      record({ at: NOW - 7200_000, tsum: "mickeyplus", medals: 150, skill: 6, skillType: "pair_tsum", items: ["bonusCoin", "bonusScore"], build: "jp" }),
       record({ at: NOW - 3600_000, tsum: "mickey", items: null, skill: 12, tag: TAG_B }),
       record({ at: NOW - 1800_000, tsum: "no such" }),
     ];
     const up = await upload(c.key, recs);
-    expect(up.body).toEqual({ ok: true, accepted: 2, unchanged: 0, duplicates: 0, rejected: { tsum: 1 }, retry: [] });
+    expect(up.body).toEqual({ ok: true, accepted: 2, unchanged: 0, duplicates: 0, rejected: { tsum: 1 }, retry: [], keeps: 2 });
 
     const tagKey = await hmacKey("test-device-key");
     const hashOf = async (tag: string) => (await hmacHex(tagKey, fromHex(tag))).slice(0, 12);
@@ -107,12 +107,12 @@ describe("what is stored", () => {
     expect(got).toEqual([
       {
         key: recs[0].id.replace(/-/g, "").slice(0, 20) + (await hashOf(TAG_A)), contributor: c.id, played_at: (NOW - 7200_000) / 1000,
-        build: 1, tsum: "mickeyplus", skill: 6, items: 17, version: "3.0b4", settings: expect.any(Number), duration: 181.5,
+        build: 1, tsum: "mickeyplus", skill: 6, skill_type: "pair_tsum", items: 17, version: "3.0b4", settings: expect.any(Number), duration: 181.5,
         score: 12345678, base: 3000, final: 4500, medals: 150, bin_base: bin(3000), bin_final: bin(4500), bin_medals: bin(150),
       },
       {
         key: recs[1].id.replace(/-/g, "").slice(0, 20) + (await hashOf(TAG_B)), contributor: c.id, played_at: (NOW - 3600_000) / 1000,
-        build: 0, tsum: "mickey", skill: -1, items: -1, version: "3.0b4", settings: expect.any(Number), duration: 181.5,
+        build: 0, tsum: "mickey", skill: -1, skill_type: "", items: -1, version: "3.0b4", settings: expect.any(Number), duration: 181.5,
         score: 12345678, base: 3000, final: 4500, medals: null, bin_base: bin(3000), bin_final: bin(4500), bin_medals: null,
       },
     ].sort((a, b) => (a.key < b.key ? -1 : 1)));
@@ -159,7 +159,7 @@ describe("duplicates", () => {
     const before = await spent();
     const k = counted();
     const again = await call("/api/v1/rounds", { body: batch(recs), key: c.key, env: k.env });
-    expect(await again.json()).toEqual({ ok: true, accepted: 0, unchanged: 10, duplicates: 0, rejected: {}, retry: [] });
+    expect(await again.json()).toEqual({ ok: true, accepted: 0, unchanged: 10, duplicates: 0, rejected: {}, retry: [], keeps: 2 });
     // No round is written: only the contributor's last seen, and the budget's own row.
     expect(k.n.bySql.size).toBeGreaterThan(0);
     expect([...k.n.bySql].filter(([, e]) => e.written > 0).map(([s]) => s.split(" ").slice(0, 3).join(" ")).sort())
@@ -174,7 +174,7 @@ describe("duplicates", () => {
     const changed = { ...recs[2], final_coins: "5000" };
     const movedBack = { ...moved, datetime: "2026-10-13 23:59:30" };
     const res = await upload(c.key, [changed, movedBack, recs[5]]);
-    expect(res.body).toEqual({ ok: true, accepted: 2, unchanged: 1, duplicates: 0, rejected: {}, retry: [] });
+    expect(res.body).toEqual({ ok: true, accepted: 2, unchanged: 1, duplicates: 0, rejected: {}, retry: [], keeps: 2 });
     expect(await one("SELECT final FROM rounds WHERE played_at = ?1", Date.parse(recs[2].datetime.replace(" ", "T") + "Z") / 1000))
       .toEqual({ final: 5000 });
     // The changed rounds' start days are recomputed in full.
@@ -183,13 +183,27 @@ describe("duplicates", () => {
     expect(await one("SELECT rounds_total, day_rounds FROM contributors WHERE id = ?1", c.id)).toEqual({ rounds_total: 11, day_rounds: 13 });
   });
 
+  it("takes a skill type sent again for a round stored without one, and re-files its day by it", async () => {
+    const c = await joinNew();
+    const recs = series(4);
+    await upload(c.key, recs);
+    await rollup();
+    expect(await rows("SELECT skill_type, sum(rounds) AS n FROM cells2 GROUP BY skill_type")).toEqual([{ skill_type: "", n: 4 }]);
+    // The forwarder's one re-send after the Worker kept skill types (CONTRACT §7.2).
+    const res = await upload(c.key, recs.map((r, i) => ({ ...r, skill_type: i < 3 ? "beastda" : "" })));
+    expect(res.body).toEqual({ ok: true, accepted: 3, unchanged: 1, duplicates: 0, rejected: {}, retry: [], keeps: 2 });
+    await rollup();
+    expect(await rows("SELECT skill_type, sum(rounds) AS n FROM cells2 GROUP BY skill_type ORDER BY skill_type"))
+      .toEqual([{ skill_type: "", n: 1 }, { skill_type: "beastda", n: 3 }]);
+  });
+
   it("keeps the first sender's round and counts the rest as duplicates", async () => {
     const a = await joinNew(), b = await joinNew();
     const recs = series(5);
     await upload(a.key, recs);
     const changed = recs.map(r => ({ ...r, score: "1" }));
     const res = await upload(b.key, [...changed, record({ tag: TAG_B })]);
-    expect(res.body).toEqual({ ok: true, accepted: 1, unchanged: 0, duplicates: 5, rejected: {}, retry: [] });
+    expect(res.body).toEqual({ ok: true, accepted: 1, unchanged: 0, duplicates: 5, rejected: {}, retry: [], keeps: 2 });
     expect(await rows("SELECT contributor, count(*) AS n, min(score) AS s FROM rounds GROUP BY contributor ORDER BY contributor"))
       .toEqual([{ contributor: a.id, n: 5, s: 12345678 }, { contributor: b.id, n: 1, s: 12345678 }]);
     expect(await one("SELECT dup_rounds, rounds_total FROM contributors WHERE id = ?1", b.id)).toEqual({ dup_rounds: 5, rounds_total: 1 });
@@ -299,7 +313,7 @@ describe("limits", () => {
     const c = await joinNew();
     const early = record({ at: NOW + 30 * 60_000, tag: TAG_B });
     const res = await upload(c.key, [record(), early, record({ tsum: "" , tag: "0c0000000001" })]);
-    expect(res.body).toEqual({ ok: true, accepted: 1, unchanged: 0, duplicates: 0, rejected: { future: 1, tsum: 1 }, retry: [early.id] });
+    expect(res.body).toEqual({ ok: true, accepted: 1, unchanged: 0, duplicates: 0, rejected: { future: 1, tsum: 1 }, retry: [early.id], keeps: 2 });
     // Once its time has come it is taken.
     expect((await upload(c.key, [early], NOW + 3600_000)).body).toMatchObject({ accepted: 1, retry: [] });
   });
@@ -316,8 +330,8 @@ describe("limits", () => {
       { contributor: c.id, tsum: "brandnewtsum", rounds: 3 }, { contributor: c.id, tsum: "mickey", rounds: 2 },
       { contributor: only.id, tsum: "brandnewtsum", rounds: 2 },
     ]);
-    expect(await rows("SELECT DISTINCT tsum FROM cells")).toEqual([{ tsum: "mickey" }]);
-    expect(await rows("SELECT DISTINCT tsum FROM cell_bins")).toEqual([{ tsum: "mickey" }]);
+    expect(await rows("SELECT DISTINCT tsum FROM cells2")).toEqual([{ tsum: "mickey" }]);
+    expect(await rows("SELECT DISTINCT tsum FROM cell_bins2")).toEqual([{ tsum: "mickey" }]);
     const m = (await (await call("/data/global/manifest.json")).json()) as { rounds: number; tsums: { tsum: string }[]; parts: { file: string }[] };
     expect(m).toMatchObject({ rounds: 2, contributors: 1, tsums: [{ tsum: "mickey", rounds: 2, contributors: 1 }] });
     const part = await (await call("/data/global/" + m.parts[0].file)).text();
@@ -328,7 +342,7 @@ describe("limits", () => {
     try {
       await admin("rebuild", {});
       await rollup();
-      expect(await rows("SELECT tsum, sum(rounds) AS n FROM cells GROUP BY tsum ORDER BY tsum")).toEqual([{ tsum: "brandnewtsum", n: 5 }, { tsum: "mickey", n: 2 }]);
+      expect(await rows("SELECT tsum, sum(rounds) AS n FROM cells2 GROUP BY tsum ORDER BY tsum")).toEqual([{ tsum: "brandnewtsum", n: 5 }, { tsum: "mickey", n: 2 }]);
       const after = (await (await call("/data/global/manifest.json")).json()) as { rounds: number; tsums: { tsum: string }[] };
       // Counted under the new catalog, the same day.
       expect(after).toMatchObject({ rounds: 7, contributors: 2, tsums: [{ tsum: "brandnewtsum", rounds: 5, contributors: 2 }, { tsum: "mickey", rounds: 2, contributors: 1 }] });

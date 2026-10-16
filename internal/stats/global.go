@@ -89,6 +89,10 @@ type globalSaved struct {
 	LastCheck  string `json:"lastCheck,omitempty"`
 	LastError  string `json:"lastError"`
 	RetryAt    string `json:"retryAt"`
+	// Keeps is what the site said it keeps of a record (its uploads' replies,
+	// CONTRACT §2.2). The fingerprints follow it, so when the site starts
+	// keeping more (2: skill_type), every round in the window goes once more.
+	Keeps int `json:"keeps,omitempty"`
 }
 
 // Contributor holds the key and the pass that may be running.
@@ -137,6 +141,7 @@ func NewContributor(dataDir, siteURL string, medalTsums []string, db func() dbx.
 	if data, err := os.ReadFile(c.file); err == nil {
 		_ = json.Unmarshal(data, &c.saved)
 	}
+	c.memo.keeps = c.saved.Keeps
 	c.next = c.now().Add(c.first) // Run's first timer
 	return c
 }
@@ -332,7 +337,13 @@ func (c *Contributor) Join() error {
 	if resume {
 		c.saved.Enabled, c.saved.LastError = true, ""
 	} else {
-		c.saved = globalSaved{URL: c.url, ID: id, Key: key, Enabled: true, JoinedAt: c.now().UTC().Format(time.RFC3339)}
+		// What the site keeps goes with the rounds sent there (ts_global_sent).
+		keeps := c.saved.Keeps
+		if otherSent {
+			keeps = 0
+			c.memo.setKeeps(0)
+		}
+		c.saved = globalSaved{URL: c.url, ID: id, Key: key, Enabled: true, JoinedAt: c.now().UTC().Format(time.RFC3339), Keeps: keeps}
 		c.me = nil
 	}
 	if errors.Is(meErr, ErrGlobalKey) {
@@ -423,7 +434,8 @@ func (c *Contributor) Leave(unlink bool) error {
 // joins again, as a new contributor. The caller holds the lock.
 func (c *Contributor) rejected() {
 	c.gen++
-	c.saved = globalSaved{URL: c.url, LastError: "The global site no longer accepts this computer's key. Join again to keep contributing."}
+	c.saved = globalSaved{URL: c.url, Keeps: c.saved.Keeps,
+		LastError: "The global site no longer accepts this computer's key. Join again to keep contributing."}
 	c.me = nil
 	_ = c.persist()
 	c.set()
@@ -596,6 +608,12 @@ func (c *Contributor) send(ctx context.Context, site *GlobalSite, gen int) error
 		}
 		c.mu.Lock()
 		if gen == c.gen {
+			// The site keeps more of a record than when these were sent: the
+			// next scan's fingerprints differ, so it sends every round again.
+			if reply.Keeps > c.saved.Keeps {
+				c.saved.Keeps = reply.Keeps
+				c.memo.setKeeps(reply.Keeps)
+			}
 			c.saved.Sent += len(taken)
 			c.saved.LastUpload, c.saved.RetryAt = at.UTC().Format(time.RFC3339), ""
 			c.pending = max(0, c.pending-len(taken))
@@ -671,14 +689,19 @@ func floatText(v *float64) string {
 
 // fingerprint is the FNV-1a 64 hash of a record's canonical JSON (keys sorted,
 // as json.Marshal writes a map), as SQLite's signed INTEGER holds it, and the
-// JSON's length.
-func fingerprint(rec map[string]string) (int64, int) {
+// JSON's length. keeps is what the site keeps of a record (globalSaved.Keeps):
+// from 2 on it is hashed first, so each step up re-sends every round once;
+// under 2 the hash is the one before it existed.
+func fingerprint(rec map[string]string, keeps int) (int64, int) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	_ = enc.Encode(rec)
 	data := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
 	h := fnv.New64a()
+	if keeps >= 2 {
+		fmt.Fprintf(h, "keeps %d\n", keeps)
+	}
 	h.Write(data)
 	return int64(h.Sum64()), len(data)
 }
@@ -797,7 +820,7 @@ func nextGlobalBatch(db dbx.Builder, now time.Time, cur globalCursor, medals str
 	size := 0
 	next, err := scanGlobal(db, now, cur, medals, memo, func(r Round, hash int64) bool {
 		rec := GlobalRecord(r)
-		_, n := fingerprint(rec)
+		_, n := fingerprint(rec, 0)
 		if len(batch) == GlobalBatchRows || len(batch) > 0 && size+n > globalBatchBytes {
 			return false
 		}
@@ -815,26 +838,39 @@ type globalMemo struct {
 	mu   sync.Mutex
 	gen  uint64
 	seen map[string]memoEntry
+	// keeps is fingerprint's: what the site keeps of a record.
+	keeps int
+}
+
+// setKeeps changes what the fingerprints follow, forgetting the ones made before.
+func (m *globalMemo) setKeeps(keeps int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.keeps != keeps {
+		m.keeps, m.seen = keeps, map[string]memoEntry{}
+	}
 }
 
 type memoEntry struct {
 	row, gen uint64
 	hash     int64
+	keeps    int // the keeps hash was made for
 }
 
 // fingerprint is the round's record's fingerprint. A nil memo works it out every time.
 func (m *globalMemo) fingerprint(r Round) int64 {
 	if m == nil {
-		h, _ := fingerprint(GlobalRecord(r))
+		h, _ := fingerprint(GlobalRecord(r), 0)
 		return h
 	}
 	row := rowHash(r)
 	m.mu.Lock()
 	e, ok := m.seen[r.ID]
+	keeps := m.keeps
 	m.mu.Unlock()
-	if !ok || e.row != row {
-		e.row = row
-		e.hash, _ = fingerprint(GlobalRecord(r))
+	if !ok || e.row != row || e.keeps != keeps {
+		e.row, e.keeps = row, keeps
+		e.hash, _ = fingerprint(GlobalRecord(r), keeps)
 	}
 	m.mu.Lock()
 	e.gen = m.gen
@@ -989,6 +1025,9 @@ type RoundsReply struct {
 	// Retry is the record ids rejected for a reason that can pass later
 	// (future): they are not taken as sent.
 	Retry []string `json:"retry"`
+	// Keeps is what the site keeps of a record (CONTRACT §2.2); 0 from a
+	// Worker older than skill types.
+	Keeps int `json:"keeps"`
 }
 
 // do sends one request. The body goes uncompressed: inflating it would spend

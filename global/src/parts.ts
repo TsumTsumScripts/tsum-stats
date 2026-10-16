@@ -20,53 +20,58 @@ export const MANIFEST = DATA + "manifest.json";
 /** How long a replaced part stays: past the manifest's max-age, and a reload. */
 const TRASH_GRACE_MS = 15 * 60 * 1000;
 
-// The part's columns, in the cells and cell_bins tables' meanings, camelCased.
+// The part's columns, in the cells2 and cell_bins2 tables' meanings, camelCased.
 const camel = (c: string) => c.replace(/_([a-z])/g, (_, x: string) => x.toUpperCase());
 const CELL_COLUMNS = [
-  "day", "build", "tsum", "skill", "items", "medal", "rounds", "secs", "score_sum", "score_min", "score_max",
+  "day", "build", "tsum", "skill", "skill_type", "items", "medal", "rounds", "secs", "score_sum", "score_min", "score_max",
   "first", "last", "base_sum", "base_sq", "base_min", "base_max", "final_sum", "final_sq", "final_min", "final_max",
   "medals_n", "medals_sum", "medals_sq", "medals_min", "medals_max", "medals_secs",
 ];
-const BIN_COLUMNS = ["day", "build", "tsum", "skill", "items", "medal", "base", "final", "medals"];
-const BIN_KEY_COLUMNS = 6;
+const BIN_COLUMNS = ["day", "build", "tsum", "skill", "skill_type", "items", "medal", "base", "final", "medals"];
+const BIN_KEY_COLUMNS = 7;
+/** The day tables' key, in order (migrations/0003_skill_type.sql). */
+const KEY_ORDER = "day, build, tsum, skill, skill_type, items, medal";
 const arrays = (cols: string[], json: string[] = []) =>
   cols.map(c => `'${camel(c)}', json_group_array(${json.includes(c) ? `json(${c})` : c})`).join(", ");
 
 /**
- * A part's body from the cells rows `cells` and the cell_bins rows `bins`
- * (subqueries). Format 2: bins per cell, each bin with its rounds' figures.
+ * A part's body from the cells2 rows `cells` and the cell_bins2 rows `bins`
+ * (subqueries). Format 3: format 2 (bins per cell, each bin with its rounds'
+ * figures) with the cells keyed by skill type too.
  */
-const body = (cells: string, bins: string) => `json_object('kind', 'tsum-global-part', 'format', 2, 'from', ?1, 'to', ?2,
+const body = (cells: string, bins: string) => `json_object('kind', 'tsum-global-part', 'format', 3, 'from', ?1, 'to', ?2,
     'cells', json((SELECT json_object('n', count(*), ${arrays(CELL_COLUMNS)}) FROM ${cells})),
     'bins', json((SELECT json_object('n', count(*), ${arrays(BIN_COLUMNS, ["base", "final", "medals"])}) FROM ${bins})))`;
 
-const CELLS_OF = "(SELECT * FROM cells WHERE day >= ?1 AND day < ?2 ORDER BY day, build, tsum, skill, items, medal)";
-const BINS_OF = "(SELECT * FROM cell_bins WHERE day >= ?1 AND day < ?2 ORDER BY day, build, tsum, skill, items, medal)";
+const CELLS_OF = `(SELECT * FROM cells2 WHERE day >= ?1 AND day < ?2 ORDER BY ${KEY_ORDER})`;
+const BINS_OF = `(SELECT * FROM cell_bins2 WHERE day >= ?1 AND day < ?2 ORDER BY ${KEY_ORDER})`;
 
 /**
  * One part, [?1, ?2): about how long its file is (each row's values written
  * out, as the arrays hold them), its rows and rounds, its summary for the
- * manifest (rounds, first, last, rounds per Tsum and per skill level), and
+ * manifest (rounds, first, last, rounds per Tsum, per skill level and per
+ * skill type), and
  * its file, only when that is at most ?3 bytes long.
  */
 export const RENDER = `WITH c AS (SELECT count(*) AS n, coalesce(sum(length(json_array(${CELL_COLUMNS.join(", ")}))), 0) AS est,
-      coalesce(sum(rounds), 0) AS rounds, min(first) AS first, max(last) AS last FROM cells WHERE day >= ?1 AND day < ?2),
+      coalesce(sum(rounds), 0) AS rounds, min(first) AS first, max(last) AS last FROM cells2 WHERE day >= ?1 AND day < ?2),
     b AS (SELECT count(*) AS n, coalesce(sum(length(json_array(${BIN_COLUMNS.slice(0, BIN_KEY_COLUMNS).join(", ")})) + length(base) + length(final) + length(medals)), 0) AS est
-      FROM cell_bins WHERE day >= ?1 AND day < ?2),
-    t AS MATERIALIZED (SELECT tsum, skill, sum(rounds) AS n FROM cells WHERE day >= ?1 AND day < ?2 GROUP BY tsum, skill)
+      FROM cell_bins2 WHERE day >= ?1 AND day < ?2),
+    t AS MATERIALIZED (SELECT tsum, skill, skill_type, sum(rounds) AS n FROM cells2 WHERE day >= ?1 AND day < ?2 GROUP BY tsum, skill, skill_type)
   SELECT est, cells, bins, rounds, summary, CASE WHEN est <= ?3 THEN ${body(CELLS_OF, BINS_OF)} END AS body FROM (
     SELECT 600 + c.est + b.est AS est, c.n AS cells, b.n AS bins, c.rounds AS rounds,
       json_object('from', ?1, 'to', ?2, 'rounds', c.rounds, 'first', c.first, 'last', c.last,
         'tsums', json((SELECT json_group_object(tsum, n) FROM (SELECT tsum, sum(n) AS n FROM t GROUP BY tsum))),
-        'skills', json((SELECT json_group_object(skill, n) FROM (SELECT skill, sum(n) AS n FROM t WHERE skill >= 0 GROUP BY skill)))) AS summary
+        'skills', json((SELECT json_group_object(skill, n) FROM (SELECT skill, sum(n) AS n FROM t WHERE skill >= 0 GROUP BY skill))),
+        'skillTypes', json((SELECT json_group_object(skill_type, n) FROM (SELECT skill_type, sum(n) AS n FROM t WHERE skill_type != '' GROUP BY skill_type)))) AS summary
     FROM c, b)`;
 
 /** File ?3 of a part too long for one: the ?4 cells rows and ?5 bins rows from the ?3-th share on, and its rounds. */
 const RENDER_SHARE = `SELECT ${body(
-  "(SELECT * FROM (SELECT * FROM cells WHERE day >= ?1 AND day < ?2 ORDER BY day, build, tsum, skill, items, medal LIMIT ?4 OFFSET ?3 * ?4))",
-  "(SELECT * FROM (SELECT * FROM cell_bins WHERE day >= ?1 AND day < ?2 ORDER BY day, build, tsum, skill, items, medal LIMIT ?5 OFFSET ?3 * ?5))",
-)} AS body, (SELECT coalesce(sum(rounds), 0) FROM (SELECT rounds FROM cells WHERE day >= ?1 AND day < ?2
-    ORDER BY day, build, tsum, skill, items, medal LIMIT ?4 OFFSET ?3 * ?4)) AS rounds`;
+  `(SELECT * FROM (SELECT * FROM cells2 WHERE day >= ?1 AND day < ?2 ORDER BY ${KEY_ORDER} LIMIT ?4 OFFSET ?3 * ?4))`,
+  `(SELECT * FROM (SELECT * FROM cell_bins2 WHERE day >= ?1 AND day < ?2 ORDER BY ${KEY_ORDER} LIMIT ?5 OFFSET ?3 * ?5))`,
+)} AS body, (SELECT coalesce(sum(rounds), 0) FROM (SELECT rounds FROM cells2 WHERE day >= ?1 AND day < ?2
+    ORDER BY ${KEY_ORDER} LIMIT ?4 OFFSET ?3 * ?4)) AS rounds`;
 
 interface Rendered {
   est: number;
@@ -259,6 +264,8 @@ const MANIFEST_SQL = `WITH p AS (SELECT value AS v FROM state WHERE key >= 'part
       FROM (SELECT key, value FROM json_each((SELECT v FROM totals), '$.tsums') ORDER BY value DESC, key))),
     'medalTsums', json(?2),
     'skills', json((SELECT json_group_array(CAST(key AS INTEGER)) FROM (SELECT key FROM json_each((SELECT v FROM totals), '$.skills') ORDER BY CAST(key AS INTEGER)))),
+    'skillTypes', json((SELECT json_group_array(json_object('skillType', key, 'rounds', value))
+      FROM (SELECT key, value FROM json_each((SELECT v FROM totals), '$.skillTypes') ORDER BY value DESC, key))),
     'minContributors', CAST(?3 AS INTEGER)) AS body`;
 
 /**
@@ -292,10 +299,10 @@ const fresh = (path: string) => `json((SELECT json_group_object(k, n) FROM (
  * changes. It runs before the pointers are written, so it reads the old ones.
  */
 const TOTALS_MOVE = `INSERT OR REPLACE INTO state (key, value)
-  SELECT 'totals', json_object('tsums', ${moved("$.tsums")}, 'skills', ${moved("$.skills")})`;
+  SELECT 'totals', json_object('tsums', ${moved("$.tsums")}, 'skills', ${moved("$.skills")}, 'skillTypes', ${moved("$.skillTypes")})`;
 /** The same over every part, afresh: with the day's first manifest, and whenever they are missing. */
 const TOTALS_ALL = `INSERT OR REPLACE INTO state (key, value)
-  SELECT 'totals', json_object('tsums', ${fresh("$.tsums")}, 'skills', ${fresh("$.skills")})`;
+  SELECT 'totals', json_object('tsums', ${fresh("$.tsums")}, 'skills', ${fresh("$.skills")}, 'skillTypes', ${fresh("$.skillTypes")})`;
 
 /**
  * Step 6 and the run's end: writes what the steps changed, empties the

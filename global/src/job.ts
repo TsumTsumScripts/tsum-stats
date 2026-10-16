@@ -10,7 +10,7 @@
 //   render            days whose tables changed and whose part is still to be published again
 //   part:<from>       a published part: {from, to, rounds, first, last, tsums, skills, bytes, files: [{file, sha, rounds, bytes}]}
 //   parts_at          when a part pointer last changed (ms): a manifest older than that is written again
-//   totals            {tsums: {tsum: rounds}, skills: {skill: rounds}} over every part, kept up as the pointers change
+//   totals            {tsums: {tsum: rounds}, skills: {skill: rounds}, skillTypes: {type: rounds}} over every part, kept up as the pointers change
 //   people            {contributors, devices, tsums: {tsum: contributors}, catalog}: the manifest's counts of people
 //   trash             [[R2 key, ms]] replaced parts, deleted once no cached manifest names them
 //   archived_through  the newest day whose rounds are in the archive
@@ -24,7 +24,7 @@
 //   merged:<id>       the contributor an id was merged into, for restores
 //   gone:<id>         "banned": a banned contributor that unlinked; its archive files are never restored
 //   nocompact:<month> a month too big for one part
-import { archiveStep, dropRestored, dropStep } from "./archive";
+import { archiveStarved, archiveStep, dropRestored, dropStep } from "./archive";
 import { RECORD } from "./budget";
 import { catalogId } from "./catalog";
 import { addDays, dayOf } from "./days";
@@ -128,9 +128,15 @@ const RENDER_QUERIES = 4;
 export async function runJob(env: Env, nowMs: number): Promise<Report> {
   const run = new Run(env, nowMs, FINISH);
   const job = await open(run, limits(env));
-  const steps: [string, (job: Job) => Promise<void>][] = [
-    ["fold", foldStep], ["recompute", recomputeStep], ["render", renderStep], ["unlink", unlinkStep],
-    ["restored", dropRestored], ["archive", archiveStep], ["drop", dropStep], ["compact", compactStep],
+  // A busy day's part can take a run's bytes every hour, leaving the archive
+  // none for its files: an archive that got none last run goes before render.
+  type Step = [string, (job: Job) => Promise<void>];
+  const archive: Step[] = [["archive", archiveStep]];
+  const starved = archiveStarved(job.archive);
+  const steps: Step[] = [
+    ["fold", foldStep], ["recompute", recomputeStep], ...(starved ? archive : []),
+    ["render", renderStep], ["unlink", unlinkStep], ["restored", dropRestored],
+    ...(starved ? [] : archive), ["drop", dropStep], ["compact", compactStep],
   ];
   for (const [name, step] of steps) {
     try {

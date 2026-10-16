@@ -15,9 +15,12 @@ import (
 type Filter struct {
 	Tsums   []string
 	Devices []string // empty means every device
-	Build   string
-	From    string // sqlTime, inclusive, UTC
-	To      string // sqlTime, exclusive, UTC
+	// SkillTypes are the script's skill types (skill_type) to keep; empty is
+	// every one, and "" is the rounds sent without one.
+	SkillTypes []string
+	Build      string
+	From       string // sqlTime, inclusive, UTC
+	To         string // sqlTime, exclusive, UTC
 	// The outlier ranges, each bound inclusive. Coins are base or final coins
 	// (never medals); the medal range only judges medal Tsums' rounds.
 	MinCoins, MaxCoins   *int64
@@ -91,7 +94,11 @@ const completeSQL = "tsum <> '' AND score IS NOT NULL AND base_coins IS NOT NULL
 
 var sqlTimeRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
 
-// ParseFilter reads tsum and device (comma lists), build, from, to, the outlier
+// NoSkillType is how the skillType list names the rounds without a skill type.
+const NoSkillType = "-"
+
+// ParseFilter reads tsum, device and skillType (comma lists; NoSkillType is
+// the rounds without one), build, from, to, the outlier
 // ranges (min/max Coins, Score, Medals), incomplete ("1" keeps rounds with an
 // unread figure), coins (the primary stat: "final", "medals", or base coins by
 // default) and net ("1" subtracts the items' cost from coins).
@@ -107,6 +114,13 @@ func ParseFilter(q url.Values) Filter {
 	for _, d := range strings.Split(q.Get("device"), ",") {
 		if d = strings.TrimSpace(d); d != "" {
 			f.Devices = append(f.Devices, d)
+		}
+	}
+	for _, s := range strings.Split(q.Get("skillType"), ",") {
+		if s = strings.TrimSpace(s); s == NoSkillType {
+			f.SkillTypes = append(f.SkillTypes, "")
+		} else if s != "" {
+			f.SkillTypes = append(f.SkillTypes, s)
 		}
 	}
 	if b := q.Get("build"); b == "global" || b == "jp" {
@@ -161,6 +175,15 @@ func (f Filter) where() (string, dbx.Params) {
 			p[key] = d
 		}
 		parts = append(parts, "device IN ("+strings.Join(names, ",")+")")
+	}
+	if len(f.SkillTypes) > 0 {
+		names := make([]string, len(f.SkillTypes))
+		for i, s := range f.SkillTypes {
+			key := fmt.Sprintf("st%d", i)
+			names[i] = "{:" + key + "}"
+			p[key] = s
+		}
+		parts = append(parts, "skill_type IN ("+strings.Join(names, ",")+")")
 	}
 	if f.Build != "" {
 		parts = append(parts, "build = {:build}")
@@ -269,6 +292,20 @@ func PlayedTsums(db dbx.Builder) ([]TsumStat, error) {
 	if out == nil {
 		out = []TsumStat{}
 	}
+	return out, err
+}
+
+// SkillTypeCount is a skill type, "" for none, and how many rounds it played.
+type SkillTypeCount struct {
+	SkillType string `db:"skill_type" json:"skillType"`
+	Rounds    int64  `db:"rounds" json:"rounds"`
+}
+
+// PlayedSkillTypes is every skill type with at least one round, the rounds
+// without one included as "", for the filter's options.
+func PlayedSkillTypes(db dbx.Builder) ([]SkillTypeCount, error) {
+	out := []SkillTypeCount{}
+	err := db.NewQuery(`SELECT skill_type, COUNT(*) AS rounds FROM ts_rounds GROUP BY skill_type ORDER BY rounds DESC, skill_type`).All(&out)
 	return out, err
 }
 

@@ -5,15 +5,17 @@ import (
 )
 
 // TsumDetail is the Tsum page: one Tsum's summary, its figures split by what
-// changes from round to round (each script setting, the script version, the
-// device), its recent form, and every Tsum's rate in the same filter, for its
-// rank.
+// changes from round to round (each script setting, the skill type, the
+// script version, the device), its recent form, and every Tsum's rate in the
+// same filter, for its rank.
 type TsumDetail struct {
 	Summary  Summary       `json:"summary"`
 	Settings []SettingStat `json:"settings"`
-	Versions []GroupStat   `json:"versions"`
-	Devices  []GroupStat   `json:"devices"`
-	Field    []FieldStat   `json:"field"`
+	// SkillTypes are by the script's skill type, "" for the rounds sent without one.
+	SkillTypes []GroupStat `json:"skillTypes"`
+	Versions   []GroupStat `json:"versions"`
+	Devices    []GroupStat `json:"devices"`
+	Field      []FieldStat `json:"field"`
 	// Form is the newest FormRounds rounds (key "recent") and the FormRounds
 	// before them ("before").
 	Form []GroupStat `json:"form"`
@@ -100,7 +102,7 @@ const skillWhere = "j.key = 'skillLevel' AND j.type NOT IN ('object', 'array')"
 // DescribeTsum is the Tsum page for tsum, within the rest of f (f.Tsums is
 // ignored). target, when set, counts the rounds under it.
 func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *int64) (TsumDetail, error) {
-	d := TsumDetail{Settings: []SettingStat{}, Versions: []GroupStat{}, Devices: []GroupStat{}, Field: []FieldStat{},
+	d := TsumDetail{Settings: []SettingStat{}, SkillTypes: []GroupStat{}, Versions: []GroupStat{}, Devices: []GroupStat{}, Field: []FieldStat{},
 		Form: []GroupStat{}, SkillBins: []SkillBin{}}
 	all := f
 	all.Tsums = nil
@@ -117,6 +119,10 @@ func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *
 			return db.NewQuery(`SELECT j.key AS setting, ` + settingValueSQL + ` AS k, ` + groupStats(c) + `
 				FROM ts_rounds, json_each(` + settingsSQL + `) AS j` + pairs + `
 				GROUP BY setting, k ORDER BY setting, k`).Bind(pp).All(&d.Settings)
+		},
+		func() error {
+			return db.NewQuery(`SELECT skill_type AS k, ` + groupStats(c) + ` FROM ts_rounds` + where +
+				` GROUP BY k ORDER BY rounds DESC, k`).Bind(p).All(&d.SkillTypes)
 		},
 		func() error {
 			return db.NewQuery(`SELECT script_version AS k, ` + groupStats(c) + ` FROM ts_rounds` + where +

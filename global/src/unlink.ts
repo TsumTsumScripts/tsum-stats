@@ -17,7 +17,7 @@ interface Unlinking {
 }
 
 // Each file's id is the last thing before its rounds: `..."day":"…","contributor":17,"n":…`.
-const NAMED = /^(\{"kind":"tsum-global-archive","format":1,"day":"\d{4}-\d{2}-\d{2}","contributor":)\d+,/;
+const NAMED = /^(\{"kind":"tsum-global-archive","format":\d+,"day":"\d{4}-\d{2}-\d{2}","contributor":)\d+,/;
 
 /** Reads re-filing a day's rounds costs per round of the day (one scan). */
 const READS_PER_ROUND = 1;

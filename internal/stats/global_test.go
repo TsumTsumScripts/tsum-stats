@@ -44,6 +44,8 @@ type fakeWorker struct {
 	rejected     map[string]int // the counts every upload's reply names
 	// retry is the round ids an upload's reply names in retry (rejected as future).
 	retry map[string]bool
+	// keeps is what every upload's reply says the site keeps of a record; 0 leaves it out, as an older Worker does.
+	keeps int
 	// hold, when set, keeps each upload waiting until it closes; held hears of each one waiting.
 	hold, held chan struct{}
 	log        []string // "rounds" and "unlink", as each was answered
@@ -133,8 +135,12 @@ func (f *fakeWorker) api(w http.ResponseWriter, r *http.Request) {
 		if len(retry) > 0 {
 			rejected["future"] += len(retry)
 		}
-		f.reply(w, http.StatusOK, map[string]any{"ok": true, "accepted": len(b.Records) - len(retry), "unchanged": 0, "duplicates": 0,
-			"rejected": rejected, "retry": retry})
+		reply := map[string]any{"ok": true, "accepted": len(b.Records) - len(retry), "unchanged": 0, "duplicates": 0,
+			"rejected": rejected, "retry": retry}
+		if f.keeps > 0 {
+			reply["keeps"] = f.keeps
+		}
+		f.reply(w, http.StatusOK, reply)
 	case r.URL.Path == "/api/v1/me" && r.Method == http.MethodGet:
 		f.meCalls++
 		f.reply(w, http.StatusOK, map[string]any{"ok": true, "id": id, "status": "active", "since": "2026-10-14",
@@ -550,6 +556,46 @@ func TestGlobalResendsOnlyChangedRounds(t *testing.T) {
 	}
 	if st := c.State(); st.Pending != 0 || st.Sent != 5 {
 		t.Fatalf("after the second pass: %+v", st)
+	}
+}
+
+// A site that starts keeping every field (keeps 2: skill_type) gets every
+// round in the window once more, so the rounds it had kept without one are
+// whole too; one that never says so gets nothing again.
+func TestGlobalResendsOnceWhenTheSiteKeepsMore(t *testing.T) {
+	app := testApp(t)
+	f := newFakeWorker(t)
+	c, dir := testContributor(t, app, f)
+	if err := c.Join(); err != nil {
+		t.Fatal(err)
+	}
+	addRounds(t, app, globalRound("a", 3*time.Hour), globalRound("b", 2*time.Hour))
+	runPass(t, c)
+	runPass(t, c)
+	if got := f.sentIDs(); !slices.Equal(got, []string{"a", "b"}) {
+		t.Fatalf("an older Worker: sent %v", got)
+	}
+
+	// The Worker is deployed: the next upload's reply says it keeps more.
+	f.keeps = 2
+	addRounds(t, app, globalRound("c", time.Hour))
+	runPass(t, c)
+	// c too: it went in the pass that learned it, under the fingerprint before.
+	if st := c.State(); st.Pending != 3 {
+		t.Fatalf("pending once the site keeps more: %+v", st)
+	}
+	runPass(t, c)
+	runPass(t, c)
+	if got := f.sentIDs(); !slices.Equal(got, []string{"a", "b", "c", "a", "b", "c"}) {
+		t.Fatalf("sent %v", got)
+	}
+	if f.batches[len(f.batches)-1].Records[0]["skill_type"] != "burst" {
+		t.Fatalf("the re-sent record: %v", f.batches[len(f.batches)-1].Records[0])
+	}
+	// It is remembered, so a restart sends nothing more.
+	again := contributorIn(dir, app, f.srv.URL)
+	if st := again.Refresh(); st.Pending != 0 {
+		t.Fatalf("pending after a restart: %+v", st)
 	}
 }
 

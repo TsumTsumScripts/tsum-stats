@@ -143,7 +143,7 @@ func globalParityRounds(now time.Time) []parityRound {
 			js, _ := json.Marshal(settings)
 			out = append(out, parityRound{Round: Round{
 				ID: uuid7(start, next(1<<28), d.tag), PlayedAt: at.UTC().Format(sqlTime), Tsum: tsum, Build: build,
-				SkillType: "burst", ScriptVersion: []string{"4.0b1", "4.0b2"}[next(2)], Duration: &dur,
+				SkillType: []string{"burst", "burst", "beastda", ""}[next(4)], ScriptVersion: []string{"4.0b1", "4.0b2"}[next(2)], Duration: &dur,
 				Score: &score, BaseCoins: &base, FinalCoins: &final, Medals: medals,
 				Device: d.name, Source: SourceCSV, Settings: string(js),
 			}, player: d.player})
@@ -543,6 +543,9 @@ func TestGlobalParity(t *testing.T) {
 	summary("skill levels and unknown", map[string]string{"skill": "2, 5,-1", "coins": "final"}, map[string]string{"coins": "final"}, skillIn(2, 5, -1))
 	summary("skill level in medal mode", map[string]string{"skill": "4", "coins": "medals", "tsum": "mickeyplus"},
 		map[string]string{"coins": "medals", "tsum": "mickeyplus"}, skillIn(4))
+	summary("one skill type", map[string]string{"skillType": "beastda"}, nil, nil)
+	summary("skill types and none, medals", map[string]string{"skillType": "burst, -", "coins": "medals"}, nil, nil)
+	summary("skill type and level", map[string]string{"skillType": "beastda", "skill": "2,4"}, map[string]string{"skillType": "beastda"}, skillIn(2, 4))
 	summary("one item set", map[string]string{"items": "5"}, none, itemsIn(5))
 	summary("item sets and unknown", map[string]string{"items": "0,127,-1", "build": "jp"}, map[string]string{"build": "jp"}, itemsIn(0, 127, -1))
 	summary("item set, net", map[string]string{"items": "1", "net": "1"}, map[string]string{"net": "1"}, itemsIn(1))
@@ -558,6 +561,7 @@ func TestGlobalParity(t *testing.T) {
 	summary("coin range with skill levels, jp", map[string]string{"build": "jp", "minCoins": edge(3000), "skill": "2,3"},
 		map[string]string{"build": "jp", "minCoins": edge(3000)}, skillIn(2, 3))
 	summary("coin range under 100", map[string]string{"maxCoins": "50"}, nil, nil)
+	summary("skill type, coin range", map[string]string{"skillType": "burst", "minCoins": edge(2500)}, nil, nil)
 	summary("medal range", map[string]string{"minMedals": edge(150), "maxMedals": below(450)}, nil, nil)
 	summary("medal range in medal mode", map[string]string{"coins": "medals", "minMedals": edge(200)}, nil, nil)
 	summary("medal range keeping 0", map[string]string{"minMedals": "0", "maxMedals": below(300), "coins": "final"}, nil, nil)
@@ -604,6 +608,22 @@ func TestGlobalParity(t *testing.T) {
 		return strings.Compare(a.Tsum, b.Tsum)
 	})
 	cases = append(cases, testCase{Name: "tsums", Route: "tsums", Params: none, Expected: roundtrip(tsums)})
+	// The skill types, the rounds without one among them (queries.go: PlayedSkillTypes).
+	types := map[string]int64{}
+	for _, r := range final {
+		types[r.SkillType]++
+	}
+	var played []SkillTypeCount
+	for t, n := range types {
+		played = append(played, SkillTypeCount{SkillType: t, Rounds: n})
+	}
+	slices.SortFunc(played, func(a, b SkillTypeCount) int {
+		if a.Rounds != b.Rounds {
+			return int(b.Rounds - a.Rounds)
+		}
+		return strings.Compare(a.SkillType, b.SkillType)
+	})
+	cases = append(cases, testCase{Name: "skill types", Route: "skill-types", Params: none, Expected: roundtrip(played)})
 	all := summarize(union, none).(map[string]any)["totals"].(map[string]any)
 	cases = append(cases, testCase{Name: "status", Route: "status", Params: none, Expected: map[string]any{
 		"global": true, "rounds": len(final), "contributors": len(everyone), "devices": len(devices),

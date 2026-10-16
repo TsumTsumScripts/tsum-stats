@@ -188,6 +188,12 @@ The rail's **Include incomplete rounds** box (`incomplete=1`) keeps them.
 range is base or final coins even in Medals mode, and the medal range only
 judges medal Tsums' rounds, so it does not drop other Tsums' 0-medal rounds.
 
+**Skill type.** The rail's Skill type list (`skillType` in the link, a comma
+list) keeps the rounds the script played with the skill types ticked: the
+script's way of playing the skill, such as `burst` or a Tsum's own
+(`beastda`). *Not recorded* (`-`) is the rounds that came without one. It
+shows when the rounds have more than one.
+
 **Min rounds per Tsum.** The rail's box (`minRounds` in the link) leaves
 Tsums with fewer rounds in the filter out of the Tsum table and the efficiency
 chart, so a Tsum played a handful of times does not top the rankings. It is
@@ -290,7 +296,8 @@ tooltip everywhere else.
 it from there, or with **Tsum page →** in the Stats focus bar, which carries the
 range, primary stat, game and a single device across. It has its own time range
 (7, 30 or 90 days, or all time, the default), the same primary stat and *Less
-item costs* switches, and game and device pickers when there is more than one.
+item costs* switches, and game, skill type and device pickers when there is more
+than one.
 Incomplete rounds are left out, as on Stats.
 
 - **Header:** where the Tsum ranks by rate among the Tsums in the same filter,
@@ -319,7 +326,8 @@ Incomplete rounds are left out, as on Stats.
 - **By script setting:** every other setting that took more than one value
   for this Tsum (the boost items have their own chart), against the most played
   value. Settings often changed together, so a difference is not proof of cause.
-- **By script version** and **By device**, when there is more than one.
+- **By skill type**, **By script version** and **By device**, when there is
+  more than one.
 - The KPI tiles, per-day, histogram, items and hour charts, as on Stats, for
   this Tsum alone, and its ten best rounds by coins, rate or score.
 
@@ -475,7 +483,9 @@ level, boost items and the rest), with this app's version. Only rounds that:
 
 A round is sent once, and again only if its figures change, such as when a
 CSV import fills in what the live event lacked (`ts_global_sent` in the
-database records what was sent). A round the global site cannot take yet,
+database records what was sent), or when the global site starts keeping more
+of each round: then every round of the last 60 days goes once more. The global
+site keeps every field of a round as it was sent. A round the global site cannot take yet,
 because by its clock the round has not happened (this computer's or the
 device's clock is ahead), is sent again with the next upload.
 
@@ -546,9 +556,12 @@ everyone's rounds, and in the *Midnight Felt* theme until you pick another:
 - **The quartiles, median and P90 are approximate**, marked ≈. They come from
   bins 2 % wide, so each is within 2 % of the exact figure, and exact under
   100. Every count, total, average, best and rate is exact.
-- **Filters:** Tsums, game, dates, primary stat, *Less item costs* and min
-  rounds per Tsum, as here, plus **skill level** and **items used**. No device
-  or incomplete-round filters.
+- **Filters:** Tsums, game, dates, skill type, primary stat, *Less item costs*
+  and min rounds per Tsum, as here, plus **skill level** and **items used**. No
+  device or incomplete-round filters. Rounds sent before the global site kept
+  skill types have none (*Not recorded*) until their player's app sends them
+  again, which it does once by itself; rounds older than 60 days by then keep
+  none.
 - **Outliers:** coin and medal ranges, one at a time; no score range. Rounds
   are kept in their 2 % bins, so a range keeps or leaves out whole bins, by
   their rounds' average: the rounds, totals, averages and rates of what it

@@ -31,7 +31,7 @@ func fillRounds(t *testing.T, add func(Round)) int {
 		at := start.Add(time.Duration(i)*130*time.Minute + time.Duration(next(50))*time.Second)
 		r := Round{
 			ID: fmt.Sprintf("r%04d", i), PlayedAt: at.Format(sqlTime), Tsum: tsums[next(len(tsums))],
-			Build: []string{"global", "global", "jp"}[next(3)], SkillType: "burst", ScriptVersion: "4.0b1",
+			Build: []string{"global", "global", "jp"}[next(3)], SkillType: []string{"burst", "burst", "pair_tsum", ""}[next(4)], ScriptVersion: "4.0b1",
 			Device: devices[next(len(devices))], Source: SourceCSV, Settings: "{}",
 		}
 		num := func(max int) *int64 {
@@ -296,6 +296,8 @@ func TestSnapshotParity(t *testing.T) {
 	summary("jp", map[string]string{"build": "jp"})
 	summary("two devices", map[string]string{"device": "pixel-7, tab-s8"})
 	summary("one device and a Tsum", map[string]string{"device": "tab-s8", "tsum": "mickey"})
+	summary("skill types and none", map[string]string{"skillType": "pair_tsum, -"})
+	summary("one skill type, medals", map[string]string{"skillType": "burst", "coins": "medals"})
 	summary("final coins", map[string]string{"coins": "final"})
 	summary("medals", map[string]string{"coins": "medals", "tz": "60"})
 	summary("minimums", map[string]string{"minCoins": "3000", "minScore": "1000000"})
@@ -352,10 +354,13 @@ func TestSnapshotParity(t *testing.T) {
 	tsumCase("mickey, ranges", map[string]string{"id": "mickey", "from": "2026-09-01T00:00:00Z", "to": "2026-09-20T00:00:00Z", "minCoins": "1000", "tz": "-300"})
 	tsumCase("tsum param ignored", map[string]string{"id": "elsa", "tsum": "mickey"})
 	tsumCase("unknown", map[string]string{"id": "nope"})
+	tsumCase("mickey, one skill type", map[string]string{"id": "mickey", "skillType": "pair_tsum"})
 
 	tsums, _ := PlayedTsums(app.DB())
 	devices, _ := PlayedDevices(app.DB())
 	cases = append(cases, testCase{Name: "played devices", Route: "round-devices", Params: map[string]any{}, Expected: roundtrip(devices)})
+	types, _ := PlayedSkillTypes(app.DB())
+	cases = append(cases, testCase{Name: "played skill types", Route: "skill-types", Params: map[string]any{}, Expected: roundtrip(types)})
 	srcs, _ := TsumListSources(app.DB())
 	cases = append(cases, testCase{Name: "owned sources", Route: "owned-sources", Params: map[string]any{}, Expected: roundtrip(srcs)})
 	for _, src := range srcs {

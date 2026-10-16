@@ -30,6 +30,10 @@ describe("rejections", () => {
     ["settings", record({ extra: { note: "x".repeat(257) } })],
     ["settings", record({ extra: Object.fromEntries(Array.from({ length: 64 }, (_, i) => [`c${i}`, "1"])) })],
     ["settings", record({ extra: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`note${i}`, "é".repeat(120)])) })],
+    // A field is kept whole or the record is not kept: never cut short.
+    ["field", record({ version: "v".repeat(65) })],
+    ["field", record({ skillType: "s".repeat(65) })],
+    ["field", record({ skillType: "burst\u0007" })],
     ["build", record({ build: "" })],
     ["build", record({ build: "kr", extra: { jpVersion: "yes" } })],
     ["incomplete", record({ score: "" })],
@@ -174,10 +178,11 @@ describe("derived fields", () => {
   it("reads cells as csv.go does", async () => {
     const [r] = (await check([record({
       score: " 1e3 ", base: "2999.9", final: "+4500", duration: "180", medals: "7.9", tsum: "mickeyplus",
-      version: "3.0b4-a-very-long-version-name",
+      version: "3.0b4-a-very-long-version-name", skillType: " beastda ",
       extra: JSON.parse('{"note": "hello", "empty": "", "ratio": "0.5", "big": "1e400", "flag": "F", "__proto__": "x"}'),
     })])).rounds;
-    expect(r).toMatchObject({ score: 1000, base: 2999, final: 4500, duration: 180, medals: 7, binMedals: 7, version: "3.0b4-a-very-lon" });
+    expect(r).toMatchObject({ score: 1000, base: 2999, final: 4500, duration: 180, medals: 7, binMedals: 7,
+      version: "3.0b4-a-very-long-version-name", skillType: "beastda" });
     const s = JSON.parse(r.settings);
     expect(s).toMatchObject({ note: "hello", ratio: 0.5, big: "1e400", flag: false });
     expect(Object.hasOwn(s, "__proto__")).toBe(true);

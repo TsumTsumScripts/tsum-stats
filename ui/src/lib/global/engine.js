@@ -3,7 +3,9 @@
 // from the published part files (global/CONTRACT.md §4 and §6). It follows the
 // snapshot engine (../snapshot/engine.js) with cells in place of rounds: a cell
 // is the sums of one day × build × Tsum × skill level × items × (medals > 0),
-// so every figure but the quartiles and P90 adds up exactly. Each cell has
+// so every figure but the quartiles and P90 adds up exactly. From part format
+// 3 a cell is of one skill type too (format 2's are all skill type "", as
+// the rounds before it kept none). Each cell has
 // bins (CONTRACT §5): its rounds counted by 2 % wide bins of their base coins,
 // final coins and medals, with each bin's figures. The quartiles, P90 and
 // histogram come from them, approximately, and so do the outlier ranges: a
@@ -70,19 +72,20 @@ const binList = o => Object.entries(o).map(([b, f]) => [Number(b), ...f]).sort((
  * A part's files as one: their cells and bins rows added together (a part too
  * long for one file is several, each a share of both), each cell with its
  * bins. Part format 1 had bins per skill level only: its cells have none.
+ * Before format 3 a part has no skill types: every cell's is "".
  */
 function decodePart(files) {
-  const cat = (key, col) => files.flatMap(p => p[key][col]);
-  const cols = Object.keys(files[0].cells).filter(k => k !== 'n');
+  const cat = (key, col) => files.flatMap(p => p[key][col] ?? (col === 'skillType' ? new Array(p[key].n).fill('') : []));
+  const cols = [...new Set([...Object.keys(files[0].cells).filter(k => k !== 'n'), 'skillType'])];
   const c = Object.fromEntries(cols.map(k => [k, cat('cells', k)]));
   c.n = c.day.length;
   // Each cell's bins by kind, or null where the part has none for it.
   const bins = Object.fromEntries(KINDS.map(k => [k, new Array(c.n).fill(null)]));
   if (files.every(p => p.format >= 2)) {
-    const key = (o, i) => `${o.day[i]}\u0000${o.build[i]}\u0000${o.tsum[i]}\u0000${o.skill[i]}\u0000${o.items[i]}\u0000${o.medal[i]}`;
+    const key = (o, i) => `${o.day[i]}\u0000${o.build[i]}\u0000${o.tsum[i]}\u0000${o.skill[i]}\u0000${o.skillType[i]}\u0000${o.items[i]}\u0000${o.medal[i]}`;
     const at = new Map();
     for (let i = 0; i < c.n; i++) at.set(key(c, i), i);
-    const b = Object.fromEntries(['day', 'build', 'tsum', 'skill', 'items', 'medal', ...KINDS].map(k => [k, cat('bins', k)]));
+    const b = Object.fromEntries(['day', 'build', 'tsum', 'skill', 'skillType', 'items', 'medal', ...KINDS].map(k => [k, cat('bins', k)]));
     for (let j = 0; j < b.day.length; j++) {
       const i = at.get(key(b, j));
       if (i !== undefined) for (const k of KINDS) bins[k][i] = binList(b[k][j]);
@@ -113,8 +116,8 @@ function cellsOf(c, bins) {
 const intList = s => String(s ?? '').split(',').map(v => v.trim()).filter(v => /^-?\d+$/.test(v)).map(Number);
 
 /**
- * The query parameters as the global site reads them: queries.go's, plus skill
- * and items lists. Devices, the score range, incomplete and tz are read but
+ * The query parameters as the global site reads them: queries.go's (skill
+ * types among them), plus skill and items lists. Devices, the score range, incomplete and tz are read but
  * not used: there are no score bins, every round here is complete, and days
  * are UTC.
  */
@@ -143,7 +146,7 @@ const within = (v, lo, hi) => (lo === null || v >= lo) && (hi === null || v <= h
 // ---- Outlier ranges (CONTRACT §6.2) ----
 
 /** The columns a derived set of cells is built in, empty. */
-const RAW = ['day', 'at', 'build', 'tsum', 'skill', 'items', 'medal', 'rounds', 'secs', 'scoreSum', 'scoreMin', 'scoreMax', 'first', 'last',
+const RAW = ['day', 'at', 'build', 'tsum', 'skill', 'skillType', 'items', 'medal', 'rounds', 'secs', 'scoreSum', 'scoreMin', 'scoreMax', 'first', 'last',
   'baseSum', 'baseSq', 'baseMin', 'baseMax', 'finalSum', 'finalSq', 'finalMin', 'finalMax',
   'medalsN', 'medalsSum', 'medalsSq', 'medalsMin', 'medalsMax', 'medalsSecs'];
 
@@ -234,7 +237,7 @@ export function createGlobalEngine(loader) {
     }
   }
 
-  /** Whether cell i is in the filter's days, build, Tsums, skill levels and item sets. */
+  /** Whether cell i is in the filter's days, build, Tsums, skill levels, skill types and item sets. */
   function keeps(f, c, i, sets) {
     const at = c.at[i];
     if (f.fromDay !== null && at < f.fromDay) return false;
@@ -242,6 +245,7 @@ export function createGlobalEngine(loader) {
     if (f.build && c.build[i] !== f.build) return false;
     if (sets.tsum && !sets.tsum.has(c.tsum[i])) return false;
     if (sets.skill && !sets.skill.has(c.skill[i])) return false;
+    if (sets.skillType && !sets.skillType.has(c.skillType[i])) return false;
     return !sets.items || sets.items.has(c.items[i]);
   }
 
@@ -255,6 +259,7 @@ export function createGlobalEngine(loader) {
     const sets = {
       tsum: f.tsums.length ? new Set(f.tsums) : null,
       skill: f.skills.length ? new Set(f.skills) : null,
+      skillType: f.skillTypes.length ? new Set(f.skillTypes) : null,
       items: f.items.length ? new Set(f.items) : null,
     };
     const medalTsums = new Set((await getManifest()).medalTsums ?? []);
@@ -533,8 +538,11 @@ export function createGlobalEngine(loader) {
       key, rounds: a.rounds, avgCoins: avg(a.sum, a.n), maxCoins: a.max, coinsPerSec: rate(a),
       avgScore: avg(a.scoreSum, a.rounds), first: sqlTime(a.first), last: sqlTime(a.last),
     });
-    const bySkill = new Map();
+    const bySkill = new Map(), byType = new Map();
     each(sel, (c, i) => {
+      const t = c.skillType[i];
+      if (!byType.has(t)) byType.set(t, acc());
+      add(byType.get(t), c, i, c.stat[k]);
       const s = c.skill[i];
       if (s < 0) return;
       if (!bySkill.has(s)) bySkill.set(s, acc());
@@ -590,6 +598,7 @@ export function createGlobalEngine(loader) {
     return {
       summary: summed,
       settings: [...bySkill].sort((x, y) => cmp(String(x[0]), String(y[0]))).map(([s, a]) => ({setting: 'skillLevel', ...group(a, String(s))})),
+      skillTypes: [...byType].map(([t, a]) => group(a, t)).sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),
       versions: [],
       devices: [],
       field: [...field].sort((x, y) => cmp(x[0], y[0])).map(([t, a]) => ({
@@ -607,6 +616,15 @@ export function createGlobalEngine(loader) {
     return (await getManifest()).tsums;
   }
 
+  /** queries.go: PlayedSkillTypes, from the manifest; the rest of its rounds are those without one. */
+  async function skillTypes() {
+    const man = await getManifest();
+    const out = (man.skillTypes ?? []).map(t => ({...t}));
+    const none = man.rounds - out.reduce((n, t) => n + t.rounds, 0);
+    if (none > 0) out.push({skillType: '', rounds: none});
+    return out.sort((x, y) => y.rounds - x.rounds || (x.skillType < y.skillType ? -1 : 1));
+  }
+
   async function status() {
     const man = await getManifest();
     return {global: true, rounds: man.rounds, contributors: man.contributors, devices: man.devices, generatedAt: man.generatedAt,
@@ -619,6 +637,7 @@ export function createGlobalEngine(loader) {
         case 'summary': return summary(params);
         case 'tsum': return tsum(params);
         case 'tsums': return tsums();
+        case 'skill-types': return skillTypes();
         case 'status': return status();
         case 'themes': return THEMES.map(t => ({...t}));
         case 'devices': case 'round-devices': case 'owned-sources': return [];

@@ -17,20 +17,20 @@ const DROP = { ...env, RETAIN_ROWS: "0" };
 
 interface ArchiveFile {
   kind: string; format: number; day: string; contributor: number | null; n: number;
-  key: string[]; playedAt: number[]; build: number[]; tsum: string[]; skill: number[]; items: number[]; version: string[];
+  key: string[]; playedAt: number[]; build: number[]; tsum: string[]; skill: number[]; skillType: string[]; items: number[]; version: string[];
   settings: number[]; duration: number[]; score: number[]; base: number[]; final: number[]; medals: (number | null)[];
 }
 
 /** An archive file back into rounds rows, checking its arrays line up. */
 function fileRows(f: ArchiveFile): Record<string, unknown>[] {
   const cols: [string, keyof ArchiveFile][] = [["key", "key"], ["played_at", "playedAt"], ["build", "build"], ["tsum", "tsum"],
-    ["skill", "skill"], ["items", "items"], ["version", "version"], ["settings", "settings"], ["duration", "duration"],
+    ["skill", "skill"], ["skill_type", "skillType"], ["items", "items"], ["version", "version"], ["settings", "settings"], ["duration", "duration"],
     ["score", "score"], ["base", "base"], ["final", "final"], ["medals", "medals"]];
   for (const [, c] of cols) expect(f[c], c).toHaveLength(f.n);
   return Array.from({ length: f.n }, (_, i) => Object.fromEntries(cols.map(([name, c]) => [name, (f[c] as unknown[])[i]])));
 }
 
-const ROUND_COLS = "key, played_at, build, tsum, skill, items, version, settings, duration, score, base, final, medals";
+const ROUND_COLS = "key, played_at, build, tsum, skill, skill_type, items, version, settings, duration, score, base, final, medals";
 
 /** The dataset, with contributor 2 banned and some of contributor 1's rounds already unlinked (contributor 0). */
 async function archived(later: Env = DROP) {
@@ -83,7 +83,7 @@ describe("archive and drop", () => {
       const inDay = before.rounds.filter(r => keyDay(r.key) === day);
       for (const p of people) {
         const f = (await r2json<ArchiveFile>(archiveKey(day, `c${p.id}.json`)))!;
-        expect(f).toMatchObject({ kind: "tsum-global-archive", format: 1, day, contributor: p.id });
+        expect(f).toMatchObject({ kind: "tsum-global-archive", format: 2, day, contributor: p.id });
         const mine = inDay.filter(r => r.contributor === p.id).map(({ contributor: _, ...r }) => r);
         expect(fileRows(f)).toEqual(mine);
         filed += f.n;
@@ -301,6 +301,20 @@ describe("restore", () => {
     expect(await tables()).toEqual(before.tables);
     expect(await one("SELECT count(*) AS n FROM rounds")).toEqual({ n: 0 });
     expect(await one("SELECT value FROM state WHERE key = 'restored'")).toEqual({ value: "[]" });
+  });
+
+  it("reads a format 1 file, from before skill types were kept, back with skill type unknown", async () => {
+    const { people, before } = await archived();
+    const day = "2026-10-13";
+    // Every file of the day as format 1 wrote it: no skillType array.
+    for (const key of await r2keys(archiveKey(day, ""))) {
+      const { skillType: _, ...old } = (await r2json<ArchiveFile>(key))!;
+      await env.BUCKET.put(key, JSON.stringify({ ...old, format: 1 }));
+    }
+    const body = await json(admin("restore", { day }, LATER));
+    const back = before.rounds.filter(r => keyDay(r.key) === day);
+    expect(body).toMatchObject({ done: true, files: people.length + 1, rounds: back.length });
+    expect(await rows(`SELECT contributor, ${ROUND_COLS} FROM rounds ORDER BY key`)).toEqual(back.map(r => ({ ...r, skill_type: "" })));
   });
 
   it("only marks a day dirty when its rounds are still in D1", async () => {

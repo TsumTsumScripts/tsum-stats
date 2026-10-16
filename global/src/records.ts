@@ -19,7 +19,7 @@ const ITEM_BITS: [string, number][] = [
 ];
 
 /** Why a record was not kept, in the order the checks run. */
-export type Reason = "id" | "old" | "future" | "tsum" | "settings" | "build" | "incomplete" | "duration" | "range" | "repeat" | "pace";
+export type Reason = "id" | "old" | "future" | "tsum" | "settings" | "field" | "build" | "incomplete" | "duration" | "range" | "repeat" | "pace";
 
 /** Reasons a record may pass later (its round has not happened yet by this clock): the reply asks for it again. */
 const RETRY: ReadonlySet<Reason> = new Set(["future"]);
@@ -36,6 +36,8 @@ export interface Round {
   /** The bundled catalog has the Tsum: only then do its rounds reach the public figures. */
   known: boolean;
   skill: number;
+  /** The script's skill type (`skill_type`), as sent; "" when it sent none. */
+  skillType: string;
   items: number;
   version: string;
   /** The settings object as canonical JSON, and its SHA-256. */
@@ -75,6 +77,13 @@ const TSUM_ID = /^[A-Za-z0-9_.-]{1,48}$/;
 
 /** What one record's settings may hold; past it the record is rejected as `settings`. */
 export const SETTINGS_MAX = { columns: 64, name: 64, value: 256, json: 4096 };
+/**
+ * The longest `script_version` and `skill_type` kept; a longer one, or one
+ * with a control character, rejects the record as `field`. Never cut short:
+ * a stored field is the field as sent (archive.ts: ROUND_BYTES counts on both).
+ */
+export const FIELD_MAX = 64;
+const CONTROL = /[\u0000-\u001f\u007f]/;
 const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
 /** A cell, trimmed as csv.go: cell does. The format sends text; a number is taken as its text. */
@@ -108,7 +117,7 @@ type Read = Omit<Round, "key" | "device" | "settingsHash"> & { hex: string };
 /** UTF-8 bytes of a string, without encoding it when it is plainly short enough. */
 const utf8Over = (s: string, max: number) => s.length > max || (s.length * 3 > max && new TextEncoder().encode(s).byteLength > max);
 
-/** One record through the per-record checks, §1.2's first nine. */
+/** One record through the per-record checks, §1.2's first ten. */
 function readRecord(rec: Record<string, unknown>, now: number, oldest: number): Read | Reason {
   const id = text(rec.id).toLowerCase();
   if (!UUID7.test(id)) return "id";
@@ -136,6 +145,8 @@ function readRecord(rec: Record<string, unknown>, now: number, oldest: number): 
   const settings = Object.fromEntries(entries);
   const json = canonical(settings);
   if (utf8Over(json, SETTINGS_MAX.json)) return "settings";
+  const version = text(rec.script_version), skillType = text(rec.skill_type);
+  if (version.length > FIELD_MAX || skillType.length > FIELD_MAX || CONTROL.test(version) || CONTROL.test(skillType)) return "field";
 
   let build = text(rec.build);
   if (build !== "global" && build !== "jp") {
@@ -165,7 +176,8 @@ function readRecord(rec: Record<string, unknown>, now: number, oldest: number): 
     known: TSUMS.has(tsum),
     build: build === "jp" ? 1 : 0,
     skill: Number.isInteger(skill) && (skill as number) >= 1 && (skill as number) <= 10 ? (skill as number) : -1,
-    version: text(rec.script_version).slice(0, 16),
+    skillType,
+    version,
     settings: json,
     duration, score, base, final, medals,
     binBase: bin(base),

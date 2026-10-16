@@ -53,6 +53,7 @@ cite it by section (`CONTRACT §3.2`).
 | `src/data.ts` | `GET /data/global/*` from R2, through the edge cache |
 | `migrations/0001_init.sql` | The D1 schema (§3.1) |
 | `migrations/0002_cell_bins.sql` | Bins per cell with their figures (`cell_bins`), and every day marked to be recomputed into them |
+| `migrations/0003_skill_type.sql` | Each round's skill type kept, and `cells2` / `cell_bins2` keyed by it, copied from `cells` / `cell_bins` |
 | `wrangler.jsonc` | Bindings, the route, the cron, the local dev address, the tunables |
 | `deploy.sh` | The deploy from a terminal, with its account checks, for when the GAP Devkit (its Tsum Tsum global stats card is the deploy) is not available |
 | `test/` | vitest in workerd (below) |
@@ -75,6 +76,15 @@ of every public figure. After a deploy whose catalog has it, `POST
 `ui/public/data/catalog.json`, push it and deploy (the Devkit card,
 [CLOUDFLARE-SETUP.md](CLOUDFLARE-SETUP.md#5-deploy)) when the script learns a
 new Tsum; no round of it is lost meanwhile.
+
+**Deploy the Worker before an app that sends more.** `0003_skill_type.sql`
+makes the Worker keep `skill_type` and answer uploads with `keeps: 2`, and an
+app that sees that sends every round of its 60 days once more, so the rounds
+stored without a skill type get one (CONTRACT §2.2, §7.2). An app updated
+first sends nothing again until the Worker says so. The re-sends change their
+rounds, so their days are recomputed over the next runs: expect a day of
+heavier hourly runs as each player's app comes round. Days already archived
+keep skill type `''` (*Not recorded*).
 
 **After the deploy that adds `0002_cell_bins.sql`**, every day is dirty: the
 hourly runs recompute them into `cell_bins`, eight a run, and publish each

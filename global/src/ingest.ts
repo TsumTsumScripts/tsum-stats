@@ -15,6 +15,12 @@ import { checkRecords, type Round } from "./records";
 
 export const SCHEMA = "gap.round-stats/1";
 export const MAX_RECORDS = 250;
+/**
+ * What the Worker keeps of a record, as a number its replies carry (CONTRACT
+ * §2.2): 2 is every field in full, `skill_type` included. A forwarder that
+ * sees it go up sends its rounds once more, so they are kept whole too.
+ */
+export const KEEPS = 2;
 
 /** A round D1 already has, with its settings' hash to compare by. */
 interface Stored {
@@ -24,6 +30,7 @@ interface Stored {
   build: number;
   tsum: string;
   skill: number;
+  skill_type: string;
   items: number;
   version: string;
   hash: string | null;
@@ -36,23 +43,23 @@ interface Stored {
 
 /** The figures a re-send may change: everything but the key and who sent it first. */
 const FIGURES = [
-  "played_at", "build", "tsum", "skill", "items", "version", "settings",
+  "played_at", "build", "tsum", "skill", "skill_type", "items", "version", "settings",
   "duration", "score", "base", "final", "medals", "bin_base", "bin_final", "bin_medals",
 ];
 
 const same = (s: Stored, r: Round) =>
-  s.played_at === r.playedAt && s.build === r.build && s.tsum === r.tsum && s.skill === r.skill &&
+  s.played_at === r.playedAt && s.build === r.build && s.tsum === r.tsum && s.skill === r.skill && s.skill_type === r.skillType &&
   s.items === r.items && s.version === r.version && s.hash === r.settingsHash && s.duration === r.duration &&
   s.score === r.score && s.base === r.base && s.final === r.final && s.medals === r.medals;
 
-// One row per round in json_each(?1): [key, played_at, build, tsum, skill, items,
-// version, settings hash, duration, score, base, final, medals, bins...]. The
+// One row per round in json_each(?1): [key, played_at, build, tsum, skill, skill type,
+// items, version, settings hash, duration, score, base, final, medals, bins...]. The
 // settings ids are looked up once, as a map, for the batch's hashes ?3. A
 // conflict updates only this contributor's row, and only when it changed.
 const UPSERT_ROUNDS = `INSERT INTO rounds (key, contributor, ${FIGURES.join(", ")})
-  SELECT r->>0, ?2, r->>1, r->>2, r->>3, r->>4, r->>5, r->>6,
-    (SELECT json_group_object(hash, id) FROM settings WHERE hash IN (SELECT value FROM json_each(?3))) ->> ('$."' || (r->>7) || '"'),
-    r->>8, r->>9, r->>10, r->>11, r->>12, r->>13, r->>14, r->>15
+  SELECT r->>0, ?2, r->>1, r->>2, r->>3, r->>4, r->>5, r->>6, r->>7,
+    (SELECT json_group_object(hash, id) FROM settings WHERE hash IN (SELECT value FROM json_each(?3))) ->> ('$."' || (r->>8) || '"'),
+    r->>9, r->>10, r->>11, r->>12, r->>13, r->>14, r->>15, r->>16
   FROM (SELECT value AS r FROM json_each(?1)) WHERE true
   ON CONFLICT (key) DO UPDATE SET ${FIGURES.map(f => `${f} = excluded.${f}`).join(", ")}
   WHERE rounds.contributor = excluded.contributor
@@ -70,7 +77,7 @@ const RACED = "INSERT OR IGNORE INTO dirty_days (day) SELECT value FROM json_eac
 const PENDING = "INSERT INTO pending (contributor, n, days, tsums, cells, bins, cell_bins, cc) VALUES (?1, ?2, ?3, ?4, ?5, '[]', ?6, ?7)";
 
 const row = (r: Round) => [
-  r.key, r.playedAt, r.build, r.tsum, r.skill, r.items, r.version, r.settingsHash,
+  r.key, r.playedAt, r.build, r.tsum, r.skill, r.skillType, r.items, r.version, r.settingsHash,
   r.duration, r.score, r.base, r.final, r.medals, r.binBase, r.binFinal, r.binMedals,
 ];
 
@@ -85,7 +92,7 @@ export type BinFigures = [number, number, number, number, number, number];
  */
 export function aggregate(rounds: Round[]) {
   const cells = new Map<string, (string | number | null)[]>();
-  const bins = new Map<string, [string, number, string, number, number, number, ...Record<string, BinFigures>[]]>();
+  const bins = new Map<string, [string, number, string, number, string, number, number, ...Record<string, BinFigures>[]]>();
   const cc = new Map<string, (string | number)[]>();
   const min = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.min(a, b));
   const max = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.max(a, b));
@@ -93,29 +100,29 @@ export function aggregate(rounds: Round[]) {
     const day = keyDay(r.key);
     const medal = r.medals !== null && r.medals > 0 ? 1 : 0;
     if (r.known) {
-      const k = JSON.stringify([day, r.build, r.tsum, r.skill, r.items, medal]);
+      const k = JSON.stringify([day, r.build, r.tsum, r.skill, r.skillType, r.items, medal]);
       const m = r.medals, read = m !== null;
       const c = cells.get(k);
       if (!c) {
-        cells.set(k, [day, r.build, r.tsum, r.skill, r.items, medal, 1, r.duration, r.score, r.score, r.score, r.playedAt, r.playedAt,
+        cells.set(k, [day, r.build, r.tsum, r.skill, r.skillType, r.items, medal, 1, r.duration, r.score, r.score, r.score, r.playedAt, r.playedAt,
           r.base, r.base * r.base, r.base, r.base, r.final, r.final * r.final, r.final, r.final,
           read ? 1 : 0, m ?? 0, read ? m! * m! : 0, m, m, read ? r.duration : 0]);
       } else {
         const v = c as number[];
-        v[6]++; v[7] += r.duration; v[8] += r.score; v[9] = Math.min(v[9], r.score); v[10] = Math.max(v[10], r.score);
-        v[11] = Math.min(v[11], r.playedAt); v[12] = Math.max(v[12], r.playedAt);
-        v[13] += r.base; v[14] += r.base * r.base; v[15] = Math.min(v[15], r.base); v[16] = Math.max(v[16], r.base);
-        v[17] += r.final; v[18] += r.final * r.final; v[19] = Math.min(v[19], r.final); v[20] = Math.max(v[20], r.final);
+        v[7]++; v[8] += r.duration; v[9] += r.score; v[10] = Math.min(v[10], r.score); v[11] = Math.max(v[11], r.score);
+        v[12] = Math.min(v[12], r.playedAt); v[13] = Math.max(v[13], r.playedAt);
+        v[14] += r.base; v[15] += r.base * r.base; v[16] = Math.min(v[16], r.base); v[17] = Math.max(v[17], r.base);
+        v[18] += r.final; v[19] += r.final * r.final; v[20] = Math.min(v[20], r.final); v[21] = Math.max(v[21], r.final);
         if (read) {
-          v[21]++; v[22] += m!; v[23] += m! * m!; v[26] += r.duration;
-          c[24] = min(c[24] as number | null, m); c[25] = max(c[25] as number | null, m);
+          v[22]++; v[23] += m!; v[24] += m! * m!; v[27] += r.duration;
+          c[25] = min(c[25] as number | null, m); c[26] = max(c[26] as number | null, m);
         }
       }
       // The cell's bins: each of its rounds counted in the bin of its base
       // coins, of its final coins and, when it earned any, of its medals.
       let g = bins.get(k);
-      if (!g) bins.set(k, (g = [day, r.build, r.tsum, r.skill, r.items, medal, {}, {}, {}]));
-      for (const [kind, b] of [[6, r.binBase], [7, r.binFinal], [8, r.binMedals]] as const) {
+      if (!g) bins.set(k, (g = [day, r.build, r.tsum, r.skill, r.skillType, r.items, medal, {}, {}, {}]));
+      for (const [kind, b] of [[7, r.binBase], [8, r.binFinal], [9, r.binMedals]] as const) {
         if (b === null) continue;
         const o = g[kind] as Record<string, BinFigures>;
         const f = (o[b] ??= [0, 0, 0, 0, 0, 0]);
@@ -161,7 +168,7 @@ export async function postRounds(req: Request, env: Env, c: Contributor, nowMs: 
   const tags = [...new Set(rounds.map(r => r.device))];
   if (rounds.length) {
     const [had, settings, devices] = await db.batch([
-      db.prepare(`SELECT r.key, r.contributor, r.played_at, r.build, r.tsum, r.skill, r.items, r.version, s.hash,
+      db.prepare(`SELECT r.key, r.contributor, r.played_at, r.build, r.tsum, r.skill, r.skill_type, r.items, r.version, s.hash,
           r.duration, r.score, r.base, r.final, r.medals
         FROM json_each(?1) j JOIN rounds r ON r.key = j.value LEFT JOIN settings s ON s.id = r.settings`)
         .bind(JSON.stringify(rounds.map(r => r.key))),
@@ -259,5 +266,5 @@ export async function postRounds(req: Request, env: Env, c: Contributor, nowMs: 
       WHERE id = ?1 AND (CASE WHEN day = ?2 THEN day_rounds ELSE 0 END) + ?3 > ?4`).bind(c.id, today, accepted, lim.quota));
   }
   await spend(db, nowMs, { est, cap: lim.budget - lim.reserve, reads, checks }, stmts);
-  return ok({ accepted, unchanged, duplicates, rejected, retry });
+  return ok({ accepted, unchanged, duplicates, rejected, retry, keeps: KEEPS });
 }

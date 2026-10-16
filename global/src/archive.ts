@@ -17,6 +17,7 @@ import { DAY, DAY_ROUNDS, addDays, dayOf, dayParams, dayRange, dayStart, hex48, 
 import type { Env } from "./env";
 import { HttpError } from "./http";
 import type { Job } from "./job";
+import { FIELD_MAX } from "./records";
 import { Run } from "./run";
 
 export const ARCHIVE = "archive/";
@@ -46,19 +47,24 @@ export const namedFile = (id: number, chunk: number) => (chunk === 0 ? `c${id}.j
 /** The R2 prefix of every file namedFile gives for id. */
 export const namedPrefix = (day: string, id: number) => archiveKey(day, `c${id}.`);
 
-// The file's arrays, in the rounds table's columns.
+// The file's arrays, in the rounds table's columns: every field the round
+// was sent with, so a restore loses nothing.
 const COLUMNS: [string, string][] = [
-  ["key", "key"], ["playedAt", "played_at"], ["build", "build"], ["tsum", "tsum"], ["skill", "skill"], ["items", "items"],
-  ["version", "version"], ["settings", "settings"], ["duration", "duration"], ["score", "score"], ["base", "base"],
-  ["final", "final"], ["medals", "medals"],
+  ["key", "key"], ["playedAt", "played_at"], ["build", "build"], ["tsum", "tsum"], ["skill", "skill"],
+  ["skillType", "skill_type"], ["items", "items"], ["version", "version"], ["settings", "settings"],
+  ["duration", "duration"], ["score", "score"], ["base", "base"], ["final", "final"], ["medals", "medals"],
 ];
+/** Archive format 2 has skillType; a format 1 file has none, and its rounds come back with "". */
+const OPTIONAL = new Set(["skillType"]);
 
 /**
- * How long one round can be in a file, at most (a 48-character Tsum id, a
- * 16-character version, every figure at its longest): a share of a day is
- * sized by it, so no piece passes the value limit.
+ * How long one round can be in a file, at most: a 48-character Tsum id,
+ * every figure at its longest (174 characters), and a version and a skill
+ * type of FIELD_MAX characters each with every one escaped (`"` or `\\`; a
+ * control character rejects the record), quoted. A share of a day is sized
+ * by it, so no piece passes the value limit.
  */
-const ROUND_BYTES = 190;
+const ROUND_BYTES = 174 + 2 * (2 * FIELD_MAX + 3);
 
 /**
  * Share ?5 of day ?3 into archive_parts: the ?4 rounds after the last key
@@ -87,7 +93,7 @@ const kindOf = (c: string) => `CASE WHEN ${c} = 0 THEN 'u'
  * that one is still linked (or was merged into another, which a restore follows).
  */
 const FILES = `SELECT i, n, ${kindOf("c")} AS kind,
-    json_object('kind', 'tsum-global-archive', 'format', 1, 'day', ?1,
+    json_object('kind', 'tsum-global-archive', 'format', 2, 'day', ?1,
       'contributor', CASE WHEN ${kindOf("c")} = 'c' THEN c END, 'n', n, ${COLUMNS.map(([j, c]) => `'${j}', json('[' || ${c} || ']')`).join(", ")}) AS body
   FROM (SELECT ?2 ->> ('$."' || contributor || ':' || part || '"') AS i, contributor AS c, sum(n) AS n,
       ${COLUMNS.map(([, c]) => `group_concat(${c}, ',' ORDER BY part) AS ${c}`).join(", ")}
@@ -107,27 +113,35 @@ const binSQL = (v: string) => `CASE WHEN ${v} < 100 THEN ${v} ELSE 100 + CAST(fl
  * A file's rounds back into D1 as contributor ?2. Each column becomes a table
  * of (position, value), joined on the position, so the Worker never parses
  * the file. (D1 allows only five terms in a compound SELECT, so not a UNION.)
- * A round D1 already has is left alone.
+ * A column an older format lacks (OPTIONAL) comes back as "". A round D1
+ * already has is left alone.
  */
 const RESTORE = `WITH ${COLUMNS.map(([j]) => `c_${j} AS MATERIALIZED (SELECT key AS i, value AS v FROM json_each(?1, '$.${j}'))`).join(",\n    ")}
-  INSERT OR IGNORE INTO rounds (key, contributor, played_at, build, tsum, skill, items, version, settings,
-    duration, score, base, final, medals, bin_base, bin_final, bin_medals)
-  SELECT key, ?2, played_at, build, tsum, skill, items, version, settings, duration, score, base, final, medals,
+  INSERT OR IGNORE INTO rounds (key, contributor, ${COLUMNS.slice(1).map(([, c]) => c).join(", ")}, bin_base, bin_final, bin_medals)
+  SELECT key, ?2, ${COLUMNS.slice(1).map(([, c]) => c).join(", ")},
     ${binSQL("base")}, ${binSQL("final")}, CASE WHEN medals > 0 THEN ${binSQL("medals")} END
-  FROM (SELECT ${COLUMNS.map(([j, c]) => `c_${j}.v AS ${c}`).join(", ")}
-    FROM c_key ${COLUMNS.slice(1).map(([j]) => `JOIN c_${j} ON c_${j}.i = c_key.i`).join(" ")})`;
+  FROM (SELECT ${COLUMNS.map(([j, c]) => (OPTIONAL.has(j) ? `coalesce(c_${j}.v, '') AS ${c}` : `c_${j}.v AS ${c}`)).join(", ")}
+    FROM c_key ${COLUMNS.slice(1).map(([j]) => `${OPTIONAL.has(j) ? "LEFT JOIN" : "JOIN"} c_${j} ON c_${j}.i = c_key.i`).join(" ")})`;
 
 /** A file to put together: [contributor, first part, after its last part, its number, its bytes]. */
 type Plan = [number, number, number, number, number];
 
-/** An archive in progress: the day, its shares in archive_parts and whether that is all of it, its files, and how many are written. */
+/**
+ * An archive in progress: the day, its shares in archive_parts and whether
+ * that is all of it, its files, how many are written, and whether the last
+ * run had no bytes left for any of them.
+ */
 interface Progress {
   day: string;
   parts: number;
   staged: boolean;
   files: Plan[] | null;
   done: number;
+  starved?: boolean;
 }
+
+/** Whether the archive in progress (state archive) wrote no file last run for want of the run's bytes. */
+export const archiveStarved = (archive: string | null): boolean => archive !== null && JSON.parse(archive).starved === true;
 
 const isFinal = (job: Job, day: string) => dayStart(day) + DAY + (job.lim.acceptDays + 1) * DAY <= job.run.now;
 
@@ -146,8 +160,8 @@ async function fileKey(env: Env, day: string, c: number, k: number, kind: string
 
 /** Reads putting a day into archive_parts costs per round, about (the scan, and sorting it by contributor). */
 const ARCHIVE_READS_PER_ROUND = 2;
-/** Shares one batch puts into archive_parts. */
-const STAGE_PER_BATCH = 4;
+/** Shares one batch puts into archive_parts, at most. */
+const STAGE_PER_BATCH = 8;
 
 /**
  * Step 4: each day older than ACCEPT_DAYS + 1, in order, while the run's
@@ -188,7 +202,10 @@ async function archiveDay(job: Job, day: string, progress: Progress | null): Pro
   const { run, lim } = job;
   const env = run.env;
   const p: Progress = progress?.day === day ? progress : { day, parts: 0, staged: false, files: null, done: 0 };
+  // A run that writes none of the day's files, once they are planned, leaves the next one to go first.
+  const had = p.files ? p.done : -1;
   const stop = () => {
+    if (p.files) p.starved = p.done === had;
     job.state.set("archive", JSON.stringify(p));
     return false;
   };
@@ -197,16 +214,19 @@ async function archiveDay(job: Job, day: string, progress: Progress | null): Pro
   const share = Math.max(1, Math.floor((lim.valueMax * 0.8) / ROUND_BYTES));
   while (!p.staged) {
     const fresh = progress?.day !== day && p.done === 0 && !p.files;
-    const n = STAGE_PER_BATCH + (fresh ? 1 : 0);
-    // A share writes a piece per contributor in it (about), which the end deletes again.
-    if (!run.room(n) || !run.canRead(share * STAGE_PER_BATCH * ARCHIVE_READS_PER_ROUND) || !run.canWrite(STAGE_PER_BATCH * 50)) return stop();
+    // As many shares as the run has room for, up to STAGE_PER_BATCH. A share
+    // writes a piece per contributor in it (about), which the end deletes again.
+    const fits = (k: number) => run.room(k + (fresh ? 1 : 0)) && run.canRead(share * k * ARCHIVE_READS_PER_ROUND) && run.canWrite(k * 50);
+    let k = STAGE_PER_BATCH;
+    while (k > 0 && !fits(k)) k--;
+    if (k === 0) return stop();
     // Just before the day's first key, so a bound of `key >` takes all of it.
     const before = hex48(dayStart(day) * 1000 - 1) + "f".repeat(20);
     const params = [before, dayRange(day).hi, day, share];
     // A day started afresh drops what an earlier, failed start left.
     const res = await run.batch([
       ...(fresh ? [run.stmt("DELETE FROM archive_parts WHERE day = ?1", day)] : []),
-      ...Array.from({ length: STAGE_PER_BATCH }, (_, i) => run.stmt(STAGE, ...params, p.parts + i)),
+      ...Array.from({ length: k }, (_, i) => run.stmt(STAGE, ...params, p.parts + i)),
     ]);
     progress = p;
     const staged = res.slice(fresh ? 1 : 0);
@@ -271,6 +291,9 @@ async function archiveDay(job: Job, day: string, progress: Progress | null): Pro
   return true;
 }
 
+/** The fewest bytes a settings file is worth writing for (always at least one row). */
+const SETTINGS_MIN_BYTES = 50_000;
+
 /** Every settings row into archive/settings/ before a round naming it is archived. */
 async function archiveSettings(job: Job): Promise<boolean> {
   const { run } = job;
@@ -281,8 +304,12 @@ async function archiveSettings(job: Job): Promise<boolean> {
     coalesce((SELECT max(id) FROM settings), 0) AS top`))!;
   let done = s.done;
   while (done < s.top) {
-    if (!run.room(1, 1, job.lim.valueMax)) return false;
-    const f = (await run.first<{ lo: number; hi: number; body: string }>(SETTINGS, done, Math.floor(job.lim.valueMax * 0.8)))!;
+    // As many rows as the run's bytes left allow, up to a share of the value
+    // limit: a run whose part took most of its bytes still writes some.
+    const cap = Math.floor(job.lim.valueMax * 0.8);
+    const room = run.bytes === 0 ? cap : Math.min(cap, job.lim.runBytes - run.bytes);
+    if (room < Math.min(SETTINGS_MIN_BYTES, cap) || !run.room(1, 1, room)) return false;
+    const f = (await run.first<{ lo: number; hi: number; body: string }>(SETTINGS, done, room))!;
     await putWhole(run, `${ARCHIVE}settings/${f.lo}-${f.hi}.json`, f.body);
     done = f.hi;
     job.state.set("settings_archived", String(done));

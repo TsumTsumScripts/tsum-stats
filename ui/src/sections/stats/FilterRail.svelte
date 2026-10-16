@@ -6,11 +6,12 @@
   import Seg from '../../components/Seg.svelte';
   import TsumChip from '../../components/TsumChip.svelte';
   import {isGlobal} from '../../lib/global/client.js';
-  import {debounce, fmt, itemsLabel} from '../../lib/util.js';
+  import {debounce, fmt, itemsLabel, skillTypeName, skillTypeValue} from '../../lib/util.js';
 
+  // skillTypes: the script's skill types with rounds, [{skillType, rounds}]; pickedTypes: the filter's, '-' for none.
   // skills: the global site's skill levels; itemChoices: its item sets, [{items, rounds}].
   let {
-    filter, range, outliers, chips, picked, played, playedDevices, pickedDevices, comparing,
+    filter, range, outliers, chips, picked, played, playedDevices, pickedDevices, skillTypes = [], pickedTypes = [], comparing,
     skills = [], pickedSkills = [], itemChoices = [], pickedItems = [],
     set, reset, addTsum, dropTsum, matchTsum, nameOf, colorOf, open = $bindable(false),
   } = $props();
@@ -39,7 +40,7 @@
   function dates(from, to) {
     set(from || to ? {days: '', from, to} : {days: 'all', from: '', to: ''});
   }
-  // Ticking devices narrows the stats to them; none ticked is every device. Skill levels and item sets likewise.
+  // Ticking devices narrows the stats to them; none ticked is every device. Skill types, skill levels and item sets likewise.
   const toggleIn = (key, list, v, on) => set({[key]: (on ? [...list, v] : list.filter(x => x !== v)).join(',')});
   const toggleDevice = (d, on) => toggleIn('device', pickedDevices, d, on);
   const skillName = s => (s < 0 ? 'Not recorded' : `Level ${s}`);
@@ -123,6 +124,19 @@
             </div>
           {/if}
         </div>
+        {#if skillTypes.length > 1 || pickedTypes.length}
+          <div class="field devices-field" title="Tick one or more of the script's skill types to count only rounds played with them">Skill type
+            <details class="devices">
+              <summary>{pickedTypes.length > 1 ? `${pickedTypes.length} skill types` : pickedTypes.length ? skillTypeName(pickedTypes[0]) : 'All skill types'}</summary>
+              <div class="device-list">
+                {#each skillTypes as t (t.skillType)}
+                  <label title={skillTypeName(t.skillType)}><input type="checkbox" checked={pickedTypes.includes(skillTypeValue(t.skillType))}
+                    onchange={e => toggleIn('skillType', pickedTypes, skillTypeValue(t.skillType), e.target.checked)}><span class="device-name">{skillTypeName(t.skillType)}</span><span class="sub">{fmt(t.rounds)}</span></label>
+                {/each}
+              </div>
+            </details>
+          </div>
+        {/if}
         {#if globalSite}
           {#if skills.length}
             <div class="field devices-field" title="Tick one or more skill levels to count only rounds played at them">Skill level

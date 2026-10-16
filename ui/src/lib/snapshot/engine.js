@@ -86,10 +86,15 @@ function intCell(s) {
 }
 
 /** The query parameters as the server reads them. */
+/** How the skillType list names the rounds without a skill type (queries.go: NoSkillType). */
+export const NO_SKILL_TYPE = '-';
+
 export function parseFilter(q) {
-  const f = {tsums: [], devices: [], build: '', from: null, to: null, finalCoins: false, medals: false, net: false};
+  const f = {tsums: [], devices: [], skillTypes: [], build: '', from: null, to: null, finalCoins: false, medals: false, net: false};
   f.tsums = String(q.tsum ?? '').split(',').map(t => t.trim()).filter(Boolean);
   f.devices = String(q.device ?? '').split(',').map(d => d.trim()).filter(Boolean);
+  // NO_SKILL_TYPE (queries.go: NoSkillType) is the rounds sent without one.
+  f.skillTypes = String(q.skillType ?? '').split(',').map(s => s.trim()).filter(Boolean).map(s => (s === NO_SKILL_TYPE ? '' : s));
   if (q.build === 'global' || q.build === 'jp') f.build = q.build;
   f.from = q.from ? parseTime(q.from) : null;
   f.to = q.to ? parseTime(q.to) : null;
@@ -167,11 +172,13 @@ export function createEngine(loader) {
     const medalRange = f.minMedals !== null || f.maxMedals !== null;
     const tsumSet = f.tsums.length ? new Set(f.tsums) : null;
     const deviceSet = f.devices.length ? new Set(f.devices) : null;
+    const skillTypeSet = f.skillTypes.length ? new Set(f.skillTypes) : null;
     const out = [];
     for (const sh of await monthsFor(f)) {
       const deviceOk = deviceSet ? sh.dict.device.map(d => deviceSet.has(d)) : null;
       const tsumOk = tsumSet ? sh.dict.tsum.map(t => tsumSet.has(t)) : null;
       const buildOk = f.build ? sh.dict.build.map(b => b === f.build) : null;
+      const skillTypeOk = skillTypeSet ? sh.dict.skillType.map(s => skillTypeSet.has(s)) : null;
       const medalTsum = sh.dict.tsum.map(t => medalSet.has(t));
       const idx = [];
       const coins = sh[coinsCol];
@@ -182,6 +189,7 @@ export function createEngine(loader) {
         if (tsumOk && !tsumOk[sh.tsum[i]]) continue;
         if (deviceOk && !deviceOk[sh.device[i]]) continue;
         if (buildOk && !buildOk[sh.build[i]]) continue;
+        if (skillTypeOk && !skillTypeOk[sh.skillType[i]]) continue;
         // Complete (queries.go: completeSQL): a Tsum and every figure read; medals only for a medal Tsum.
         if (f.complete && (sh.dict.tsum[sh.tsum[i]] === '' || sh.score[i] === null || sh.baseCoins[i] === null
           || sh.finalCoins[i] === null || sh.duration[i] === null || (sh.medals[i] === null && medalTsum[sh.tsum[i]]))) continue;
@@ -398,7 +406,7 @@ export function createEngine(loader) {
     if (!id) throw new Error('tsum: id is required');
     const f = parseFilter({...q, tsum: id});
     const c = coinCol(f);
-    const settings = new Map(), versions = new Map(), devices = new Map(), field = new Map(), form = new Map();
+    const settings = new Map(), skillTypes = new Map(), versions = new Map(), devices = new Map(), field = new Map(), form = new Map();
     const into = (map, key, sh, i, extra) => {
       if (!map.has(key)) map.set(key, {a: acc(), ...extra});
       add(map.get(key).a, sh, i, c);
@@ -415,6 +423,8 @@ export function createEngine(loader) {
         const key = settingText(v);
         if (key !== undefined) into(settings, `${setting}\u0000${key}`, sh, i, {setting, key});
       }
+      const skillType = sh.dict.skillType[sh.skillType[i]];
+      into(skillTypes, skillType, sh, i, {key: skillType});
       const version = sh.dict.scriptVersion[sh.scriptVersion[i]];
       into(versions, version, sh, i, {key: version});
       const device = sh.dict.device[sh.device[i]];
@@ -478,6 +488,7 @@ export function createEngine(loader) {
       summary: summed,
       settings: [...settings.values()].sort((x, y) => cmp(x.setting, y.setting) || cmp(x.key, y.key))
         .map(g => ({setting: g.setting, ...group(g)})),
+      skillTypes: [...skillTypes.values()].map(group).sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),
       versions: [...versions.values()].map(group).sort((x, y) => cmp(y.last, x.last) || cmp(x.key, y.key)),
       devices: [...devices.values()].map(group).sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),
       field: [...field.values()].sort((x, y) => cmp(x.tsum, y.tsum)).map(({a, tsum: t}) => ({
@@ -546,6 +557,11 @@ export function createEngine(loader) {
     return (await getManifest()).devices ?? [];
   }
 
+  /** queries.go: PlayedSkillTypes; an older snapshot lists none. */
+  async function skillTypes() {
+    return (await getManifest()).skillTypes ?? [];
+  }
+
   // One device's newest list for a build; null when it has none.
   async function owned(q) {
     const man = await getManifest();
@@ -574,6 +590,7 @@ export function createEngine(loader) {
         case 'tsum': return tsum(params);
         case 'tsums': return tsums();
         case 'round-devices': return roundDevices();
+        case 'skill-types': return skillTypes();
         case 'owned': return owned(params);
         case 'owned-sources': return ownedSources();
         case 'status': return status();
