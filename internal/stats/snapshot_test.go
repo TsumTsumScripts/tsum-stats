@@ -95,7 +95,7 @@ func TestSnapshotFiles(t *testing.T) {
 	addTsumLists(t, app)
 	site := fstest.MapFS{
 		"index.html":        {Data: []byte("<html><head><title>x</title></head><body></body></html>")},
-		"themes/ember.css":    {Data: []byte("/* @name Ember */")},
+		"themes/ember.css":  {Data: []byte("/* @name Ember */")},
 		"assets/app.js":     {Data: []byte("1")},
 		"data/catalog.json": {Data: []byte("{}")},
 	}

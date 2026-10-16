@@ -214,7 +214,7 @@ func TestPublishEndToEnd(t *testing.T) {
 	site := fstest.MapFS{
 		"index.html":        {Data: []byte("<html><head></head><body></body></html>")},
 		"assets/app.js":     {Data: []byte("app")},
-		"themes/ember.css":    {Data: []byte("/* @name Ember */")},
+		"themes/ember.css":  {Data: []byte("/* @name Ember */")},
 		"data/catalog.json": {Data: []byte("{}")},
 	}
 	dataDir := t.TempDir()
