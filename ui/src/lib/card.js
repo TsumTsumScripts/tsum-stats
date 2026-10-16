@@ -27,10 +27,14 @@ export const cardContext = get => setContext('card', get);
 export const cardInfo = () => getContext('card');
 
 /**
- * The Tsum art's origin sends no CORS headers, so the page cannot read its
- * files. The stats server fetches them for it (/api/stats/art/<id>, art.go); a
- * snapshot or the global site has no server and asks the origin itself, which
- * works once the origin allows it, and until then the card shows initials.
+ * The Tsum art's origin sends CORS headers only to the global site's origins.
+ * The stats server fetches the art for the page (/api/stats/art/<id>, art.go);
+ * a snapshot or the global site has no server and asks the origin itself, and
+ * where the origin refuses, the card shows initials.
+ *
+ * The fetch skips the browser cache: the page's own <img> loaded the same file
+ * without an Origin, and that cached copy has no CORS headers (nor a Vary:
+ * Origin to keep it apart), so a CORS fetch served from it fails.
  */
 const [ART_PRE, ART_POST] = IMAGE_URL('\u0001').split(encodeURIComponent('\u0001'));
 function viaServer(src) {
@@ -39,7 +43,7 @@ function viaServer(src) {
 }
 
 async function dataURL(src) {
-  const res = await fetch(viaServer(src), {mode: 'cors'});
+  const res = await fetch(viaServer(src), {mode: 'cors', cache: 'reload'});
   if (!res.ok) throw new Error(String(res.status));
   const blob = await res.blob();
   return new Promise((ok, fail) => {
