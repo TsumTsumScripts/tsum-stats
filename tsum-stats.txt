@@ -2,19 +2,19 @@
 #
 # One binary per system, checked against the sha256 here before it replaces
 # the running one. Written by tools/build.sh.
-version=0.29
-url_darwin_arm64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.29/tsum-stats-darwin-arm64
-sha256_darwin_arm64=a26e658d1e6dcb6054075d4bb4807d760c8e34c7329083d9bd6c9a201b265784
+version=0.30
+url_darwin_arm64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.30/tsum-stats-darwin-arm64
+sha256_darwin_arm64=e365b3f9166d1cd62bb8c4ab086a559694838bf07d661ab7569c634e6661fc64
 size_darwin_arm64=26263234
-url_darwin_amd64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.29/tsum-stats-darwin-amd64
-sha256_darwin_amd64=4818c77e22639ca2fa56d3edc1d58a4e8c551205bc029d5be2094a0731536ad8
+url_darwin_amd64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.30/tsum-stats-darwin-amd64
+sha256_darwin_amd64=952cd24ef53fde8d103b0df869e0f5f17c651bc03f2b42d806aa02e6834f2339
 size_darwin_amd64=27453136
-url_linux_amd64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.29/tsum-stats-linux-amd64
-sha256_linux_amd64=33c4c07c6304198eec8fb2e69c6cbf78943af08f58475c108e6036900bb4dc26
-size_linux_amd64=26988704
-url_linux_arm64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.29/tsum-stats-linux-arm64
-sha256_linux_arm64=d013c29089dc268d102c38e1e9ed82e848d7afd837be1deea36871728948560e
+url_linux_amd64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.30/tsum-stats-linux-amd64
+sha256_linux_amd64=21e4eaa7c3e1014052e3a8d5e36128a655d369bbf26f9ad1489b7329b043caa9
+size_linux_amd64=26992800
+url_linux_arm64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.30/tsum-stats-linux-arm64
+sha256_linux_arm64=b7c8ff067a0218aeb62ede774b59140e00b6797cdaab7b8e09b2f9b78bce3f7a
 size_linux_arm64=25624736
-url_windows_amd64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.29/tsum-stats-windows-amd64.exe
-sha256_windows_amd64=968bbb86cd63e1c2772e0e5d638d143e330dd9b9a578669dca83e38901292a53
-size_windows_amd64=27622400
+url_windows_amd64=https://github.com/TsumTsumScripts/tsum-stats/releases/download/v0.30/tsum-stats-windows-amd64.exe
+sha256_windows_amd64=4b12d4152481e5faf5871d9cb08e1900d2fe5036531c29f22ad001251bd312af
+size_windows_amd64=27624960
