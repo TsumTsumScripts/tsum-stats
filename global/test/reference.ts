@@ -39,12 +39,12 @@ const maxOf = (xs: number[]) => (xs.length ? Math.max(...xs) : null);
 /** The cells, bins and contrib_cells the rounds make; hidden contributors are banned, anon ones unlinking. */
 export function reference(rounds: RoundRow[], hidden: Set<number>, anon: Set<number> = new Set()) {
   const pub = rounds.filter(r => !hidden.has(r.contributor));
-  const cells = [...group(pub, r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.skill, r.skill_type, r.items, r.scan, r.chain, r.bubble, (r.medals ?? 0) > 0 ? 1 : 0])).entries()]
+  const cells = [...group(pub, r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.skill, r.skill_type, r.items, r.scan, r.chain, r.bubble, (r.medals ?? 0) > 0 ? 1 : 0, r.final > 10 * r.base ? 1 : 0])).entries()]
     .map(([k, rs]) => {
-      const [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal] = JSON.parse(k);
+      const [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot] = JSON.parse(k);
       const m = rs.filter(r => r.medals !== null);
       return {
-        day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, rounds: rs.length, secs: sum(rs.map(r => r.duration)),
+        day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, rounds: rs.length, secs: sum(rs.map(r => r.duration)),
         score_sum: sum(rs.map(r => r.score)), score_min: minOf(rs.map(r => r.score)), score_max: maxOf(rs.map(r => r.score)),
         first: minOf(rs.map(r => r.played_at)), last: maxOf(rs.map(r => r.played_at)),
         base_sum: sum(rs.map(r => r.base)), base_sq: sum(rs.map(r => r.base ** 2)), base_min: minOf(rs.map(r => r.base)), base_max: maxOf(rs.map(r => r.base)),
@@ -62,11 +62,11 @@ export function reference(rounds: RoundRow[], hidden: Set<number>, anon: Set<num
     }
     return o;
   };
-  const bins = [...group(pub, r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.skill, r.skill_type, r.items, r.scan, r.chain, r.bubble, (r.medals ?? 0) > 0 ? 1 : 0])).entries()]
+  const bins = [...group(pub, r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.skill, r.skill_type, r.items, r.scan, r.chain, r.bubble, (r.medals ?? 0) > 0 ? 1 : 0, r.final > 10 * r.base ? 1 : 0])).entries()]
     .map(([k, rs]) => {
-      const [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal] = JSON.parse(k);
+      const [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot] = JSON.parse(k);
       return {
-        day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, base: figures(rs, r => bin(r.base)), final: figures(rs, r => bin(r.final)),
+        day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, base: figures(rs, r => bin(r.base)), final: figures(rs, r => bin(r.final)),
         medals: figures(rs.filter(r => (r.medals ?? 0) > 0), r => bin(r.medals!)),
       };
     });
@@ -88,7 +88,7 @@ const order = (keys: string[]) => (a: Record<string, unknown>, b: Record<string,
   }
   return 0;
 };
-export const CELL_KEY = ["day", "build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal"];
+export const CELL_KEY = ["day", "build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal", "jackpot"];
 export const BIN_KEY = CELL_KEY;
 /** The bins objects: {bin: figures}, secs (figure 1) a REAL sum. */
 const BINS = new Set(["base", "final", "medals"]);
@@ -121,8 +121,8 @@ function sameBins(got: Record<string, number[]>, want: Record<string, number[]>,
 /** The tables as D1 has them, bins parsed. */
 export async function tables() {
   return {
-    cells: await rows("SELECT * FROM cells2"),
-    bins: (await rows<Record<string, unknown> & { base: string; final: string; medals: string }>("SELECT * FROM cell_bins2"))
+    cells: await rows("SELECT * FROM cells3"),
+    bins: (await rows<Record<string, unknown> & { base: string; final: string; medals: string }>("SELECT * FROM cell_bins3"))
       .map((b): Record<string, unknown> => ({ ...b, base: JSON.parse(b.base), final: JSON.parse(b.final), medals: JSON.parse(b.medals) })),
     contrib: await rows("SELECT * FROM contrib_cells"),
   };
@@ -189,6 +189,8 @@ export function deviceRounds(rnd: () => number, tag: string, from: number, to: n
     if (SCANS[k % SCANS.length] !== "") spec.scan = SCANS[k % SCANS.length];
     if (CHAINS[k % CHAINS.length] !== "") spec.chain = CHAINS[k % CHAINS.length];
     if (BUBBLES[k % BUBBLES.length] !== "") spec.bubble = BUBBLES[k % BUBBLES.length];
+    // Now and then a coin-bonus jackpot: a cell of its own (jackpot = 1).
+    if (k % 89 === 0) spec.final = base * 21;
     if (tsum.endsWith("plus")) spec.medals = rnd() < 0.3 ? 0 : Math.floor(rnd() * 400);
     else if (rnd() < 0.05) spec.medals = Math.floor(rnd() * 10);
     out.push(record(spec));

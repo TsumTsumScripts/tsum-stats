@@ -93,7 +93,7 @@ record as sent; only a change to the record sends it again.
 at deploy. A well-formed id it does not have (a Tsum newer than the deploy)
 is **accepted**: stored, archived, counted in `contrib_cells`, `recent` and
 the contributor's counters, but left out of every public table and file
-(`cells2`, `cell_bins2`, the parts, the manifest) until a deploy's catalog has it.
+(`cells3`, `cell_bins3`, the parts, the manifest) until a deploy's catalog has it.
 Then `POST /api/v1/admin/rebuild` brings in its days still in D1 (an archived
 day needs `restore` first). Its medals may be null: `incomplete` applies the
 medals rule only to the catalog's `medal: true` Tsums.
@@ -238,7 +238,7 @@ again), its quota (`429 quota`, on accepted rows) and today's budget
 - `rounds`: inserts, and this contributor's changed rows (one statement; the
   settings ids are looked up as one map for the batch's hashes);
 - `pending`: one row for the batch's newly inserted rounds, added up as the
-  day tables keep them (`ingest.ts: aggregate`): their `cells2` and `cell_bins2`
+  day tables keep them (`ingest.ts: aggregate`): their `cells3` and `cell_bins3`
   rows (the catalog's Tsums only), their `contrib_cells` rows by device,
   their start days, and `{tsum: the newest of those days}`. The hourly job
   adds these in (§3.2, step 1a) without reading `rounds`;
@@ -463,10 +463,11 @@ CREATE TABLE pending (
   n INTEGER NOT NULL,                    -- rounds
   days TEXT NOT NULL,                    -- the start days they fall on
   tsums TEXT NOT NULL,                   -- {tsum: the newest of those days with a round of it}
-  cells TEXT NOT NULL,                   -- the cells2 rows they add to (the catalog's Tsums only)
+  cells TEXT NOT NULL,                   -- the cells3 rows they add to (the catalog's Tsums only)
   bins TEXT NOT NULL,                    -- '[]': the per-skill bins of before 0002, no longer written
-  cell_bins TEXT NOT NULL DEFAULT '[]',  -- the cell_bins2 rows they add to: [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, {base}, {final}, {medals}]
-  cc TEXT NOT NULL                       -- [day, build, tsum, device, rounds, secs, base, final, medals]
+  cell_bins TEXT NOT NULL DEFAULT '[]',  -- the cell_bins3 rows they add to: [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, {base}, {final}, {medals}]
+  cc TEXT NOT NULL,                      -- [day, build, tsum, device, rounds, secs, base, final, medals]
+  format INTEGER NOT NULL DEFAULT 0      -- 0004: 1 when cells and cell_bins have the jackpot key; 0, summed before, is not folded (§3.2)
 );
 
 -- What D1 wrote (rows inserted, changed or deleted) and read per UTC day, for everything (§2.6).
@@ -482,11 +483,12 @@ CREATE TABLE join_limits (ip_hash TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NO
   PRIMARY KEY (ip_hash, day)) WITHOUT ROWID;
 CREATE TABLE state (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
 
--- Public: one row per day × build × Tsum × skill × skill type × items × scan × chain × bubble × (medals > 0) (0003).
-CREATE TABLE cells2 (
+-- Public: one row per day × build × Tsum × skill × skill type × items × scan × chain × bubble × (medals > 0) × jackpot (0004).
+CREATE TABLE cells3 (
   day TEXT NOT NULL, build INTEGER NOT NULL, tsum TEXT NOT NULL, skill INTEGER NOT NULL, skill_type TEXT NOT NULL,
   items INTEGER NOT NULL, scan INTEGER NOT NULL, chain INTEGER NOT NULL, bubble TEXT NOT NULL,
   medal INTEGER NOT NULL,                                   -- medal: 1 when medals > 0
+  jackpot INTEGER NOT NULL,                                 -- jackpot: 1 when final > 10 × base (a coin-bonus jackpot)
   rounds INTEGER NOT NULL, secs REAL NOT NULL,
   score_sum INTEGER NOT NULL, score_min INTEGER NOT NULL, score_max INTEGER NOT NULL,
   first INTEGER NOT NULL, last INTEGER NOT NULL,            -- epoch s
@@ -494,16 +496,22 @@ CREATE TABLE cells2 (
   final_sum INTEGER NOT NULL, final_sq REAL NOT NULL, final_min INTEGER NOT NULL, final_max INTEGER NOT NULL,
   medals_n INTEGER NOT NULL, medals_sum INTEGER NOT NULL, medals_sq REAL NOT NULL,
   medals_min INTEGER, medals_max INTEGER, medals_secs REAL NOT NULL,
-  PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal)
+  PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot)
 ) WITHOUT ROWID;
 
--- Public: one row per cells2 row (its key), each a JSON object {"<bin>": [rounds, secs, score, base, final, medals]}.
-CREATE TABLE cell_bins2 (
+-- Public: one row per cells3 row (its key), each a JSON object {"<bin>": [rounds, secs, score, base, final, medals]}.
+CREATE TABLE cell_bins3 (
   day TEXT NOT NULL, build INTEGER NOT NULL, tsum TEXT NOT NULL, skill INTEGER NOT NULL, skill_type TEXT NOT NULL,
   items INTEGER NOT NULL, scan INTEGER NOT NULL, chain INTEGER NOT NULL, bubble TEXT NOT NULL, medal INTEGER NOT NULL,
+  jackpot INTEGER NOT NULL,
   base TEXT NOT NULL, final TEXT NOT NULL, medals TEXT NOT NULL,  -- medals: {} unless medal = 1
-  PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal)
+  PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot)
 ) WITHOUT ROWID;
+
+-- Before 0004: cells3 and cell_bins3 without jackpot (0003). Kept, no longer written or read, so a Worker
+-- rolled back to before 0004 still finds them.
+CREATE TABLE cells2 (… cells3's columns but jackpot …, PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal)) WITHOUT ROWID;
+CREATE TABLE cell_bins2 (… cell_bins3's columns but jackpot …, PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal)) WITHOUT ROWID;
 
 -- Before 0003: cells2 and cell_bins2 without skill_type or the play settings (cell_bins from 0002). Kept, no longer
 -- written or read, so a Worker rolled back to before 0003 still finds them.
@@ -549,11 +557,15 @@ A cell's figures are over its rounds: `secs` their durations; `score_*`,
 `base_*`, `final_*` every round's (`*_sq` is the exact integer sum of squares,
 kept as REAL). The `medals_*` columns are over the rounds whose medals were
 read (not null): `medals_n` counts them, `medals_secs` adds their durations.
-A `cell_bins2` row holds the bins of the same cell's rounds: each of its
+A `cell_bins3` row holds the bins of the same cell's rounds: each of its
 rounds counted in the bin of its base coins, of its final coins and, when it
 earned any, of its medals. An object's keys are bin numbers (§5) as text, in
 any order; each value is that bin's figures (§5). `medals` is `{}` in a
-`medal = 0` row. `cells2` and `cell_bins2` hold the catalog's Tsums
+`medal = 0` row. `jackpot` is 1 for a cell of coin-bonus jackpots: rounds
+whose final coins are over 10 times their base coins (`JACKPOT_TIMES` in
+`ui/src/lib/snapshot/engine.js`, `records.ts: JACKPOT_SQL`, `queries.go:
+jackpotSQL`), the +Coin item's rare 11×, 21× and 51× bonuses, which the Tsum
+page leaves out of final coins (§6.3). `cells3` and `cell_bins3` hold the catalog's Tsums
 only (§1.2); `contrib_cells` every Tsum. The day tables are kept for good,
 archived days' too.
 
@@ -576,6 +588,17 @@ without either, so their days are marked dirty too and their `pending` rows
 deleted: the recompute makes from the rounds everything the fold would have.
 A round's skill type arrives when its contributor's forwarder sends it again
 (§2.2: `keeps`, §7.2), which changes the round and recomputes its day.
+
+`0004_jackpot.sql` adds `cells3` and `cell_bins3` in place of `cells2` and
+`cell_bins2`, keyed by `jackpot` too, which comes from each round's base and
+final coins, so `rounds` gains nothing. Every `cells2` row is copied in as no
+jackpot, so a day whose rounds have left D1 keeps its figures (its jackpots
+stay in them until a `restore`), and every day is marked dirty, so a day still
+in D1 is made again from its rounds. It adds `pending.format`: an upload's
+sums made before it, or by the Worker before it in the moment between the
+migration and the deploy, are 0, and the fold does not add their cells and
+bins in but marks their days dirty to be made again from the rounds
+(`rollup.ts: FOLD_OLD`); their `contrib_cells` sums are added as before.
 
 `rounds` has no secondary index on purpose: one row written per round. Every
 scan of `rounds` is a key range (§1.1); none reads it by contributor.
@@ -602,23 +625,25 @@ still run; the next run tries it again.
 
 The steps:
 
-1. **The day tables** (`cells2`, `cell_bins2`, `contrib_cells`):
+1. **The day tables** (`cells3`, `cell_bins3`, `contrib_cells`):
    1. **Fold** the `pending` sums in, oldest upload first, up to 25,000 rounds
       a run, in one batch. Who a round counts for is decided by its
       contributor's status at fold time: a banned one's (`banned`,
       `unlinking-banned`, or gone as `gone:<id>` = `"banned"`) stay out of
-      `cells2` and `cell_bins2`; those of contributor 0 or of one `unlinking`,
+      `cells3` and `cell_bins3`; those of contributor 0 or of one `unlinking`,
       `unlinking-banned` or no longer there stay out of `contrib_cells`,
       `span:<id>` and `recent`. Bins objects are merged per upload without a
       sort; a `contrib_cells` row's `device_set` is merged only when a new
       device appears. A day's sums already read by a full recompute are not
       added again: `state` `skip` = `{day: seq}`. The fold may spend to the
-      full `BUDGET_ROWS_PER_DAY`.
+      full `BUDGET_ROWS_PER_DAY`. An upload's sums of an older layout
+      (`pending.format` 0) add only their `contrib_cells`; their days are
+      marked dirty, and the run asks for another.
    2. **Recompute** the claimed dirty days in full, oldest first, at most
       `ROLLUP_DAYS_PER_RUN` (8), within the run's queries and
       `READ_BUDGET_PER_DAY`. Only a ban, an unban, a changed round, a merge, a
       rebuild or a restore makes a day dirty. Over the day's key range (§1.1):
-      `cells2` and `cell_bins2` from rounds of the catalog's Tsums whose contributor
+      `cells3` and `cell_bins3` from rounds of the catalog's Tsums whose contributor
       is not `banned`/`unlinking-banned`; `contrib_cells` from every round
       **except contributor 0's and those of contributors being unlinked**,
       with `devices` = distinct device hashes (`device_set`). It upserts only
@@ -783,28 +808,28 @@ into it; 0 for a contributor being unlinked or no longer there; never for one
 ### 4.2 Part files
 
 One day (`day-…`) or one month (`month-…`), columnar like the snapshot's
-month files. Format 4 (since `0003_skill_type.sql`) keys every cell and
-bins row by skill type (`skillType`) and the play settings (`scan`, `chain`,
-`bubble`) too; format 3 had the skill type only, and format 2 (since
-`0002_cell_bins.sql`) neither: the page reads what a part lacks as not
-recorded (`''`, -1). Each has bins per cell, each with its figures; format 1 had bins per
+month files. Format 5 (since `0004_jackpot.sql`) keys every cell and bins
+row by `jackpot` too; format 4 (since `0003_skill_type.sql`) by skill type
+(`skillType`) and the play settings (`scan`, `chain`, `bubble`); format 3 had
+the skill type only, and format 2 (since `0002_cell_bins.sql`) neither: the
+page reads what a part lacks as not recorded (`''`, -1) and no jackpot (0). Each has bins per cell, each with its figures; format 1 had bins per
 day × build × Tsum × skill, counts only, and the page reads a format 1 part's
 cells but none of its bins:
 
 ```json
 {
-  "kind": "tsum-global-part", "format": 4, "from": "2026-10-14", "to": "2026-10-15",
+  "kind": "tsum-global-part", "format": 5, "from": "2026-10-14", "to": "2026-10-15",
   "cells": {"n": 2, "day": ["2026-10-14", "…"], "build": [0, 1], "tsum": ["beastda", "…"], "skill": [5, -1],
-            "skillType": ["beastda", ""], "items": [7, -1], "scan": [3, -1], "chain": [4, -1], "bubble": ["all_mid_chain", ""], "medal": [0, 1], "rounds": [], "secs": [], "scoreSum": [], "scoreMin": [], "scoreMax": [],
+            "skillType": ["beastda", ""], "items": [7, -1], "scan": [3, -1], "chain": [4, -1], "bubble": ["all_mid_chain", ""], "medal": [0, 1], "jackpot": [0, 0], "rounds": [], "secs": [], "scoreSum": [], "scoreMin": [], "scoreMax": [],
             "first": [], "last": [], "baseSum": [], "baseSq": [], "baseMin": [], "baseMax": [],
             "finalSum": [], "finalSq": [], "finalMin": [], "finalMax": [],
             "medalsN": [], "medalsSum": [], "medalsSq": [], "medalsMin": [], "medalsMax": [], "medalsSecs": []},
   "bins": {"n": 1, "day": ["2026-10-14"], "build": [0], "tsum": ["beastda"], "skill": [5], "skillType": ["beastda"], "items": [7],
-           "scan": [3], "chain": [4], "bubble": ["all_mid_chain"], "medal": [0], "base": [{"231": [4, 726.5, 48020000, 3801, 5702, 0]}], "final": [{"…": […]}], "medals": [{}]}
+           "scan": [3], "chain": [4], "bubble": ["all_mid_chain"], "medal": [0], "jackpot": [0], "base": [{"231": [4, 726.5, 48020000, 3801, 5702, 0]}], "final": [{"…": […]}], "medals": [{}]}
 }
 ```
 
-Each array holds one value per row (`n` rows), in the `cells2` and `cell_bins2`
+Each array holds one value per row (`n` rows), in the `cells3` and `cell_bins3`
 tables' column meanings (§3.1). A bins row has the key of one cells row,
 which may be in another file of the same part. Rows are in no particular
 order, and a bins object may list its bins in any order. A file is built in one SQL statement (`json_object`
@@ -812,8 +837,8 @@ over `json_group_array` of one ordered subquery), so its arrays line up.
 
 **A part too long for one value.** D1 first adds up how long the part's file
 would be. A part over `VALUE_MAX_BYTES` (1,500,000) is published as several
-files for the same `[from, to)`, each holding a share of the part's `cells2`
-rows and, apart from those, a share of its `cell_bins2` rows, about half the limit
+files for the same `[from, to)`, each holding a share of the part's `cells3`
+rows and, apart from those, a share of its `cell_bins3` rows, about half the limit
 each. The files together hold the part's rows, each row once, and the page
 adds up every file the manifest lists (§6). Their `rounds` add up to the
 part's.
@@ -832,7 +857,7 @@ Values under 100 are exact; above, a bin is 2 % wide. The Worker computes
 bins at ingest (JavaScript `Math.log`; a restore the same in SQL), so the page
 only ever uses `low`/`mid`.
 
-**A bin's figures**, in a `cell_bins2` object: `[rounds, secs, score, base,
+**A bin's figures**, in a `cell_bins3` object: `[rounds, secs, score, base,
 final, medals]`, the count of the cell's rounds in the bin and the sums of
 their durations, scores, base coins, final coins and medals (null as 0).
 `secs` is a REAL; an upload's sums may write a whole one as an integer, which
@@ -950,7 +975,18 @@ reload the manifest once and retry.
 `id` is the Tsum; the other parameters as §6.2, `target` a number. The
 answer has `tsum.go: TsumDetail`'s fields, plus `global: {approx: true}`:
 
+- **Jackpots.** With final coins the primary stat (`coins=final`, net or
+  not), every figure leaves out the `jackpot = 1` cells, `field`'s other
+  Tsums' too, except: `summary.totals.maxCoins` (and its Tsum row's) and
+  `summary.mix` are over every cell, and `earn` is as below. `jackpots` is
+  `{rounds, coins}` of the cells left out (`coins` the primary stat's sum,
+  null when none has it); null in base coins and medals, which a jackpot
+  does not touch.
 - `summary`: `summary` with `tsum = id`.
+- `chains`: by chains per scan and max chain length together (the cells'
+  `scan` and `chain` as text, `''` not recorded, kept), as `{scan, chain,
+  key: "scan,chain", rounds, …}` like `settings`' rows, most rounds first,
+  then by scan and chain as text.
 - `settings`: the skill level (the cells' `skill`, `-1` left out) and the
   play settings (`maxChainsPerScan`, `maxChain`, `bubbleStrategy`, their
   values as text, not recorded left out), as `{setting, key, rounds,

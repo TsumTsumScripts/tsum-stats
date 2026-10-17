@@ -107,7 +107,7 @@ describe("unlink", () => {
     // The rebuild runs before the re-filing in the same run.
     await rollup(NOW, { ...env, UNLINK_CHUNK: "2" }, 1);
     expect(await one("SELECT count(*) AS n FROM contrib_cells")).toEqual({ n: 0 });
-    expect(await one("SELECT sum(rounds) AS n FROM cells2")).toEqual({ n: 6 });
+    expect(await one("SELECT sum(rounds) AS n FROM cells3")).toEqual({ n: 6 });
   });
 
   it("stores nothing of an upload whose key was checked just before the unlink", async () => {
@@ -209,7 +209,7 @@ describe("unlink", () => {
     await upload(b.key, series(3, { tag: "0b0000000001" }));
     await admin("ban", { id: a.id });
     await rollup();
-    expect(await one("SELECT sum(rounds) AS n FROM cells2")).toEqual({ n: 3 });
+    expect(await one("SELECT sum(rounds) AS n FROM cells3")).toEqual({ n: 3 });
     // Its day is archived as c<a>.json, then a leaves.
     await rollup(LATER, DROP);
     const day = "2026-10-14";
@@ -228,7 +228,7 @@ describe("unlink", () => {
     const restored = await json(admin("restore", { day }, LATER));
     expect(restored).toMatchObject({ done: true, rounds: 3 });
     await rollup(LATER, DROP);
-    expect(await one("SELECT sum(rounds) AS n FROM cells2")).toEqual({ n: 3 });
+    expect(await one("SELECT sum(rounds) AS n FROM cells3")).toEqual({ n: 3 });
     expect((await r2json<{ rounds: number }>("data/global/manifest.json"))!.rounds).toBe(3);
   });
 
@@ -251,7 +251,7 @@ describe("unlink", () => {
     await admin("restore", { day }, LATER);
     await rollup(LATER, DROP);
     // Only c's rounds are public, before and after.
-    expect(await one("SELECT sum(rounds) AS n FROM cells2")).toEqual({ n: 3 });
+    expect(await one("SELECT sum(rounds) AS n FROM cells3")).toEqual({ n: 3 });
   });
 
   it("archives an unlinking contributor's rounds unnamed", async () => {

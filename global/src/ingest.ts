@@ -11,7 +11,7 @@ import { hmacKey } from "./crypto";
 import { dayOf, keyDay } from "./days";
 import { limits, type Env } from "./env";
 import { HttpError, ok, readObject } from "./http";
-import { checkRecords, type Round } from "./records";
+import { checkRecords, isJackpot, type Round } from "./records";
 
 export const SCHEMA = "gap.round-stats/1";
 export const MAX_RECORDS = 250;
@@ -78,7 +78,8 @@ const UPSERT_ROUNDS = `INSERT INTO rounds (key, contributor, ${FIGURES.join(", "
 const RACED = "INSERT OR IGNORE INTO dirty_days (day) SELECT value FROM json_each(?1) WHERE changes() < ?2";
 
 // `bins` is the old per-skill bins column, no longer written (migrations/0002_cell_bins.sql).
-const PENDING = "INSERT INTO pending (contributor, n, days, tsums, cells, bins, cell_bins, cc) VALUES (?1, ?2, ?3, ?4, ?5, '[]', ?6, ?7)";
+// format 1: the cells and cell_bins rows are keyed by jackpot too (migrations/0004_jackpot.sql).
+const PENDING = "INSERT INTO pending (contributor, n, days, tsums, cells, bins, cell_bins, cc, format) VALUES (?1, ?2, ?3, ?4, ?5, '[]', ?6, ?7, 1)";
 
 const row = (r: Round) => [
   r.key, r.playedAt, r.build, r.tsum, r.skill, r.skillType, r.items, r.scan, r.chain, r.bubble, r.version, r.settingsHash,
@@ -105,7 +106,7 @@ export function aggregate(rounds: Round[]) {
     const medal = r.medals !== null && r.medals > 0 ? 1 : 0;
     if (r.known) {
       // The cell's key (rollup.ts: CELLS), then its figures from K on.
-      const key = [day, r.build, r.tsum, r.skill, r.skillType, r.items, r.scan, r.chain, r.bubble, medal];
+      const key = [day, r.build, r.tsum, r.skill, r.skillType, r.items, r.scan, r.chain, r.bubble, medal, isJackpot(r)];
       const K = key.length;
       const k = JSON.stringify(key);
       const m = r.medals, read = m !== null;

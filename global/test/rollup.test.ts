@@ -43,6 +43,8 @@ describe("recompute", () => {
     expect(reports.flatMap(r => r.recomputed).sort()).toEqual(["2026-10-11", "2026-10-12", "2026-10-13", "2026-10-14"]);
     const want = await checkAgainstReference(new Set([people[2].id]));
     expect(want.cells.length).toBeGreaterThan(100);
+    // Coin-bonus jackpots are cells of their own.
+    expect(want.cells.some(c => c.jackpot === 1)).toBe(true);
     // Banned rounds are in contrib_cells, not in the cells.
     expect(want.contrib.some(c => c.contributor === people[2].id)).toBe(true);
     const cellRounds = want.cells.reduce((n, c) => n + c.rounds, 0);
@@ -90,10 +92,29 @@ describe("recompute", () => {
     expect(res.body).toMatchObject({ accepted: 3, rejected: {} });
     await rollup();
     // A day's first and last are still its rounds' ends.
-    expect(await rows("SELECT day, sum(rounds) AS n, min(first) AS first, max(last) AS last FROM cells2 GROUP BY day ORDER BY day")).toEqual([
+    expect(await rows("SELECT day, sum(rounds) AS n, min(first) AS first, max(last) AS last FROM cells3 GROUP BY day ORDER BY day")).toEqual([
       { day: "2026-10-13", n: 2, first: midnight / 1000 + 30, last: midnight / 1000 + 3 * 3600 - 60 },
       { day: "2026-10-14", n: 1, first: midnight / 1000 + 2 * 3600, last: midnight / 1000 + 2 * 3600 },
     ]);
+    await checkAgainstReference(new Set());
+  });
+
+  it("keys coin-bonus jackpots apart, added in or recomputed", async () => {
+    const c = await joinNew();
+    const jackpot = (n: number, end: number) => series(n, { base: 3000, final: 63000, end, tag: "0c0000000001" });
+    await upload(c.key, [...series(4), ...jackpot(2, NOW - 2 * 3600_000)]);
+    await rollup();
+    const split = "SELECT jackpot, sum(rounds) AS n, sum(final_sum) AS f FROM cells3 GROUP BY jackpot ORDER BY jackpot";
+    expect(await rows(split)).toEqual([{ jackpot: 0, n: 4, f: 4 * 4500 }, { jackpot: 1, n: 2, f: 2 * 63000 }]);
+    expect(await rows("SELECT jackpot, count(*) AS n FROM cell_bins3 GROUP BY jackpot ORDER BY jackpot")).toEqual([{ jackpot: 0, n: 1 }, { jackpot: 1, n: 1 }]);
+    await checkAgainstReference(new Set());
+
+    // Sums an older Worker left (format 0: no jackpot key) are not added in: the day is made again from its rounds.
+    await upload(c.key, jackpot(1, NOW - 3 * 3600_000));
+    await env.DB.prepare("UPDATE pending SET format = 0").run();
+    const runs = await rollup();
+    expect(runs.map(r => [r.folded, r.recomputed])).toEqual([[1, []], [0, ["2026-10-14"]]]);
+    expect(await rows(split)).toEqual([{ jackpot: 0, n: 4, f: 4 * 4500 }, { jackpot: 1, n: 3, f: 3 * 63000 }]);
     await checkAgainstReference(new Set());
   });
 
@@ -107,13 +128,13 @@ describe("recompute", () => {
     // A banned contributor still gets the same answers.
     expect((await upload(b.key, series(2, { tag: "0b0000000001", end: NOW - 600_000 }))).body).toMatchObject({ ok: true, accepted: 2 });
     await rollup();
-    expect(await one("SELECT sum(rounds) AS n FROM cells2")).toEqual({ n: 5 });
+    expect(await one("SELECT sum(rounds) AS n FROM cells3")).toEqual({ n: 5 });
     expect(await one("SELECT sum(rounds) AS n FROM contrib_cells WHERE contributor = ?1", b.id)).toEqual({ n: 5 });
     expect((await manifest()).contributors).toBe(1);
     await checkAgainstReference(new Set([b.id]));
     await admin("unban", { id: b.id });
     await rollup();
-    expect(await one("SELECT sum(rounds) AS n FROM cells2")).toEqual({ n: 10 });
+    expect(await one("SELECT sum(rounds) AS n FROM cells3")).toEqual({ n: 10 });
     expect((await manifest()).contributors).toBe(2);
   });
 
@@ -140,8 +161,8 @@ describe("recompute", () => {
     await upload(c.key, moved);
     await upload(c.key, [{ ...moved[0], tsum: "donald" }]);
     await rollup();
-    expect(await rows("SELECT tsum, rounds FROM cells2 ORDER BY tsum")).toEqual([{ tsum: "donald", rounds: 1 }, { tsum: "mickey", rounds: 20 }]);
-    expect(await rows("SELECT DISTINCT tsum FROM cell_bins2 ORDER BY tsum")).toEqual([{ tsum: "donald" }, { tsum: "mickey" }]);
+    expect(await rows("SELECT tsum, rounds FROM cells3 ORDER BY tsum")).toEqual([{ tsum: "donald", rounds: 1 }, { tsum: "mickey", rounds: 20 }]);
+    expect(await rows("SELECT DISTINCT tsum FROM cell_bins3 ORDER BY tsum")).toEqual([{ tsum: "donald" }, { tsum: "mickey" }]);
   });
 
   it("leaves a day whose rounds have left D1 as it is", async () => {
@@ -175,11 +196,11 @@ describe("render", () => {
       expect(p.sha).toBe(sha);
       expect(p.file).toBe(`day-${p.from}.${sha}.json`);
       const part = JSON.parse(new TextDecoder().decode(bytes)) as PartFile;
-      expect(part).toMatchObject({ kind: "tsum-global-part", format: 4, from: p.from, to: p.to });
-      expect(Object.keys(part.cells)).toEqual(["n", "day", "build", "tsum", "skill", "skillType", "items", "scan", "chain", "bubble", "medal", "rounds", "secs",
+      expect(part).toMatchObject({ kind: "tsum-global-part", format: 5, from: p.from, to: p.to });
+      expect(Object.keys(part.cells)).toEqual(["n", "day", "build", "tsum", "skill", "skillType", "items", "scan", "chain", "bubble", "medal", "jackpot", "rounds", "secs",
         "scoreSum", "scoreMin", "scoreMax", "first", "last", "baseSum", "baseSq", "baseMin", "baseMax", "finalSum", "finalSq",
         "finalMin", "finalMax", "medalsN", "medalsSum", "medalsSq", "medalsMin", "medalsMax", "medalsSecs"]);
-      expect(Object.keys(part.bins)).toEqual(["n", "day", "build", "tsum", "skill", "skillType", "items", "scan", "chain", "bubble", "medal", "base", "final", "medals"]);
+      expect(Object.keys(part.bins)).toEqual(["n", "day", "build", "tsum", "skill", "skillType", "items", "scan", "chain", "bubble", "medal", "jackpot", "base", "final", "medals"]);
       const dayCells = cells.filter(c => c.day === p.from);
       sameRows(partRows(part.cells), dayCells, CELL_KEY);
       sameRows(partRows(part.bins), bins.filter(b => b.day === p.from), BIN_KEY);

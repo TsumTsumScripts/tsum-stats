@@ -114,6 +114,10 @@ func globalParityRounds(now time.Time) []parityRound {
 				base = int64(next(100))
 			}
 			final := base*13/10 + int64(next(50))
+			// Now and then a coin-bonus jackpot, a cell of its own on the global site.
+			if start.Unix()%61 == 0 {
+				final = base * 21
+			}
 			var medals *int64
 			switch {
 			case tsum == "mickeyplus":
@@ -412,6 +416,15 @@ func TestGlobalParity(t *testing.T) {
 	var final []Round
 	if err := union.DB().NewQuery("SELECT " + roundColumns + " FROM ts_rounds").All(&final); err != nil {
 		t.Fatal(err)
+	}
+	jackpots := 0
+	for _, r := range final {
+		if r.BaseCoins != nil && r.FinalCoins != nil && *r.FinalCoins > JackpotTimes**r.BaseCoins {
+			jackpots++
+		}
+	}
+	if jackpots == 0 {
+		t.Fatal("the rounds should have coin-bonus jackpots")
 	}
 	owner := map[string]int{}
 	for _, r := range rounds {

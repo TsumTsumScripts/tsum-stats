@@ -194,7 +194,7 @@ async function open(run: Run, lim: Limits): Promise<Job> {
         OR (key >= 'part:' AND key < 'part;') OR (key >= 'nocompact:' AND key < 'nocompact;')`),
     run.stmt("SELECT rows, reads FROM budget WHERE day = ?1", today),
     // Uploads to add in, and whether each one's rounds are public and named now.
-    run.stmt(`SELECT p.seq, p.contributor, p.n, p.days, c.status, (SELECT value FROM state WHERE key = 'gone:' || p.contributor) AS gone
+    run.stmt(`SELECT p.seq, p.contributor, p.n, p.days, p.format, c.status, (SELECT value FROM state WHERE key = 'gone:' || p.contributor) AS gone
       FROM pending p LEFT JOIN contributors c ON c.id = p.contributor ORDER BY p.seq LIMIT 5000`),
     // Once a day, the counters that only matter on their own day.
     ...(cleanup ? [

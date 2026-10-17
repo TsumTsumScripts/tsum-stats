@@ -612,7 +612,8 @@ everyone's rounds, and in the *Midnight Felt* theme until you pick another:
   tiles, consistency and rounds under a target (≈, from the bins), by skill
   level with its spread chart, per day, the histogram, by items and *Do the
   items pay?*, *By chain settings*, and *By script setting* for chains per scan, max chain length
-  and bubble strategy. Not there: recent form, boxes to the next skill, other settings,
+  and bubble strategy. Coin-bonus jackpots are left out in final coins as
+  here; days the site archived before it told jackpots apart keep theirs in. Not there: recent form, boxes to the next skill, other settings,
   versions, devices and best rounds. The Catalog links each
   played Tsum to it.
 - **Not there:** the Rounds table, Help, and anything about

@@ -124,6 +124,6 @@ describe("volume", () => {
     // Every row written is counted, by day, as D1 counts it.
     expect((await budgeted()) - before).toBe(ingestWritten + jobWritten);
     // And the day's figures are all in: every round sent is in a cell.
-    expect((await one<{ n: number }>("SELECT sum(rounds) AS n FROM cells2 WHERE day = ?1", DAY)).n).toBeGreaterThan(ROUNDS * 0.95);
+    expect((await one<{ n: number }>("SELECT sum(rounds) AS n FROM cells3 WHERE day = ?1", DAY)).n).toBeGreaterThan(ROUNDS * 0.95);
   });
 });

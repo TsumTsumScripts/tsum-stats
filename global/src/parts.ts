@@ -20,33 +20,34 @@ export const MANIFEST = DATA + "manifest.json";
 /** How long a replaced part stays: past the manifest's max-age, and a reload. */
 const TRASH_GRACE_MS = 15 * 60 * 1000;
 
-// The part's columns, in the cells2 and cell_bins2 tables' meanings, camelCased.
+// The part's columns, in the cells3 and cell_bins3 tables' meanings, camelCased.
 const camel = (c: string) => c.replace(/_([a-z])/g, (_, x: string) => x.toUpperCase());
 const CELL_COLUMNS = [
-  "day", "build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal", "rounds", "secs", "score_sum", "score_min", "score_max",
+  "day", "build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal", "jackpot", "rounds", "secs", "score_sum", "score_min", "score_max",
   "first", "last", "base_sum", "base_sq", "base_min", "base_max", "final_sum", "final_sq", "final_min", "final_max",
   "medals_n", "medals_sum", "medals_sq", "medals_min", "medals_max", "medals_secs",
 ];
-const BIN_COLUMNS = ["day", "build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal", "base", "final", "medals"];
-const BIN_KEY_COLUMNS = 10;
-/** The day tables' key, in order (migrations/0003_skill_type.sql). */
-const KEY_ORDER = "day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal";
+const BIN_COLUMNS = ["day", "build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal", "jackpot", "base", "final", "medals"];
+const BIN_KEY_COLUMNS = 11;
+/** The day tables' key, in order (migrations/0004_jackpot.sql). */
+const KEY_ORDER = "day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot";
 /** The play settings' columns, each counted per part and in the totals by value, not recorded left out. */
 const PLAY = [["scan", "scan >= 0"], ["chain", "chain >= 0"], ["bubble", "bubble != ''"]];
 const arrays = (cols: string[], json: string[] = []) =>
   cols.map(c => `'${camel(c)}', json_group_array(${json.includes(c) ? `json(${c})` : c})`).join(", ");
 
 /**
- * A part's body from the cells2 rows `cells` and the cell_bins2 rows `bins`
- * (subqueries). Format 4: format 2 (bins per cell, each bin with its rounds'
- * figures) with the cells keyed by skill type (format 3) and the play settings too.
+ * A part's body from the cells3 rows `cells` and the cell_bins3 rows `bins`
+ * (subqueries). Format 5: format 2 (bins per cell, each bin with its rounds'
+ * figures) with the cells keyed by skill type (format 3), the play settings
+ * (format 4) and whether they are coin-bonus jackpots too.
  */
-const body = (cells: string, bins: string) => `json_object('kind', 'tsum-global-part', 'format', 4, 'from', ?1, 'to', ?2,
+const body = (cells: string, bins: string) => `json_object('kind', 'tsum-global-part', 'format', 5, 'from', ?1, 'to', ?2,
     'cells', json((SELECT json_object('n', count(*), ${arrays(CELL_COLUMNS)}) FROM ${cells})),
     'bins', json((SELECT json_object('n', count(*), ${arrays(BIN_COLUMNS, ["base", "final", "medals"])}) FROM ${bins})))`;
 
-const CELLS_OF = `(SELECT * FROM cells2 WHERE day >= ?1 AND day < ?2 ORDER BY ${KEY_ORDER})`;
-const BINS_OF = `(SELECT * FROM cell_bins2 WHERE day >= ?1 AND day < ?2 ORDER BY ${KEY_ORDER})`;
+const CELLS_OF = `(SELECT * FROM cells3 WHERE day >= ?1 AND day < ?2 ORDER BY ${KEY_ORDER})`;
+const BINS_OF = `(SELECT * FROM cell_bins3 WHERE day >= ?1 AND day < ?2 ORDER BY ${KEY_ORDER})`;
 
 /**
  * One part, [?1, ?2): about how long its file is (each row's values written
@@ -56,10 +57,10 @@ const BINS_OF = `(SELECT * FROM cell_bins2 WHERE day >= ?1 AND day < ?2 ORDER BY
  * its file, only when that is at most ?3 bytes long.
  */
 export const RENDER = `WITH c AS (SELECT count(*) AS n, coalesce(sum(length(json_array(${CELL_COLUMNS.join(", ")}))), 0) AS est,
-      coalesce(sum(rounds), 0) AS rounds, min(first) AS first, max(last) AS last FROM cells2 WHERE day >= ?1 AND day < ?2),
+      coalesce(sum(rounds), 0) AS rounds, min(first) AS first, max(last) AS last FROM cells3 WHERE day >= ?1 AND day < ?2),
     b AS (SELECT count(*) AS n, coalesce(sum(length(json_array(${BIN_COLUMNS.slice(0, BIN_KEY_COLUMNS).join(", ")})) + length(base) + length(final) + length(medals)), 0) AS est
-      FROM cell_bins2 WHERE day >= ?1 AND day < ?2),
-    t AS MATERIALIZED (SELECT tsum, skill, skill_type, scan, chain, bubble, sum(rounds) AS n FROM cells2 WHERE day >= ?1 AND day < ?2
+      FROM cell_bins3 WHERE day >= ?1 AND day < ?2),
+    t AS MATERIALIZED (SELECT tsum, skill, skill_type, scan, chain, bubble, sum(rounds) AS n FROM cells3 WHERE day >= ?1 AND day < ?2
       GROUP BY tsum, skill, skill_type, scan, chain, bubble)
   SELECT est, cells, bins, rounds, summary, CASE WHEN est <= ?3 THEN ${body(CELLS_OF, BINS_OF)} END AS body FROM (
     SELECT 600 + c.est + b.est AS est, c.n AS cells, b.n AS bins, c.rounds AS rounds,
@@ -72,9 +73,9 @@ export const RENDER = `WITH c AS (SELECT count(*) AS n, coalesce(sum(length(json
 
 /** File ?3 of a part too long for one: the ?4 cells rows and ?5 bins rows from the ?3-th share on, and its rounds. */
 const RENDER_SHARE = `SELECT ${body(
-  `(SELECT * FROM (SELECT * FROM cells2 WHERE day >= ?1 AND day < ?2 ORDER BY ${KEY_ORDER} LIMIT ?4 OFFSET ?3 * ?4))`,
-  `(SELECT * FROM (SELECT * FROM cell_bins2 WHERE day >= ?1 AND day < ?2 ORDER BY ${KEY_ORDER} LIMIT ?5 OFFSET ?3 * ?5))`,
-)} AS body, (SELECT coalesce(sum(rounds), 0) FROM (SELECT rounds FROM cells2 WHERE day >= ?1 AND day < ?2
+  `(SELECT * FROM (SELECT * FROM cells3 WHERE day >= ?1 AND day < ?2 ORDER BY ${KEY_ORDER} LIMIT ?4 OFFSET ?3 * ?4))`,
+  `(SELECT * FROM (SELECT * FROM cell_bins3 WHERE day >= ?1 AND day < ?2 ORDER BY ${KEY_ORDER} LIMIT ?5 OFFSET ?3 * ?5))`,
+)} AS body, (SELECT coalesce(sum(rounds), 0) FROM (SELECT rounds FROM cells3 WHERE day >= ?1 AND day < ?2
     ORDER BY ${KEY_ORDER} LIMIT ?4 OFFSET ?3 * ?4)) AS rounds`;
 
 interface Rendered {

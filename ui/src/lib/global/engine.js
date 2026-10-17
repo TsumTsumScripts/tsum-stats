@@ -6,7 +6,8 @@
 // so every figure but the quartiles and P90 adds up exactly. From part format
 // 3 a cell is of one skill type too (format 2's are all skill type "", as
 // the rounds before it kept none), and from format 4 of one value of each
-// play setting (before it, all not recorded). Each cell has
+// play setting (before it, all not recorded), and from format 5 either all
+// coin-bonus jackpots or none (before it, all counted as none). Each cell has
 // bins (CONTRACT §5): its rounds counted by 2 % wide bins of their base coins,
 // final coins and medals, with each bin's figures. The quartiles, P90 and
 // histogram come from them, approximately, and so do the outlier ranges: a
@@ -69,10 +70,10 @@ function netCols(s, items) {
 /** A bins object {"<bin>": figures} as bins in bin order. */
 const binList = o => Object.entries(o).map(([b, f]) => [Number(b), ...f]).sort((x, y) => x[0] - y[0]);
 
-/** Key columns a part before format 3 (skillType) or 4 (the play settings) lacks, as its cells read: not recorded. */
-const LATER = {skillType: '', scan: -1, chain: -1, bubble: ''};
+/** Key columns a part before format 3 (skillType), 4 (the play settings) or 5 (jackpot) lacks, as its cells read: not recorded, no jackpot. */
+const LATER = {skillType: '', scan: -1, chain: -1, bubble: '', jackpot: 0};
 /** The key columns, in the tables' order: how a cell's bins find it. */
-const KEY = ['day', 'build', 'tsum', 'skill', 'skillType', 'items', 'scan', 'chain', 'bubble', 'medal'];
+const KEY = ['day', 'build', 'tsum', 'skill', 'skillType', 'items', 'scan', 'chain', 'bubble', 'medal', 'jackpot'];
 
 /**
  * A part's files as one: their cells and bins rows added together (a part too
@@ -155,7 +156,7 @@ const within = (v, lo, hi) => (lo === null || v >= lo) && (hi === null || v <= h
 // ---- Outlier ranges (CONTRACT §6.2) ----
 
 /** The columns a derived set of cells is built in, empty. */
-const RAW = ['day', 'at', 'build', 'tsum', 'skill', 'skillType', 'items', 'scan', 'chain', 'bubble', 'medal', 'rounds', 'secs', 'scoreSum', 'scoreMin', 'scoreMax', 'first', 'last',
+const RAW = ['day', 'at', 'build', 'tsum', 'skill', 'skillType', 'items', 'scan', 'chain', 'bubble', 'medal', 'jackpot', 'rounds', 'secs', 'scoreSum', 'scoreMin', 'scoreMax', 'first', 'last',
   'baseSum', 'baseSq', 'baseMin', 'baseMax', 'finalSum', 'finalSq', 'finalMin', 'finalMax',
   'medalsN', 'medalsSum', 'medalsSq', 'medalsMin', 'medalsMax', 'medalsSecs'];
 
@@ -246,8 +247,12 @@ export function createGlobalEngine(loader) {
     }
   }
 
-  /** Whether cell i is in the filter's days, build, Tsums, skill levels, skill types, play settings and item sets. */
+  /**
+   * Whether cell i is in the filter's days, build, Tsums, skill levels, skill types, play settings and item sets,
+   * and is not of coin-bonus jackpots when the filter leaves them out (the Tsum page's, tsum.go: DescribeTsum).
+   */
   function keeps(f, c, i, sets) {
+    if (f.noJackpots && c.jackpot[i]) return false;
     const at = c.at[i];
     if (f.fromDay !== null && at < f.fromDay) return false;
     if (f.to !== null && at >= f.to) return false;
@@ -481,8 +486,8 @@ export function createGlobalEngine(loader) {
    * approximate. Under an outlier range, only the range's own stat has them:
    * the bins of one figure cannot be cut by another's range.
    */
-  async function summary(q) {
-    const f = parseGlobalFilter(q);
+  async function summary(q, {noJackpots = false} = {}) {
+    const f = {...parseGlobalFilter(q), noJackpots};
     const k = statKey(f);
     const sel = await select(f);
     const fits = kind => !f.range || f.range.kind === kind;
@@ -546,10 +551,27 @@ export function createGlobalEngine(loader) {
   async function tsum(q) {
     const id = String(q.id ?? '').trim();
     if (!id) throw new Error('tsum: id is required');
-    const f = parseGlobalFilter({...q, tsum: id});
+    // In final coins the coin-bonus jackpots are left out, the rank's other Tsums' too (tsum.go: DescribeTsum).
+    const parsed = parseGlobalFilter({...q, tsum: id});
+    const noJackpots = parsed.finalCoins && !parsed.medals;
+    const f = {...parsed, noJackpots};
     const k = statKey(f);
-    const summed = await summary({...q, tsum: id});
+    const summed = await summary({...q, tsum: id}, {noJackpots});
     const sel = await select(f);
+
+    // The jackpots left out, and where they still count: the highest coins and the items (tsum.go: withJackpots).
+    let jackpots = null;
+    if (noJackpots) {
+      jackpots = {rounds: 0, coins: null};
+      each(await select({...f, noJackpots: false}), (c, i) => {
+        if (!c.jackpot[i]) return;
+        const s = c.stat[k];
+        jackpots.rounds += c.rounds[i];
+        if (s.n[i]) jackpots.coins = (jackpots.coins ?? 0) + s.sum[i];
+      });
+    }
+    // Put back last: the skill levels' buckets below go by the bounds of the cells kept.
+    const whole = jackpots?.rounds ? await summary({...q, tsum: id}) : null;
 
     const group = (a, key) => ({
       key, rounds: a.rounds, avgCoins: avg(a.sum, a.n), maxCoins: a.max, coinsPerSec: rate(a),
@@ -591,7 +613,7 @@ export function createGlobalEngine(loader) {
 
     // What boxes are paid with: final coins (net when asked) and medals, a round with none as 0.
     const earn = {coins: 0, coinSecs: 0, medals: 0, secs: 0};
-    const ef = {...f, tsums: [], medals: false, finalCoins: true};
+    const ef = {...f, tsums: [], medals: false, finalCoins: true, noJackpots: false};
     if (f.range?.kind === 'final' || f.range?.kind === 'base') ef.range = {...f.range, kind: 'final'};
     const ek = ef.net ? 'netFinal' : 'final';
     each(await select(ef), (c, i) => {
@@ -626,6 +648,12 @@ export function createGlobalEngine(loader) {
       }
     }
 
+    if (whole) {
+      summed.totals.maxCoins = whole.totals.maxCoins;
+      for (const t of summed.tsums) t.maxCoins = whole.totals.maxCoins;
+      summed.mix = whole.mix;
+    }
+
     const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
     return {
       summary: summed,
@@ -645,6 +673,7 @@ export function createGlobalEngine(loader) {
       skillBins: [...skillBins.values()].sort((x, y) => cmp(x.skill, y.skill) || x.from - y.from),
       earn: {coinsPerSec: earn.coinSecs ? earn.coins / earn.coinSecs : null, medalsPerSec: earn.secs ? earn.medals / earn.secs : null},
       target: spreads ? target : null,
+      jackpots,
       global: {approx: true},
     };
   }

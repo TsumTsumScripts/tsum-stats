@@ -1,7 +1,7 @@
 // An upload's records → rounds (CONTRACT §1): each record is a stats CSV row
 // keyed by its header, read as csv.go reads it, checked in §1.2's order, and
 // re-keyed so the device's hardware tag is never kept.
-import { PLAY_SETTINGS, parseTime, playValue } from "../../ui/src/lib/snapshot/engine.js";
+import { JACKPOT_TIMES, PLAY_SETTINGS, parseTime, playValue } from "../../ui/src/lib/snapshot/engine.js";
 import { TSUMS, isMedalTsum } from "./catalog";
 import { fromHex, hmacHex, sha256Hex } from "./crypto";
 import { DAY, bin, dayStart } from "./days";
@@ -17,6 +17,14 @@ const ITEM_BITS: [string, number][] = [
   ["bonusCoin", 1], ["bonus5to4", 2], ["bonusTime", 4], ["bonusExp", 8],
   ["bonusScore", 16], ["bonusBubble", 32], ["bonusCombo", 64],
 ];
+
+/**
+ * A coin-bonus jackpot (CONTRACT §3.1: jackpot): final coins over
+ * JACKPOT_TIMES times the base coins, as the engines and queries.go:
+ * jackpotSQL judge it. JACKPOT_SQL is the same over a rounds row.
+ */
+export const isJackpot = (r: { base: number; final: number }) => (r.final > JACKPOT_TIMES * r.base ? 1 : 0);
+export const JACKPOT_SQL = `(final > ${JACKPOT_TIMES} * base)`;
 
 /** Why a record was not kept, in the order the checks run. */
 export type Reason = "id" | "old" | "future" | "tsum" | "settings" | "field" | "build" | "incomplete" | "duration" | "range" | "repeat" | "pace";

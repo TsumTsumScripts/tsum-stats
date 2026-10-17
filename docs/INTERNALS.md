@@ -191,8 +191,8 @@ length, and the two sites' per-day figures differ where rounds cross midnight.
 
 **The rollup.** Each upload adds up its own new rounds as the day tables keep
 them, into one `pending` row. Every hour (cron `5 * * * *`) the job folds
-those into `cells2` (sums per day × build × Tsum × skill × skill type × items
-× chains per scan × max chain × bubble strategy × medals > 0), `cell_bins2` (each cell's histogram bins, 2 % wide) and the
+those into `cells3` (sums per day × build × Tsum × skill × skill type × items
+× chains per scan × max chain × bubble strategy × medals > 0 × coin-bonus jackpot), `cell_bins3` (each cell's histogram bins, 2 % wide) and the
 private `contrib_cells`, and
 recomputes a day in full from its key range only when something else changed
 it (a ban, a changed round, a merge, a rebuild, a restore). It renders the
@@ -223,7 +223,7 @@ into `global/site/` with `<meta name="tsum-global">`. `engine.js` follows the
 snapshot engine with cells in place of rounds, and reuses its `parseFilter`,
 `parseTime`, `sqlTime`, `itemCost`, `histBounds` and `bucketOf`. Counts, sums,
 averages, extremes, rates and the standard deviation add up exactly. Each cell
-carries its bins (`cell_bins2`, CONTRACT §5): its rounds by 2 % bins of base
+carries its bins (`cell_bins3`, CONTRACT §5): its rounds by 2 % bins of base
 coins, final coins and medals, each bin with its rounds' sums. The quartiles,
 P90 and histogram come from them, marked ≈, and so do the outlier ranges:
 `cutCell` keeps the bins whose average is in the range and makes the cell

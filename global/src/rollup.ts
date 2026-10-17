@@ -1,4 +1,4 @@
-// Step 1 of the hourly job: the day tables (cells2, cell_bins2, contrib_cells).
+// Step 1 of the hourly job: the day tables (cells3, cell_bins3, contrib_cells).
 //
 // New rounds are added in from `pending`, where each upload left the rounds
 // it inserted, already added up as these tables keep them (ingest.ts:
@@ -11,13 +11,14 @@
 // Both are SQL that writes only the rows that change, so the Worker never
 // carries the rows. Each is one D1 batch: a run cut short leaves nothing half done.
 import { knownList } from "./catalog";
+import { JACKPOT_SQL } from "./records";
 import { DAY_ROUNDS, dayRange } from "./days";
 import type { Job } from "./job";
 
 /** What recomputing one day in full costs: three upserts, three deletes, its spans, its `recent` and its mark in `skip`. */
 export const DAY_QUERIES = 9;
 /** What adding the pending rounds in costs (foldStep's batch). */
-export const FOLD_QUERIES = 8;
+export const FOLD_QUERIES = 9;
 /** Pending rounds one run adds in at most. */
 const FOLD_ROUNDS = 25_000;
 
@@ -30,7 +31,7 @@ const idList = (ids: Iterable<number>) => "," + [...ids].join(",") + ",";
 const CELLS: [string, string, string][] = [
   ["build", "build", ""], ["tsum", "tsum", ""], ["skill", "skill", ""], ["skill_type", "skill_type", ""], ["items", "items", ""],
   ["scan", "scan", ""], ["chain", "chain", ""], ["bubble", "bubble", ""],
-  ["medal", "coalesce(medals > 0, 0)", ""],
+  ["medal", "coalesce(medals > 0, 0)", ""], ["jackpot", JACKPOT_SQL, ""],
   ["rounds", "count(*)", "+"], ["secs", "sum(duration)", "+"],
   ["score_sum", "sum(score)", "+"], ["score_min", "min(score)", "min"], ["score_max", "max(score)", "max"],
   ["first", "min(played_at)", "min"], ["last", "max(played_at)", "max"],
@@ -42,7 +43,7 @@ const CELLS: [string, string, string][] = [
   ["medals_min", "min(medals)", "min"], ["medals_max", "max(medals)", "max"],
   ["medals_secs", "coalesce(sum(CASE WHEN medals IS NOT NULL THEN duration END), 0)", "+"],
 ];
-const CELLS_KEY = 9;
+const CELLS_KEY = 10;
 const cellNames = CELLS.map(([c]) => c);
 
 /** The rounds of day ?1-?2 (dayRange), as columns the aggregates read. */
@@ -52,8 +53,8 @@ const DAY_SOURCE = `(SELECT contributor, played_at, build, tsum, skill, skill_ty
 /** A pending sum its day's last full recompute already read (state skip: {day: seq}); `day` names its day. */
 const notSkipped = (day: string) => `p.seq > coalesce((SELECT value FROM state WHERE key = 'skip') ->> ('$."' || ${day} || '"'), 0)`;
 
-/** The cell_bins2 columns: the key (the cells2'), then a bins object per figure. */
-const BIN_KEY = ["build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal"];
+/** The cell_bins3 columns: the key (the cells3'), then a bins object per figure. */
+const BIN_KEY = ["build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal", "jackpot"];
 const BIN_KINDS = ["base", "final", "medals"];
 /** A bin's figures (CONTRACT §5), in order: rounds, secs, score, base, final, medals. */
 const FIGURES = 6;
@@ -64,12 +65,12 @@ const FIGURES = 6;
  */
 const mergeBins = (col: string) => `${col} = json_patch(${col}, (SELECT json_group_object(key, json(CASE WHEN o IS NULL THEN value
     ELSE json_array(${Array.from({ length: FIGURES }, (_, i) => `(o ->> ${i}) + (value ->> ${i})`).join(", ")}) END))
-  FROM (SELECT key, value, cell_bins2.${col} -> ('$."' || key || '"') AS o FROM json_each(excluded.${col}))))`;
+  FROM (SELECT key, value, cell_bins3.${col} -> ('$."' || key || '"') AS o FROM json_each(excluded.${col}))))`;
 
-/** The cell_bins2 rows of `source` where `where`, for day `day` (an expression): per cell, each bin's figures. */
+/** The cell_bins3 rows of `source` where `where`, for day `day` (an expression): per cell, each bin's figures. */
 const binsSelect = (day: string, source: string, where: string) => {
   const of = (k: number, v: string, also = "") =>
-    `SELECT build, tsum, skill, skill_type, items, scan, chain, bubble, coalesce(medals > 0, 0) AS medal, ${k} AS k, ${v} AS v, duration, score, base, final, medals
+    `SELECT build, tsum, skill, skill_type, items, scan, chain, bubble, coalesce(medals > 0, 0) AS medal, ${JACKPOT_SQL} AS jackpot, ${k} AS k, ${v} AS v, duration, score, base, final, medals
       FROM ${source} WHERE ${where}${also}`;
   const key = BIN_KEY.join(", ");
   return `SELECT ${day} AS day, ${key},
@@ -98,25 +99,28 @@ const CONTRIB_COLS = ["day", "contributor", "build", "tsum", "rounds", "secs", "
 // aggregate), up to seq ?1. ?2 is the hidden contributors (banned), ?3 those
 // whose rounds are no one's (contrib_cells). ----
 
-/** The pending rows of `col`, each as e (a JSON array), from the uploads ?1 takes, of contributors not in `ids`. */
-const pendingOf = (col: string, ids: string) => `pending p, json_each(p.${col}) e
-  WHERE p.seq <= ?1 AND instr(${ids}, ',' || p.contributor || ',') = 0 AND ${notSkipped("(e.value ->> 0)")}`;
+/**
+ * The pending rows of `col`, each as e (a JSON array), from the uploads ?1 takes, of contributors not in `ids`;
+ * with `layout`, only those whose sums are in this Worker's layout (format 1: the jackpot key).
+ */
+const pendingOf = (col: string, ids: string, layout = false) => `pending p, json_each(p.${col}) e
+  WHERE p.seq <= ?1 AND instr(${ids}, ',' || p.contributor || ',') = 0 AND ${notSkipped("(e.value ->> 0)")}${layout ? " AND p.format = 1" : ""}`;
 
-const FOLD_CELLS = `INSERT INTO cells2 (day, ${cellNames.join(", ")})
+const FOLD_CELLS = `INSERT INTO cells3 (day, ${cellNames.join(", ")})
   SELECT e.value ->> 0, ${CELLS.map(([, , how], i) => {
     const v = `e.value ->> ${i + 1}`;
     return i < CELLS_KEY ? v : how === "+" ? `sum(${v})` : `${how}(${v})`;
   }).join(", ")}
-  FROM ${pendingOf("cells", "?2")}
+  FROM ${pendingOf("cells", "?2", true)}
   GROUP BY ${cellNames.slice(0, CELLS_KEY + 1).map((_, i) => `e.value ->> ${i}`).join(", ")}
   ON CONFLICT (day, ${cellNames.slice(0, CELLS_KEY).join(", ")}) DO UPDATE SET ${CELLS.slice(CELLS_KEY).map(([c, , how]) =>
     how === "+" ? `${c} = ${c} + excluded.${c}` : `${c} = coalesce(${how}(${c}, excluded.${c}), ${c}, excluded.${c})`).join(", ")}`;
 
-// Each upload's cell_bins2 rows are merged straight into the day's, one after
+// Each upload's cell_bins3 rows are merged straight into the day's, one after
 // the other (an upsert takes its rows in turn), so no sort of their figures is needed.
-const FOLD_BINS = `INSERT INTO cell_bins2 (day, ${BIN_KEY.join(", ")}, ${BIN_KINDS.join(", ")})
+const FOLD_BINS = `INSERT INTO cell_bins3 (day, ${BIN_KEY.join(", ")}, ${BIN_KINDS.join(", ")})
   SELECT ${Array.from({ length: 1 + BIN_KEY.length }, (_, i) => `e.value ->> ${i}`).join(", ")}, ${BIN_KINDS.map((_, i) => `e.value -> ${1 + BIN_KEY.length + i}`).join(", ")}
-  FROM ${pendingOf("cell_bins", "?2")}
+  FROM ${pendingOf("cell_bins", "?2", true)}
   ON CONFLICT (day, ${BIN_KEY.join(", ")}) DO UPDATE SET ${BIN_KINDS.map(mergeBins).join(", ")}`;
 
 const deviceUnion = `SELECT value FROM json_each(contrib_cells.device_set) UNION SELECT value FROM json_each(excluded.device_set) ORDER BY 1`;
@@ -154,6 +158,13 @@ const FOLD_RENDER = `INSERT INTO state (key, value)
     UNION SELECT d.value FROM pending p, json_each(p.days) d WHERE p.seq <= ?1 ORDER BY 1) WHERE true
   ON CONFLICT (key) DO UPDATE SET value = excluded.value`;
 
+/**
+ * The days of the uploads ?1 takes whose sums are in an older layout (format
+ * 0: summed before migrations/0004_jackpot.sql): their cells and bins are
+ * not added in but made again from the day's rounds.
+ */
+const FOLD_OLD = `INSERT OR IGNORE INTO dirty_days (day) SELECT DISTINCT d.value FROM pending p, json_each(p.days) d WHERE p.seq <= ?1 AND p.format != 1`;
+
 /** A day's mark in `skip` is done with once the pending rounds it covers are gone. */
 const FOLD_SKIP = `UPDATE state SET value = (SELECT json_group_object(key, value) FROM json_each(state.value) WHERE value > ?1) WHERE key = 'skip'`;
 
@@ -163,6 +174,8 @@ export interface Pending {
   contributor: number;
   n: number;
   days: string;
+  /** 1: its sums have the jackpot key; 0: an older layout, whose days are recomputed instead (FOLD_OLD). */
+  format: number;
   status: string | null;
   gone: string | null;
 }
@@ -188,6 +201,8 @@ export async function foldStep(job: Job): Promise<void> {
     upto = p.seq;
     rounds += p.n;
     for (const d of JSON.parse(p.days) as string[]) days.add(d);
+    // FOLD_OLD marks its days dirty: the next run recomputes them.
+    if (p.format !== 1) job.more = true;
     const banned = p.status === "banned" || p.status === "unlinking-banned" || (p.status === null && p.gone === "banned");
     if (banned) hidden.add(p.contributor);
     if (p.status === null || p.status === "unlinking" || p.status === "unlinking-banned") anon.add(p.contributor);
@@ -209,6 +224,7 @@ export async function foldStep(job: Job): Promise<void> {
     run.stmt(FOLD_RECENT, ...params),
     run.stmt(FOLD_RENDER, ...params),
     run.stmt(FOLD_SKIP, ...params),
+    run.stmt(FOLD_OLD, ...params),
     run.stmt("DELETE FROM pending WHERE seq <= ?1", ...params),
   ]);
   if (res[4].meta.rows_written > 0) job.recentChanged = true;
@@ -223,12 +239,12 @@ export async function foldStep(job: Job): Promise<void> {
 const FULL_PUBLIC = "instr(?3, ',' || contributor || ',') = 0 AND instr(?4, ',' || tsum || ',') > 0";
 const FULL_NAMED = "contributor != 0 AND instr(?6, ',' || contributor || ',') = 0";
 
-const FULL_CELLS = `INSERT INTO cells2 (day, ${cellNames.join(", ")})
+const FULL_CELLS = `INSERT INTO cells3 (day, ${cellNames.join(", ")})
   SELECT ?5, ${CELLS.map(([c, e]) => `${e} AS ${c}`).join(", ")} FROM ${DAY_SOURCE} WHERE ${FULL_PUBLIC}
   GROUP BY ${cellNames.slice(0, CELLS_KEY).join(", ")}
   ON CONFLICT (day, ${cellNames.slice(0, CELLS_KEY).join(", ")}) DO UPDATE SET ${cellNames.slice(CELLS_KEY).map(c => `${c} = excluded.${c}`).join(", ")}
   WHERE (${cellNames.slice(CELLS_KEY).join(", ")}) IS NOT (${cellNames.slice(CELLS_KEY).map(c => `excluded.${c}`).join(", ")})`;
-const FULL_CELLS_GONE = `DELETE FROM cells2 WHERE day = ?5 AND (${cellNames.slice(0, CELLS_KEY).join(", ")}) NOT IN (
+const FULL_CELLS_GONE = `DELETE FROM cells3 WHERE day = ?5 AND (${cellNames.slice(0, CELLS_KEY).join(", ")}) NOT IN (
   SELECT ${CELLS.slice(0, CELLS_KEY).map(([, e]) => e).join(", ")} FROM ${DAY_SOURCE} WHERE ${FULL_PUBLIC})`;
 
 /**
@@ -238,12 +254,12 @@ const FULL_CELLS_GONE = `DELETE FROM cells2 WHERE day = ?5 AND (${cellNames.slic
  */
 const inOrder = (col: string) => `(SELECT json_group_object(key, json_array(value ->> 0, (value ->> 1) + 0.0, ${
   Array.from({ length: FIGURES - 2 }, (_, i) => `value ->> ${i + 2}`).join(", ")}))
-  FROM (SELECT key, value FROM json_each(cell_bins2.${col}) ORDER BY CAST(key AS INTEGER)))`;
-const FULL_BINS = `INSERT INTO cell_bins2 (day, ${BIN_KEY.join(", ")}, ${BIN_KINDS.join(", ")})
+  FROM (SELECT key, value FROM json_each(cell_bins3.${col}) ORDER BY CAST(key AS INTEGER)))`;
+const FULL_BINS = `INSERT INTO cell_bins3 (day, ${BIN_KEY.join(", ")}, ${BIN_KINDS.join(", ")})
   ${binsSelect("?5", DAY_SOURCE, FULL_PUBLIC)}
   ON CONFLICT (day, ${BIN_KEY.join(", ")}) DO UPDATE SET ${BIN_KINDS.map(c => `${c} = excluded.${c}`).join(", ")}
   WHERE (${BIN_KINDS.map(inOrder).join(", ")}) IS NOT (${BIN_KINDS.map(c => `excluded.${c}`).join(", ")})`;
-const FULL_BINS_GONE = `DELETE FROM cell_bins2 WHERE day = ?5 AND (${BIN_KEY.join(", ")}) NOT IN (
+const FULL_BINS_GONE = `DELETE FROM cell_bins3 WHERE day = ?5 AND (${BIN_KEY.join(", ")}) NOT IN (
   SELECT ${CELLS.slice(0, CELLS_KEY).map(([, e]) => e).join(", ")} FROM ${DAY_SOURCE} WHERE ${FULL_PUBLIC})`;
 
 const FULL_CONTRIB = `INSERT INTO contrib_cells (${CONTRIB_COLS.join(", ")})

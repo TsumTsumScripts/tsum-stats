@@ -54,6 +54,7 @@ cite it by section (`CONTRACT §3.2`).
 | `migrations/0001_init.sql` | The D1 schema (§3.1) |
 | `migrations/0002_cell_bins.sql` | Bins per cell with their figures (`cell_bins`), and every day marked to be recomputed into them |
 | `migrations/0003_skill_type.sql` | Each round's skill type kept, and `cells2` / `cell_bins2` keyed by it, copied from `cells` / `cell_bins` |
+| `migrations/0004_jackpot.sql` | `cells3` / `cell_bins3` keyed by coin-bonus jackpots too, copied from `cells2` / `cell_bins2`; `pending.format`, so sums of the old layout are recomputed, not folded |
 | `wrangler.jsonc` | Bindings, the route, the cron, the local dev address, the tunables |
 | `deploy.sh` | The deploy from a terminal, with its account checks, for when the GAP Devkit (its Tsum Tsum global stats card is the deploy) is not available |
 | `test/` | vitest in workerd (below) |
@@ -85,6 +86,13 @@ first sends nothing again until the Worker says so. The re-sends change their
 rounds, so their days are recomputed over the next runs: expect a day of
 heavier hourly runs as each player's app comes round. Days already archived
 keep skill type `''` (*Not recorded*).
+
+**After the deploy that adds `0004_jackpot.sql`**, every day is dirty: the
+hourly runs recompute them into `cells3`, jackpots apart, eight a run, and
+publish each in part format 5. Deploy away from the :05 run, so the old
+Worker's run does not fold into `cells2` between the migration and the
+deploy. Days already archived keep their jackpots in (as no jackpot) until a
+`restore` and a `rebuild` bring their rounds back.
 
 **After the deploy that adds `0002_cell_bins.sql`**, every day is dirty: the
 hourly runs recompute them into `cell_bins`, eight a run, and publish each

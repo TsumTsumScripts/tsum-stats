@@ -55,6 +55,9 @@ function makeRound() {
   };
 }
 const ROUNDS = Array.from({length: 6000}, makeRound).sort((a, b) => a.playedAt - b.playedAt);
+// Now and then a coin-bonus jackpot (21× the base coins): a cell of its own.
+for (let i = 0; i < ROUNDS.length; i += 157) ROUNDS[i].final = ROUNDS[i].base * 21;
+const isJackpot = r => (r.final > 10 * r.base ? 1 : 0);
 
 // ---- The part files, as the hourly job writes them (CONTRACT §3.1, §4.2, §5) ----
 
@@ -69,9 +72,10 @@ function partOf(from, to, rounds) {
   for (const r of rounds) {
     const day = dayOf(r.playedAt);
     const medal = r.medals !== null && r.medals > 0 ? 1 : 0;
-    const ck = [day, r.build, r.tsum, r.skill, r.items, medal].join('|');
+    const jackpot = isJackpot(r);
+    const ck = [day, r.build, r.tsum, r.skill, r.items, medal, jackpot].join('|');
     if (!cells.has(ck)) {
-      cells.set(ck, {day, build: r.build, tsum: r.tsum, skill: r.skill, items: r.items, medal, rounds: 0, secs: 0,
+      cells.set(ck, {day, build: r.build, tsum: r.tsum, skill: r.skill, items: r.items, medal, jackpot, rounds: 0, secs: 0,
         scoreSum: 0, scoreMin: null, scoreMax: null, first: null, last: null,
         baseSum: 0, baseSq: 0, baseMin: null, baseMax: null, finalSum: 0, finalSq: 0, finalMin: null, finalMax: null,
         medalsN: 0, medalsSum: 0, medalsSq: 0, medalsMin: null, medalsMax: null, medalsSecs: 0});
@@ -87,7 +91,7 @@ function partOf(from, to, rounds) {
       c.medalsN++; c.medalsSum += r.medals; c.medalsSq += r.medals * r.medals; c.medalsSecs += r.duration;
       c.medalsMin = lo(c.medalsMin, r.medals); c.medalsMax = hi(c.medalsMax, r.medals);
     }
-    if (!bins.has(ck)) bins.set(ck, {day, build: r.build, tsum: r.tsum, skill: r.skill, items: r.items, medal, base: {}, final: {}, medals: {}});
+    if (!bins.has(ck)) bins.set(ck, {day, build: r.build, tsum: r.tsum, skill: r.skill, items: r.items, medal, jackpot, base: {}, final: {}, medals: {}});
     const b = bins.get(ck);
     const into = (o, v) => {
       const f = (o[bin(v)] ??= [0, 0, 0, 0, 0, 0]);
@@ -103,7 +107,7 @@ function partOf(from, to, rounds) {
   return {
     kind: 'tsum-global-part', format: 2, from, to,
     cells: columns(cellRows, Object.keys(cellRows[0])),
-    bins: columns([...bins.values()], ['day', 'build', 'tsum', 'skill', 'items', 'medal', 'base', 'final', 'medals']),
+    bins: columns([...bins.values()], ['day', 'build', 'tsum', 'skill', 'items', 'medal', 'jackpot', 'base', 'final', 'medals']),
   };
 }
 
@@ -212,8 +216,8 @@ function keepRound(r, q) {
   return true;
 }
 
-/** A round's cell (CONTRACT §3.1): its start day, build, Tsum, skill level, items and whether it earned medals. */
-const cellKey = r => [dayOf(r.playedAt), r.build, r.tsum, r.skill, r.items, r.medals > 0 ? 1 : 0].join('|');
+/** A round's cell (CONTRACT §3.1): its start day, build, Tsum, skill level, items, whether it earned medals and whether it is a jackpot. */
+const cellKey = r => [dayOf(r.playedAt), r.build, r.tsum, r.skill, r.items, r.medals > 0 ? 1 : 0, isJackpot(r)].join('|');
 
 /**
  * The rounds an outlier range keeps (CONTRACT §6.2): those of each cell's bins
@@ -665,8 +669,12 @@ test('the Tsum page: its figures, its rank, by skill level', async () => {
   const engine = createGlobalEngine(loaderOf(files));
   const q = {id: 'mickey', coins: 'final', from: '2026-09-01T00:00:00Z', target: '3000'};
   const d = await engine.call('tsum', q);
-  assert.deepEqual(d.summary, await engine.call('summary', {...q, tsum: 'mickey'}));
-  const rs = ROUNDS.filter(r => r.tsum === 'mickey' && keepRound(r, {from: q.from}));
+  // The summary is Stats' but for the jackpots, which only its highest coins and items keep.
+  const plain = await engine.call('summary', {...q, tsum: 'mickey'});
+  assert.deepEqual([d.summary.totals.maxCoins, d.summary.mix], [plain.totals.maxCoins, plain.mix]);
+  assert.equal(plain.totals.rounds - d.summary.totals.rounds, d.jackpots.rounds);
+  // Final coins: the coin-bonus jackpots are left out of every figure but the box times' earn.
+  const rs = ROUNDS.filter(r => r.tsum === 'mickey' && keepRound(r, {from: q.from}) && !isJackpot(r));
   // By skill level: exact, the unknown level left out.
   const levels = [...new Set(rs.map(r => r.skill))].filter(s => s >= 0).sort();
   assert.deepEqual(d.settings.map(s => [s.setting, s.key, s.rounds]),
@@ -679,7 +687,7 @@ test('the Tsum page: its figures, its rank, by skill level', async () => {
   // Every Tsum's rate in the same filter.
   const field = new Map(d.field.map(t => [t.tsum, t]));
   for (const t of Object.keys(TSUMS)) {
-    const ts = ROUNDS.filter(r => r.tsum === t && keepRound(r, {from: q.from}));
+    const ts = ROUNDS.filter(r => r.tsum === t && keepRound(r, {from: q.from}) && !isJackpot(r));
     assert.equal(field.get(t).rounds, ts.length, t);
     assert.ok(Math.abs(field.get(t).coinsPerSec - ts.reduce((n, r) => n + r.final, 0) / ts.reduce((n, r) => n + r.duration, 0)) < 1e-9, t);
   }
@@ -691,4 +699,27 @@ test('the Tsum page: its figures, its rank, by skill level', async () => {
   const all = ROUNDS.filter(r => keepRound(r, {from: q.from}));
   assert.ok(Math.abs(d.earn.medalsPerSec - all.reduce((n, r) => n + (r.medals ?? 0), 0) / all.reduce((n, r) => n + r.duration, 0)) < 1e-9);
   await assert.rejects(engine.call('tsum', {}), /id is required/);
+});
+
+test('the Tsum page leaves coin-bonus jackpots out of final coins', async () => {
+  const engine = createGlobalEngine(loaderOf(files));
+  for (const q of [{id: 'mickey', coins: 'final'}, {id: 'minnie', coins: 'final', net: '1', from: '2026-09-01T00:00:00Z'}]) {
+    const d = await engine.call('tsum', q);
+    const rs = ROUNDS.filter(r => r.tsum === q.id && keepRound(r, q));
+    const jp = rs.filter(isJackpot), rest = rs.filter(r => !isJackpot(r));
+    assert.ok(jp.length > 0, 'the rounds have jackpots');
+    // The figures are the rest's, as the snapshot engine's Tsum page has them over the same rounds.
+    const want = await snapshotOf(rs).call('tsum', {id: q.id, coins: 'final', net: q.net ?? ''});
+    assert.deepEqual(d.jackpots, want.jackpots);
+    assert.equal(d.jackpots.rounds, jp.length);
+    assert.equal(d.summary.totals.rounds, rest.length);
+    assert.ok(Math.abs(d.summary.totals.coinsPerSec - want.summary.totals.coinsPerSec) < 1e-9);
+    // The highest round and the items still count them.
+    assert.equal(d.summary.totals.maxCoins, want.summary.totals.maxCoins);
+    assert.equal(d.summary.mix.reduce((n, m) => n + m.rounds, 0), rs.length);
+    // Base coins leave nothing out.
+    const base = await engine.call('tsum', {...q, coins: ''});
+    assert.equal(base.jackpots, null);
+    assert.equal(base.summary.totals.rounds, rs.length);
+  }
 });
