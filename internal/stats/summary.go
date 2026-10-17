@@ -256,11 +256,7 @@ func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
 			return db.NewQuery(`SELECT ` + day + ` AS day, tsum, COUNT(*) AS rounds, SUM(` + c + `) AS coins,
 				AVG(` + c + `) AS avg_coins, ` + rateExpr(c) + ` AS coins_per_sec FROM ts_rounds` + where + ` GROUP BY day, tsum ORDER BY day`).Bind(p).All(&s.DailyTsums)
 		},
-		func() error {
-			return db.NewQuery(`SELECT build, tsum, ` + itemsSQL + ` AS items, COUNT(*) AS rounds, SUM(` + c + `) AS coins,
-				COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs
-				FROM ts_rounds` + where + ` GROUP BY build, tsum, items ORDER BY rounds DESC`).Bind(p).All(&s.Mix)
-		},
+		func() (err error) { s.Mix, err = mixStats(db, f); return err },
 		func() error {
 			return db.NewQuery(`SELECT build, tsum, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` + playSettingSQL(PlaySettings[1]) + ` AS chain,
 				COUNT(*) AS rounds, SUM(` + c + `) AS coins, COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs
@@ -278,6 +274,17 @@ func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
 	var err error
 	s.Histogram, err = coinHistogram(db, f, s.Totals)
 	return s, err
+}
+
+// mixStats is the summary's Mix: the primary stat per build × Tsum × item set.
+func mixStats(db dbx.Builder, f Filter) ([]MixStat, error) {
+	c := f.col()
+	where, p := f.where()
+	mix := []MixStat{}
+	err := db.NewQuery(`SELECT build, tsum, ` + itemsSQL + ` AS items, COUNT(*) AS rounds, SUM(` + c + `) AS coins,
+		COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs
+		FROM ts_rounds` + where + ` GROUP BY build, tsum, items ORDER BY rounds DESC`).Bind(p).All(&mix)
+	return mix, err
 }
 
 // statSet is the totals and per-Tsum figures, with their spreads, of f.col().

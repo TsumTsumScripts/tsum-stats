@@ -112,6 +112,11 @@ export function playValue(settings, ps) {
   return typeof v === 'string' && PLAY_ID.test(v) ? v : '';
 }
 
+/** JACKPOT_TIMES (queries.go: JackpotTimes): final coins past this many times the base coins are a coin-bonus jackpot. */
+export const JACKPOT_TIMES = 10;
+/** Whether round i of month sh is a jackpot (queries.go: jackpotSQL); one without both figures is not. */
+const isJackpot = (sh, i) => sh.finalCoins[i] !== null && sh.baseCoins[i] !== null && sh.finalCoins[i] > JACKPOT_TIMES * sh.baseCoins[i];
+
 /** The query parameters as the server reads them. */
 
 export function parseFilter(q) {
@@ -230,6 +235,7 @@ export function createEngine(loader) {
         if (medalRange && medalTsum[sh.tsum[i]] && !within(sh.medals[i], f.minMedals, f.maxMedals)) continue;
         // Medal figures (queries.go: medalRoundsSQL): a medal Tsum's rounds with medals read, 0s included.
         if ((f.medals || onlyMedals) && !(sh.medals[i] !== null && medalTsum[sh.tsum[i]])) continue;
+        if (f.noJackpots && isJackpot(sh, i)) continue;
         idx.push(i);
       }
       if (idx.length) out.push({sh, idx});
@@ -381,8 +387,8 @@ export function createEngine(loader) {
   // ---- The routes ----
 
   /** /api/stats/summary (summary.go: Summarize). tz is the viewer's minutes east of UTC. */
-  async function summary(q) {
-    const f = parseFilter(q);
+  async function summary(q, {noJackpots = false} = {}) {
+    const f = {...parseFilter(q), noJackpots};
     const shift = (Number(q.tz) || 0) * 60;
     const c = f.medals ? 'medals' : coinCol(f);
     const sel = await select(f);
@@ -441,7 +447,10 @@ export function createEngine(loader) {
   async function tsum(q) {
     const id = String(q.id ?? '').trim();
     if (!id) throw new Error('tsum: id is required');
-    const f = parseFilter({...q, tsum: id});
+    // In final coins the coin-bonus jackpots are left out (tsum.go: DescribeTsum), the rank's other Tsums' too.
+    const parsed = parseFilter({...q, tsum: id});
+    const noJackpots = parsed.finalCoins && !parsed.medals;
+    const f = {...parsed, noJackpots};
     const c = coinCol(f);
     const settings = new Map(), chains = new Map(), skillTypes = new Map(), versions = new Map(), devices = new Map(), field = new Map(), form = new Map();
     const into = (map, key, sh, i, extra) => {
@@ -475,7 +484,7 @@ export function createEngine(loader) {
     });
 
     // What boxes are paid with: final coins (net when asked) and medals, a missing medal figure as 0.
-    const ef = {...f, tsums: [], medals: false, finalCoins: true};
+    const ef = {...f, tsums: [], medals: false, finalCoins: true, noJackpots: false};
     const ec = rangeCol(ef);
     const earn = {coins: 0, coinSecs: 0, medals: 0, medalSecs: 0};
     each(await select(ef), (sh, i) => {
@@ -486,7 +495,7 @@ export function createEngine(loader) {
       earn.medalSecs += d;
     });
 
-    const summed = await summary({...q, tsum: id});
+    const summed = await summary({...q, tsum: id}, {noJackpots});
 
     // Rounds under the target, of those with the primary stat.
     const goal = intCell(q.target);
@@ -518,6 +527,23 @@ export function createEngine(loader) {
       });
     }
 
+    // The jackpots left out, and where they still count: the highest coins and the items (tsum.go: withJackpots).
+    let jackpots = null;
+    if (noJackpots) {
+      jackpots = {rounds: 0, coins: null};
+      each(await select({...f, noJackpots: false}), (sh, i) => {
+        if (!isJackpot(sh, i)) return;
+        jackpots.rounds++;
+        if (sh[c][i] !== null) jackpots.coins = (jackpots.coins ?? 0) + sh[c][i];
+      });
+      if (jackpots.rounds) {
+        const whole = await summary({...q, tsum: id});
+        summed.totals.maxCoins = whole.totals.maxCoins;
+        for (const t of summed.tsums) t.maxCoins = whole.totals.maxCoins;
+        summed.mix = whole.mix;
+      }
+    }
+
     const group = ({a, key}) => ({
       key, rounds: a.rounds, avgCoins: avg(a.sum, a.n), maxCoins: a.max, coinsPerSec: rate(a),
       avgScore: avg(a.scoreSum, a.scoreN), first: sqlTime(a.first), last: sqlTime(a.last),
@@ -539,6 +565,7 @@ export function createEngine(loader) {
       skillBins: [...skillBins.values()].sort((x, y) => cmp(x.skill, y.skill) || x.from - y.from),
       earn: {coinsPerSec: earn.coinSecs ? earn.coins / earn.coinSecs : null, medalsPerSec: earn.medalSecs ? earn.medals / earn.medalSecs : null},
       target,
+      jackpots,
     };
   }
 

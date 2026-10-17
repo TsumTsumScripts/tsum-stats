@@ -26,6 +26,17 @@ type TsumDetail struct {
 	Earn      Earn       `json:"earn"`
 	// Target counts the rounds under the page's target; nil without one.
 	Target *TargetStat `json:"target"`
+	// Jackpots are the coin-bonus jackpots (JackpotTimes) the figures leave
+	// out, in final coins; nil in base coins and medals, which they do not
+	// touch. The summary's highest coins and its items (mix) still count
+	// them, since they are what the +Coin item pays, and so does Earn.
+	Jackpots *JackpotStat `json:"jackpots"`
+}
+
+// JackpotStat is the jackpot rounds left out: how many, and their coins.
+type JackpotStat struct {
+	Rounds int64  `db:"rounds" json:"rounds"`
+	Coins  *int64 `db:"coins" json:"coins"`
 }
 
 // FormRounds is how many rounds make up recent form.
@@ -110,7 +121,10 @@ const skillSQL = "json_each(" + settingsSQL + ") AS j"
 const skillWhere = "j.key = 'skillLevel' AND j.type NOT IN ('object', 'array')"
 
 // DescribeTsum is the Tsum page for tsum, within the rest of f (f.Tsums is
-// ignored). target, when set, counts the rounds under it.
+// ignored). target, when set, counts the rounds under it. In final coins it
+// leaves out the coin-bonus jackpots (TsumDetail.Jackpots), the rank's other
+// Tsums' too: luck that has nothing to do with the Tsum, which one round in
+// a few hundred would otherwise swing.
 func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *int64) (TsumDetail, error) {
 	d := TsumDetail{Settings: []SettingStat{}, Chains: []ChainGroup{}, SkillTypes: []GroupStat{}, Versions: []GroupStat{}, Devices: []GroupStat{}, Field: []FieldStat{},
 		Form: []GroupStat{}, SkillBins: []SkillBin{}}
@@ -120,6 +134,10 @@ func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *
 	earn := all
 	earn.Medals, earn.FinalCoins = false, true
 	f.Tsums = []string{tsum}
+	// Every round of the Tsum, jackpots and all: the highest and the items.
+	whole := f
+	jackpots := f.FinalCoins && !f.Medals
+	f.noJackpots, all.noJackpots = jackpots, jackpots
 	c := f.col()
 	where, p := f.where()
 	pairs, pp := f.whereAnd("j.type NOT IN ('object', 'array')")
@@ -169,6 +187,14 @@ func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *
 				FROM ts_rounds` + where).Bind(q).One(d.Target)
 		},
 		func() error {
+			if !jackpots {
+				return nil
+			}
+			w, jp := whole.whereAnd(jackpotSQL)
+			d.Jackpots = &JackpotStat{}
+			return db.NewQuery(`SELECT COUNT(*) AS rounds, SUM(` + c + `) AS coins FROM ts_rounds` + w).Bind(jp).One(d.Jackpots)
+		},
+		func() error {
 			w, ap := all.where()
 			return db.NewQuery(`SELECT tsum, COUNT(*) AS rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs, ` +
 				rateExpr(c) + ` AS coins_per_sec FROM ts_rounds` + w + ` GROUP BY tsum ORDER BY tsum`).Bind(ap).All(&d.Field)
@@ -178,16 +204,38 @@ func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *
 		return d, err
 	}
 	// The skill levels' buckets match the summary's histogram, so it runs after.
-	width, limit, ok := histBounds(d.Summary.Totals)
-	if !ok {
-		return d, nil
+	if width, limit, ok := histBounds(d.Summary.Totals); ok {
+		sw, sp := f.whereAnd(skillWhere, c+" IS NOT NULL")
+		sp["w"], sp["cap"] = width, limit
+		err = db.NewQuery(`SELECT k, ` + bucketSQL + ` AS bucket, COUNT(*) AS rounds
+			FROM (SELECT ` + settingValueSQL + ` AS k, ` + c + ` AS v FROM ts_rounds, ` + skillSQL + sw + `)
+			GROUP BY k, bucket ORDER BY k, bucket`).Bind(sp).All(&d.SkillBins)
 	}
-	sw, sp := f.whereAnd(skillWhere, c+" IS NOT NULL")
-	sp["w"], sp["cap"] = width, limit
-	err = db.NewQuery(`SELECT k, ` + bucketSQL + ` AS bucket, COUNT(*) AS rounds
-		FROM (SELECT ` + settingValueSQL + ` AS k, ` + c + ` AS v FROM ts_rounds, ` + skillSQL + sw + `)
-		GROUP BY k, bucket ORDER BY k, bucket`).Bind(sp).All(&d.SkillBins)
-	return d, err
+	if err != nil || d.Jackpots == nil || d.Jackpots.Rounds == 0 {
+		return d, err
+	}
+	// Last, as the histogram's bounds above are those of the rounds kept.
+	return d, withJackpots(db, &d.Summary, whole)
+}
+
+// withJackpots puts the jackpots left out of s back where they still count:
+// the highest coins, and the items (what the +Coin item pays). whole is the
+// filter with them.
+func withJackpots(db dbx.Builder, s *Summary, whole Filter) error {
+	var hi struct {
+		Max *int64 `db:"max_coins"`
+	}
+	w, p := whole.where()
+	if err := db.NewQuery(`SELECT MAX(` + whole.col() + `) AS max_coins FROM ts_rounds` + w).Bind(p).One(&hi); err != nil {
+		return err
+	}
+	s.Totals.MaxCoins = hi.Max
+	for i := range s.Tsums {
+		s.Tsums[i].MaxCoins = hi.Max
+	}
+	var err error
+	s.Mix, err = mixStats(db, whole)
+	return err
 }
 
 // withParam is a copy of p with k set, since the queries share p while they run.

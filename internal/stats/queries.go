@@ -45,7 +45,19 @@ type Filter struct {
 	// the summary's medal figures, never read from the request.
 	stat       string
 	onlyMedals bool
+	// noJackpots leaves out the coin-bonus jackpots (jackpotSQL): the Tsum
+	// page's, in final coins, never read from the request.
+	noJackpots bool
 }
+
+// JackpotTimes is how many times its base coins a round's final coins must
+// pass to be a coin-bonus jackpot. The +Coin item's bonus is one of a few
+// multipliers (1.1, 1.3, 1.5, 2, 2.5, 3, 4, 5, 6, 11, 21, 51); the 11× and over
+// come about once in 400 rounds and can move a Tsum's figures by a tenth.
+const JackpotTimes = 10
+
+// jackpotSQL is true for a coin-bonus jackpot round; a round without both figures is not one.
+var jackpotSQL = fmt.Sprintf("COALESCE(final_coins > %d * base_coins, 0)", JackpotTimes)
 
 // col is the column the summary aggregates.
 func (f Filter) col() string {
@@ -283,6 +295,9 @@ func (f Filter) where() (string, dbx.Params) {
 	}
 	if f.Medals || f.onlyMedals {
 		parts = append(parts, medalRoundsSQL)
+	}
+	if f.noJackpots {
+		parts = append(parts, "NOT "+jackpotSQL)
 	}
 	if len(parts) == 0 {
 		return "", p

@@ -16,6 +16,7 @@
   import Seg from '../components/Seg.svelte';
   import {drawDaily, drawHistogram, drawItems, drawSkillSpread} from '../lib/charts.js';
   import {toMax} from '../lib/boxes.js';
+  import {JACKPOT_TIMES} from '../lib/snapshot/engine.js';
   import {cardContext} from '../lib/card.js';
   import CopyButton from '../components/CopyButton.svelte';
   import {shared} from '../lib/ui.svelte.js';
@@ -416,6 +417,12 @@
       <div class="tsum-overview" bind:this={overview}>
         <Kpis t={s.totals} m={s.medals.totals} coins={filter.coins} {basis} noMedals approx={globalSite} copyFrom={() => overview} />
         <Insights {detail} own={owned?.own} {entry} {unit} {basis} {target} {setTarget} {whose} approx={globalSite} />
+        {#if detail.jackpots?.rounds}
+          <p class="jackpot-note sub" title="The +Coin item's rare 11×, 21× and 51× coin bonuses are luck, not the Tsum, and one of them can move a few hundred rounds' figures by a tenth">
+            {fmt(detail.jackpots.rounds)} coin-bonus {detail.jackpots.rounds === 1 ? 'jackpot' : 'jackpots'} (final coins over {JACKPOT_TIMES}× base){detail.jackpots.coins !== null ? `, ${fmt(detail.jackpots.coins)} coins,` : ''}
+            left out of these figures. The highest round, the items charts and the best rounds still count them.
+          </p>
+        {/if}
       </div>
 
       {#if skills.length}

@@ -774,6 +774,8 @@ td.medal .bd-bar > span.best { background: var(--medal); }
 .insights .note .up { color: var(--good); font-weight: 800; }
 .insights .note .down { color: var(--bad); font-weight: 800; }
 .insights .note b { color: var(--ink); }
+/* The Tsum page's line on the coin-bonus jackpots it leaves out. */
+.jackpot-note { margin: 4px 2px 0; }
 .insights .target { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; color: var(--muted); }
 .insights .target input { width: 7em; padding: 3px 8px; border-radius: 8px; border: 2px solid var(--panel-edge); background: var(--well); font-weight: 700; }
 .insights .target b { color: var(--ink); font-family: var(--font-display); font-size: 18px; }

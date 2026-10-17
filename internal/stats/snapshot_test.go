@@ -48,6 +48,13 @@ func fillRounds(t *testing.T, add func(Round)) int {
 		}
 		if r.BaseCoins != nil {
 			f := *r.BaseCoins * 13 / 10
+			// Now and then a coin-bonus jackpot, which the Tsum page leaves out in final coins.
+			switch {
+			case i%61 == 0:
+				f = *r.BaseCoins * 51
+			case i%23 == 0:
+				f = *r.BaseCoins * 11
+			}
 			r.FinalCoins = &f
 		}
 		switch next(12) {
@@ -288,6 +295,9 @@ func TestSnapshotParity(t *testing.T) {
 			t.Fatalf("tsum %s: missing figures: form %d, skill bins %d, settings %d, earn %v, target %+v",
 				name, len(d.Form), len(d.SkillBins), len(d.Settings), d.Earn.CoinsPerSec, d.Target)
 		}
+		if p["coins"] == "final" && (d.Jackpots == nil || d.Jackpots.Rounds == 0) {
+			t.Fatalf("tsum %s: no jackpots left out", name)
+		}
 		params := map[string]any{}
 		for k, v := range p {
 			params[k] = v
@@ -362,6 +372,7 @@ func TestSnapshotParity(t *testing.T) {
 	tsumCase("elsa, junk target", map[string]string{"id": "elsa", "target": "lots"})
 	tsumCase("elsa, medals", map[string]string{"id": "elsa", "coins": "medals", "tz": "540"})
 	tsumCase("abu, net final coins, jp", map[string]string{"id": "abu", "coins": "final", "net": "1", "build": "jp"})
+	tsumCase("mickey, final coins", map[string]string{"id": "mickey", "coins": "final", "target": "6000"})
 	tsumCase("stitch, incomplete kept, one device", map[string]string{"id": "stitch", "incomplete": "1", "device": "pixel-7"})
 	tsumCase("mickey, ranges", map[string]string{"id": "mickey", "from": "2026-09-01T00:00:00Z", "to": "2026-09-20T00:00:00Z", "minCoins": "1000", "tz": "-300"})
 	tsumCase("tsum param ignored", map[string]string{"id": "elsa", "tsum": "mickey"})

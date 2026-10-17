@@ -314,6 +314,19 @@ item costs* switches, and game, skill type and device pickers when there is more
 than one.
 Incomplete rounds are left out, as on Stats.
 
+**Coin-bonus jackpots are left out in final coins.** The +Coin item adds a
+bonus to a round's coins, one of a few multipliers: 1.1, 1.3, 1.5, 2, 2.5,
+3, 4, 5 or 6 times, and rarely 11, 21 or 51 times. Those last three come
+about once in 400 rounds and are luck, not the Tsum, yet one of them can move a few
+hundred rounds' average by a tenth. So with final coins as the primary stat,
+the page leaves out every round whose final coins are over 10 times its
+base coins (`JackpotTimes` in `queries.go`), from every figure, the rank
+among Tsums included, and says how many it left out. Some figures still
+count them, since a jackpot is real coins: the highest coins tile, the items
+charts and *Do the items pay?* (a jackpot is what +Coin pays out), the best rounds and the coins a
+second that box times are worked out from. Base coins and medals never take the bonus, so
+nothing is left out of them. Stats keeps every round.
+
 - **Header:** where the Tsum ranks by rate among the Tsums in the same filter,
   its rate against all of them together, its share of your rounds, and, from the
   newest Tsum list for the build, its level, skill and boxes to max.
