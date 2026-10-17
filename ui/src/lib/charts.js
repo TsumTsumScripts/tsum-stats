@@ -5,7 +5,7 @@
 // ctx, passed to the Tsum charts: {nameOf(id), colorOf(id), onPick(id, event)}; on the global
 // site also approx (its median, quartiles and P90 are estimates) and noSpreads (why they are missing).
 import * as d3 from 'd3';
-import {IMAGE_URL, css, fmt, fmtRate, initials, itemsLabel, otherColor, pct} from './util.js';
+import {IMAGE_URL, chainsLabel, css, fmt, fmtRate, initials, itemsLabel, otherColor, pct} from './util.js';
 import {b, dim, hideTip, showTip, sw} from './ui.svelte.js';
 
 const parseDay = d3.timeParse('%Y-%m-%d');
@@ -451,24 +451,34 @@ const ITEM_METRIC = {
 
 /** Horizontal bars, one per item set, longest first; the box scrolls when they don't fit. */
 export function drawItems(container, mix, metric) {
+  return drawRanked(container, mix, r => r.items, itemsLabel, metric);
+}
+
+/** The same, one bar per chains-per-scan × max-chain pair (summary.go: ChainStat), every Tsum's rounds of it together. */
+export function drawChains(container, chains, metric) {
+  return drawRanked(container, chains, r => `${r.scan},${r.chain}`, k => chainsLabel(...k.split(',')), metric);
+}
+
+/** One bar per key of rows (summed over the rest: Tsums, builds), best by the metric first; label names a key. */
+function drawRanked(container, data, keyOf, label, metric) {
   const m = ITEM_METRIC[metric] || ITEM_METRIC.rate;
-  const groups = [...d3.rollup(mix, rs => ({
+  const groups = [...d3.rollup(data, rs => ({
     rounds: d3.sum(rs, r => r.rounds), coins: d3.sum(rs, r => r.coins ?? 0), coinRounds: d3.sum(rs, r => r.coinRounds),
-    rateCoins: d3.sum(rs, r => r.rateCoins ?? 0), secs: d3.sum(rs, r => r.rateSeconds ?? 0),
-  }), r => r.items)].map(([items, s]) => ({items, ...s})).filter(s => m.get(s) !== null)
+    rateCoins: d3.sum(rs, r => r.rateCoins ?? 0), secs: d3.sum(rs, r => r.rateSeconds ?? 0), tsums: new Set(rs.map(r => r.tsum)).size,
+  }), keyOf)].map(([key, s]) => ({key, ...s})).filter(s => m.get(s) !== null)
     .sort((a, c) => m.get(c) - m.get(a));
   const left = Math.min(240, container.clientWidth * 0.45);
   const f = frame(container, {top: 4, right: 64, bottom: 24, left}, groups.length * ROW_H + 28);
   const {g, inner} = f;
   if (!groups.length) return empty(f);
   const h = groups.length * ROW_H;
-  const y = d3.scaleBand().domain(groups.map(s => s.items)).range([0, h]).padding(0.2);
+  const y = d3.scaleBand().domain(groups.map(s => s.key)).range([0, h]).padding(0.2);
   const x = d3.scaleLinear().domain([0, d3.max(groups, m.get)]).nice().range([0, inner.w]);
   g.append('g').attr('class', 'grid').attr('transform', `translate(0,${h})`).call(d3.axisBottom(x).ticks(5).tickSize(-h).tickFormat(''));
   g.append('g').attr('class', 'axis').attr('transform', `translate(0,${h})`)
     .call(d3.axisBottom(x).ticks(Math.max(2, Math.floor(inner.w / 80))).tickFormat(v => compact.format(v)).tickSizeOuter(0));
-  const rows = g.append('g').selectAll('g').data(groups).join('g').attr('transform', s => `translate(0,${y(s.items)})`);
-  hoverable(rows, s => [[b(itemsLabel(s.items))], [`${fmt(s.rounds)} rounds`],
+  const rows = g.append('g').selectAll('g').data(groups).join('g').attr('transform', s => `translate(0,${y(s.key)})`);
+  hoverable(rows, s => [[b(label(s.key))], [`${fmt(s.rounds)} rounds`, s.tsums > 1 ? ` of ${fmt(s.tsums)} Tsums` : ''],
     ['Average ', b(fmt(s.coinRounds ? s.coins / s.coinRounds : null)), ` ${U}`],
     [b(fmtRate(s.secs ? s.rateCoins / s.secs : null)), ` ${U}/s`]]);
   rows.append('rect').attr('x', -left).attr('width', inner.w + left + 60).attr('height', y.bandwidth()).attr('fill', 'transparent');
@@ -478,7 +488,7 @@ export function drawItems(container, mix, metric) {
     .text(s => m.fmt(m.get(s)));
   const maxChars = Math.max(8, Math.floor((left - 12) / 7));
   rows.append('text').attr('x', -8).attr('y', y.bandwidth() / 2).attr('dy', '0.35em').attr('text-anchor', 'end').attr('class', 'tick-label')
-    .text(s => { const n = itemsLabel(s.items); return n.length > maxChars ? n.slice(0, maxChars - 1) + '…' : n; });
+    .text(s => { const n = label(s.key); return n.length > maxChars ? n.slice(0, maxChars - 1) + '…' : n; });
   return [];
 }
 

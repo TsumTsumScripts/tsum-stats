@@ -17,13 +17,14 @@
   import Panel from '../components/Panel.svelte';
   import Seg from '../components/Seg.svelte';
   import TsumCell from '../components/TsumCell.svelte';
-  import {drawCompare, drawDaily, drawEfficiency, drawHistogram, drawItems, drawShare} from '../lib/charts.js';
+  import {drawCompare, drawDaily, drawEfficiency, drawChains, drawHistogram, drawItems, drawShare} from '../lib/charts.js';
   import {cardContext} from '../lib/card.js';
   import {expand, shared, toast} from '../lib/ui.svelte.js';
   import {
     api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsCost, itemsLabel, loadPref, pct, savePref,
     PLAY, playValueName, skillTypeName, tsumColor, tsumName,
   } from '../lib/util.js';
+  import ChainBest from './stats/ChainBest.svelte';
   import FilterRail from './stats/FilterRail.svelte';
   import FocusBar from './stats/FocusBar.svelte';
   import HeadToHead from './stats/HeadToHead.svelte';
@@ -88,7 +89,7 @@
 
   // Chart views are a per-browser preference, not part of the link.
   const VIEW_KEY = 'tsum-stats.views';
-  const defaultViews = {compare: 'rate', eff: 'rate', effMetric: 'rate', daily: 'stack', share: 'donut', shareMetric: 'coins', items: 'rate'};
+  const defaultViews = {compare: 'rate', eff: 'rate', effMetric: 'rate', daily: 'stack', share: 'donut', shareMetric: 'coins', items: 'rate', chains: 'rate', chainsView: 'all'};
   const views = $state({...defaultViews, ...loadPref(VIEW_KEY, {})});
   function setView(key, v) {
     views[key] = v;
@@ -379,6 +380,7 @@
     daily: [summary.daily, summary.dailyTsums, ctx, views.daily],
     share: [views.share, views.share === 'sunburst' ? summary.mix : summary.tsums, ctx, views.shareMetric],
     items: [summary.mix, views.items],
+    chains: [summary.chains, views.chains],
     hist: [summary.histogram, summary.totals, spreadCtx],
   });
 
@@ -605,6 +607,21 @@
         <Chart draw={drawItems} args={args?.items} {unit} size="square" />
       </Panel>
     </div>
+
+    <Panel id="s-chains" class="anchor" title="By chain settings"
+      sub={views.chainsView === 'best' ? `each Tsum's best chains-per-scan and max-chain pair of those with 20 rounds or more` : 'chains per scan and max chain length together, every pair, best first'}>
+      {#snippet tools()}
+        <Seg sm label="View" value={views.chainsView} onpick={v => setView('chainsView', v)} options={[['all', 'Every pair'], ['best', 'Best per Tsum']]} />
+        {#if views.chainsView !== 'best'}
+          <Seg sm label="Measure" value={views.chains} onpick={v => setView('chains', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
+        {/if}
+      {/snippet}
+      {#if views.chainsView === 'best'}
+        <ChainBest chains={summary.chains} tsums={[...tableRows].sort((a, c) => c.rounds - a.rounds).map(t => t.tsum)} {unit} {nameOf} {colorOf} {focusOn} />
+      {:else}
+        <Chart draw={drawChains} args={args?.chains} {unit} size="square" />
+      {/if}
+    </Panel>
 
     <Panel id="s-spread" class="anchor" title="{U} per round" sub={histSub}>
       <Chart draw={drawHistogram} args={args?.hist} {unit} bind:legend={legends.hist} />

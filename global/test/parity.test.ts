@@ -123,6 +123,7 @@ function compareSummary(c: Case, want: any, got: any): string[] {
     v.medals.tsums = sortTsums(v.medals.tsums);
     v.dailyTsums = [...v.dailyTsums].sort(by("day", "tsum"));
     v.mix = [...v.mix].sort(by("build", "tsum", "items"));
+    v.chains = [...v.chains].sort(by("build", "tsum", "scan", "chain"));
     if (c.cut) dropAbout([v.totals, ...v.tsums, ...v.daily, v.medals.totals, ...v.medals.tsums]);
   }
   for (const [set, on] of [["", primary], [".medals", medals]] as const) {

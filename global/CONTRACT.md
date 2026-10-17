@@ -898,7 +898,8 @@ cells' rounds.
 
 - **Exact**: every count, sum, average, min, max, `coinsPerSec`,
   `stdCoins` (population variance from `Σsq/n − (Σ/n)²`), `first`, `last`,
-  `daily`, `dailyTsums`, `mix`, and the `medals` set's totals and Tsums.
+  `daily`, `dailyTsums`, `mix`, `chains` (from the cells' `scan` and `chain`),
+  and the `medals` set's totals and Tsums.
 - **Approximate**: `q1Coins`, `medianCoins`, `q3Coins`, `p90Coins` from the
   bins of the group's cells. A bin's rounds of one item cost (net coins; 0
   otherwise) across the group stand at their average less that cost; in that
@@ -923,7 +924,7 @@ becomes the sums of its kept bins:
 
 - **Exact** (given the range snapped to whole bins): its rounds, `secs`,
   score, base, final and medals sums, so every count, sum, average and
-  `coinsPerSec`, `daily`, `dailyTsums` and `mix`.
+  `coinsPerSec`, `daily`, `dailyTsums`, `mix` and `chains`.
 - **Approximate**: the range's own figure's min and max (the cell's own where
   its lowest or highest bin is kept, else that bin's average) and its sum of
   squares (from the bins' averages), so its `stdCoins`.

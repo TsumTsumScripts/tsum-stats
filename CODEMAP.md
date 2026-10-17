@@ -155,7 +155,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `ui/src/main.js`, `ui/src/styles.css` | Mounting `App.svelte`; the page-wide styles |
 | `ui/src/App.svelte` | The shell: hash routing, the top bar, live updates, importing CSVs. Read-only in a snapshot and on the global site |
 | `ui/src/sections/Stats.svelte` | Filter rail, KPIs, charts, per-Tsum and rounds tables. Global: no rounds table or hours |
-| `sections/stats/` | `FilterRail.svelte` (filters, jump menu), `FocusBar.svelte` (picked Tsums), `HeadToHead.svelte`, `Kpis.svelte` |
+| `sections/stats/` | `FilterRail.svelte` (filters, jump menu), `FocusBar.svelte` (picked Tsums), `HeadToHead.svelte`, `Kpis.svelte`, `ChainBest.svelte` (each Tsum's best chain pair) |
 | `ui/src/sections/Tsum.svelte` | The Tsum page: one Tsum's figures, settings, rank, ownership, best rounds (on the global site: everyone's rounds of it, by skill level and items) |
 | `sections/tsum/` | `Breakdown.svelte` (by skill, setting, version, device), `Insights.svelte` (form, pace, steadiness), `ItemPayback.svelte` |
 | `ui/src/sections/Catalog.svelte` | Every Tsum against the latest Tsum list; the roster on the global site. `catalog/MaxOut.svelte`: cost and time to max |

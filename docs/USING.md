@@ -265,6 +265,7 @@ a card shows initials in their place until it does.
 | Coins per day | Stacked by Tsum (top 7 + Other); coins/s; average with the day's range |
 | Where the coins come from | Donut by Tsum (top 8 + Other), or a sunburst of game › Tsum › items used; by coins, rounds or time |
 | By items used | Radial rings for the six most played item sets |
+| By chain settings | Chains per scan and max chain length taken as one pair, the way an item set is: *Every pair*, a bar per pair over every Tsum in the filter (coins/s, average or rounds); *Best per Tsum*, each Tsum's best pair of those with 20 rounds or more, against its most played pair |
 | Coins per round | Histogram stacked by Tsum, with median, average and P90 lines |
 | Tsums | Table: every statistic per Tsum; search, sort, choose columns, tick rows to compare |
 | Rounds | Table: one page of rounds, sorted and paged by the server |
@@ -279,6 +280,11 @@ How it is put together:
   page; the Rounds table hands both to the server.
 - **Items used** come from the round's settings (`bonusCoin`, `bonus5to4`
   …). Rounds recorded before those settings existed show as *Unknown*.
+- **Chain pairs** come from `maxChainsPerScan` and `maxChain` (the summary's
+  `chains`). A part not recorded shows as `?`; a round with neither is *Not
+  recorded*, which is drawn but never a Tsum's best pair. Rounds of several
+  Tsums are pooled in *Every pair*, so pick one Tsum, or use *Best per Tsum*,
+  to choose settings for it.
 - **Outliers:** the box plot's scale stops past the highest P90 (the highest
   round is marked). The histogram's last bucket gathers every round from
   Q3 + 1.5 × IQR up (`cap` in the summary).
@@ -331,6 +337,10 @@ Incomplete rounds are left out, as on Stats.
   (already taken off with *Less item costs*). Rounds without an item are often
   older, at a lower skill level, so check the rounds with · without column.
   Hidden in Medals mode.
+- **By chain settings:** chains per scan and max chain length taken together,
+  a row per pair the Tsum was played with, against the most played pair; the
+  best pair with 20 rounds or more is marked. The pairs answer which
+  combination suits the Tsum, which the two settings' own tables below cannot.
 - **By script setting:** every other setting that took more than one value
   for this Tsum (the boost items have their own chart), against the most played
   value; chains per scan, max chain length and bubble strategy first. Settings often changed together, so a difference is not proof of cause.
@@ -588,7 +598,7 @@ everyone's rounds, and in the *Midnight Felt* theme until you pick another:
   rate among every Tsum, its share of all rounds and its players, the KPI
   tiles, consistency and rounds under a target (≈, from the bins), by skill
   level with its spread chart, per day, the histogram, by items and *Do the
-  items pay?*, and *By script setting* for chains per scan, max chain length
+  items pay?*, *By chain settings*, and *By script setting* for chains per scan, max chain length
   and bubble strategy. Not there: recent form, boxes to the next skill, other settings,
   versions, devices and best rounds. The Catalog links each
   played Tsum to it.

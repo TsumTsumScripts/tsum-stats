@@ -22,7 +22,7 @@
 
   const JUMPS = [
     ['s-overview', 'Overview'], ['s-compare', 'Head to head'], ['s-efficiency', 'Efficiency'], ['s-time', 'Over time'],
-    ['s-share', 'Share'], ['s-when', 'Items'], ['s-spread', 'Spread'], ['s-tsums', 'Tsum table'],
+    ['s-share', 'Share'], ['s-when', 'Items'], ['s-chains', 'Chains'], ['s-spread', 'Spread'], ['s-tsums', 'Tsum table'],
     ...(globalSite ? [] : [['s-rounds', 'Rounds']]),
   ];
   const jumps = $derived(JUMPS.filter(([id]) => id !== 's-compare' || comparing));

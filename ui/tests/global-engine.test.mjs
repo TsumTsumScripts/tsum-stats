@@ -268,6 +268,7 @@ function normalize(v) {
     tsums: sortTsums(v.tsums), medals: {...v.medals, tsums: sortTsums(v.medals.tsums)},
     dailyTsums: [...v.dailyTsums].sort(by('day', 'tsum')),
     mix: [...v.mix].sort(by('build', 'tsum', 'items')),
+    chains: [...v.chains].sort(by('build', 'tsum', 'scan', 'chain')),
   };
 }
 
@@ -406,7 +407,7 @@ async function check(engine, q, {spreads = true, medalSpreads = spreads, range =
   const want = await expected(ROUNDS, q);
   assert.deepEqual(got.global, {approx: true, spreads, range, ignored}, 'global note');
   // The server's orders, before the open ties are fixed.
-  for (const list of [got.tsums, got.medals.tsums, got.mix]) {
+  for (const list of [got.tsums, got.medals.tsums, got.mix, got.chains]) {
     assert.ok(list.every((t, i) => !i || list[i - 1].rounds >= t.rounds), 'most rounds first');
   }
   assert.ok(got.daily.every((d, i) => !i || got.daily[i - 1].day < d.day), 'days in order');
@@ -571,7 +572,7 @@ test('an empty filter gives the empty summary', async t => {
       assert.equal(got.totals.rounds, 0);
       assert.equal(got.totals.avgCoins, null);
       assert.equal(got.totals.first, null);
-      assert.deepEqual([got.tsums, got.daily, got.mix, got.histogram.bins], [[], [], [], []]);
+      assert.deepEqual([got.tsums, got.daily, got.mix, got.chains, got.histogram.bins], [[], [], [], [], []]);
     });
   }
 });
@@ -673,6 +674,8 @@ test('the Tsum page: its figures, its rank, by skill level', async () => {
   const lvl = d.settings[0], at = rs.filter(r => r.skill === Number(lvl.key));
   assert.ok(Math.abs(lvl.avgCoins - at.reduce((n, r) => n + r.final, 0) / at.length) < 1e-9);
   assert.deepEqual([d.versions, d.devices, d.form], [[], [], []]);
+  // By chains per scan and max chain together: these parts predate the play settings, so one pair, not recorded.
+  assert.deepEqual(d.chains.map(g => [g.key, g.scan, g.chain, g.rounds]), [[',', '', '', rs.length]]);
   // Every Tsum's rate in the same filter.
   const field = new Map(d.field.map(t => [t.tsum, t]));
   for (const t of Object.keys(TSUMS)) {

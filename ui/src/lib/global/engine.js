@@ -491,7 +491,7 @@ export function createGlobalEngine(loader) {
     // With medals as the primary stat the two sets are the same cells and stat.
     const medals = f.medals ? main : statSet(await select(f, {onlyMedals: true}), 'medals', fits('medals'));
 
-    const daily = new Map(), dailyTsums = new Map(), mix = new Map();
+    const daily = new Map(), dailyTsums = new Map(), mix = new Map(), chains = new Map();
     each(sel, (c, i) => {
       const s = c.stat[k];
       const day = c.day[i], tsum = c.tsum[i];
@@ -503,6 +503,10 @@ export function createGlobalEngine(loader) {
       const mk = `${build}\u0000${tsum}\u0000${items}`;
       if (!mix.has(mk)) mix.set(mk, {build, tsum, items, a: acc()});
       add(mix.get(mk).a, c, i, s);
+      const scan = playText(c.scan[i]), chain = playText(c.chain[i]);
+      const ck = `${build}\u0000${tsum}\u0000${scan}\u0000${chain}`;
+      if (!chains.has(ck)) chains.set(ck, {build, tsum, scan, chain, a: acc()});
+      add(chains.get(ck).a, c, i, s);
     });
 
     const byKey = (a, b, key) => (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0);
@@ -519,6 +523,10 @@ export function createGlobalEngine(loader) {
       })),
       mix: [...mix.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, items}) => ({
         build, tsum, items, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
+        rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null,
+      })),
+      chains: [...chains.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, scan, chain}) => ({
+        build, tsum, scan, chain, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
         rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null,
       })),
       histogram: main.spreads ? histogram(sel, k, main) : {width: 0, cap: null, bins: []},
@@ -550,7 +558,13 @@ export function createGlobalEngine(loader) {
     const bySkill = new Map(), byType = new Map();
     // The play settings, by value, not recorded left out (as the skill level's -1 is).
     const byPlay = new Map();
+    // Chains per scan and max chain length together, not recorded kept.
+    const byChains = new Map();
     each(sel, (c, i) => {
+      const scan = playText(c.scan[i]), chain = playText(c.chain[i]);
+      const ck = `${scan},${chain}`;
+      if (!byChains.has(ck)) byChains.set(ck, {scan, chain, a: acc()});
+      add(byChains.get(ck).a, c, i, c.stat[k]);
       for (const ps of PLAY_SETTINGS) {
         const v = playText(c[ps.param][i]);
         if (v === '') continue;
@@ -619,6 +633,8 @@ export function createGlobalEngine(loader) {
       settings: [...[...bySkill].map(([s, a]) => ({setting: 'skillLevel', ...group(a, String(s))})),
         ...[...byPlay.values()].map(({setting, key, a}) => ({setting, ...group(a, key)}))]
         .sort((x, y) => cmp(x.setting, y.setting) || cmp(x.key, y.key)),
+      chains: [...byChains].map(([key, {scan, chain, a}]) => ({scan, chain, ...group(a, key)}))
+        .sort((x, y) => y.rounds - x.rounds || cmp(x.scan, y.scan) || cmp(x.chain, y.chain)),
       skillTypes: [...byType].map(([t, a]) => group(a, t)).sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),
       versions: [],
       devices: [],

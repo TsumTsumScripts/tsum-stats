@@ -20,7 +20,7 @@
   import CopyButton from '../components/CopyButton.svelte';
   import {shared} from '../lib/ui.svelte.js';
   import {
-    api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref,
+    api, buildLabel, cap, chainsLabel, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref,
     PLAY, playValueName, skillTypeName, skillTypeValue, tsumColor, tsumName,
   } from '../lib/util.js';
   import Kpis from './stats/Kpis.svelte';
@@ -236,6 +236,10 @@
       .map(k => ({key: k, label: playOf(k)?.name ?? words(k), rows: settingRows(k, playOf(k) ? playLabel(playOf(k)) : valueLabel).sort(byValue)}))
       .filter(g => g.rows.length > 1);
   });
+  // Chains per scan and max chain length as one pair, by scan then chain, not recorded last.
+  const num = v => (v === '' ? Infinity : Number(v));
+  const chainRows = $derived((detail?.chains ?? []).map(r => ({...r, label: chainsLabel(r.scan, r.chain)}))
+    .sort((a, b) => num(a.scan) - num(b.scan) || num(a.chain) - num(b.chain)));
   const versions = $derived((detail?.versions ?? []).map(r => ({...r, label: r.key || 'Unknown'})));
   const deviceRows = $derived((detail?.devices ?? []).map(r => ({...r, label: r.key || 'No device'})));
   const typeRows = $derived((detail?.skillTypes ?? []).map(r => ({...r, label: skillTypeName(r.key)})));
@@ -449,6 +453,12 @@
       {#if filter.coins !== 'medals'}
         <Panel title="Do the items pay?" sub="each item against the same other items without it · gain is what it adds a round, less its cost" expandable={false}>
           <ItemPayback mix={s.mix} {net} final={filter.coins === 'final'} />
+        </Panel>
+      {/if}
+
+      {#if chainRows.length > 1}
+        <Panel title="By chain settings" sub="chains per scan and max chain length taken together, a row per pair · change is against the most played pair · the best pair with 20 rounds or more is marked" expandable={false}>
+          <Breakdown rows={chainRows} {unit} head="Pair" />
         </Panel>
       {/if}
 

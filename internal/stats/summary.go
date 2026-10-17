@@ -18,6 +18,7 @@ type Summary struct {
 	Tsums      []TsumStat    `json:"tsums"`
 	DailyTsums []DayTsumStat `json:"dailyTsums"`
 	Mix        []MixStat     `json:"mix"`
+	Chains     []ChainStat   `json:"chains"`
 	Histogram  CoinHistogram `json:"histogram"`
 	// Medals are the same totals and per-Tsum figures for medals, over the
 	// rounds that earned any, so the page can show them beside coins.
@@ -120,6 +121,21 @@ type MixStat struct {
 	RateSecs   *float64 `db:"rate_secs" json:"rateSeconds"`
 }
 
+// ChainStat is one build × Tsum × chains-per-scan × max-chain pair: the two
+// chain settings taken together, as MixStat takes the items, since they are
+// tuned together. Scan and Chain are playSettingSQL's text, "" when not recorded.
+type ChainStat struct {
+	Build      string   `db:"build" json:"build"`
+	Tsum       string   `db:"tsum" json:"tsum"`
+	Scan       string   `db:"scan" json:"scan"`
+	Chain      string   `db:"chain" json:"chain"`
+	Rounds     int64    `db:"rounds" json:"rounds"`
+	Coins      *int64   `db:"coins" json:"coins"`
+	CoinRounds int64    `db:"coin_rounds" json:"coinRounds"`
+	RateCoin   *int64   `db:"rate_coins" json:"rateCoins"`
+	RateSecs   *float64 `db:"rate_secs" json:"rateSeconds"`
+}
+
 // CoinHistogram counts rounds per coin bucket, split by Tsum. Rounds at
 // or over Cap share the last bucket (From == Cap), so one freak round does not
 // stretch the scale; Cap is nil when no round reaches it.
@@ -213,7 +229,7 @@ func stddev(v *float64) *float64 {
 // viewer's clock. The queries run at once, so db must be the pool (app.DB()),
 // not a transaction.
 func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
-	s := Summary{Daily: []DayStat{}, DailyTsums: []DayTsumStat{}, Mix: []MixStat{}}
+	s := Summary{Daily: []DayStat{}, DailyTsums: []DayTsumStat{}, Mix: []MixStat{}, Chains: []ChainStat{}}
 	c := f.col()
 	where, p := f.where()
 	p["shift"] = strconv.Itoa(tzMinutes) + " minutes"
@@ -244,6 +260,11 @@ func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
 			return db.NewQuery(`SELECT build, tsum, ` + itemsSQL + ` AS items, COUNT(*) AS rounds, SUM(` + c + `) AS coins,
 				COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs
 				FROM ts_rounds` + where + ` GROUP BY build, tsum, items ORDER BY rounds DESC`).Bind(p).All(&s.Mix)
+		},
+		func() error {
+			return db.NewQuery(`SELECT build, tsum, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` + playSettingSQL(PlaySettings[1]) + ` AS chain,
+				COUNT(*) AS rounds, SUM(` + c + `) AS coins, COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs
+				FROM ts_rounds` + where + ` GROUP BY build, tsum, scan, chain ORDER BY rounds DESC, build, tsum, scan, chain`).Bind(p).All(&s.Chains)
 		},
 	}
 	if err := runAll(steps); err != nil {

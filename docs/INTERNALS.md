@@ -111,7 +111,9 @@ pages and aggregates:
   by each script setting (`json_each` over `settings`), script version and
   device, recent form, per-skill histogram buckets, what all Tsums earn a
   second for box times, and every Tsum's rate in the same filter for its rank
-  (`tsum.go`). Item payback is worked out in the page from the summary's `mix`.
+  (`tsum.go`), and by chains per scan and max chain length together (`chains`).
+  Item payback is worked out in the page from the summary's `mix`; the Stats
+  page's best chain pair per Tsum from its `chains`.
 
 The queries are in `queries.go` and `summary.go`, with their indexes declared
 in `schema.go`. Both are sized against a large synthetic history; if you add a

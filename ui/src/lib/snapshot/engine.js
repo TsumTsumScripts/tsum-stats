@@ -391,7 +391,8 @@ export function createEngine(loader) {
     // With medals as the primary stat the two sets are the same rounds and column.
     const medals = f.medals ? main : statSet(await select(f, {onlyMedals: true}), 'medals');
 
-    const daily = new Map(), dailyTsums = new Map(), mix = new Map();
+    const daily = new Map(), dailyTsums = new Map(), mix = new Map(), chains = new Map();
+    const [SCAN, CHAIN] = PLAY_SETTINGS;
     const dayOf = at => sqlTime(at + shift).slice(0, 10);
     each(sel, (sh, i) => {
       const day = dayOf(sh.at[i]);
@@ -405,6 +406,11 @@ export function createEngine(loader) {
       const mk = `${build}\u0000${tsum}\u0000${items}`;
       if (!mix.has(mk)) mix.set(mk, {build, tsum, items, a: acc()});
       add(mix.get(mk).a, sh, i, c);
+      const o = sh.settings[i] === null ? null : sh.dict.settings[sh.settings[i]];
+      const scan = playValue(o, SCAN), chain = playValue(o, CHAIN);
+      const ck = `${build}\u0000${tsum}\u0000${scan}\u0000${chain}`;
+      if (!chains.has(ck)) chains.set(ck, {build, tsum, scan, chain, a: acc()});
+      add(chains.get(ck).a, sh, i, c);
     });
 
     const byKey = (a, b, k) => (a[k] < b[k] ? -1 : a[k] > b[k] ? 1 : 0);
@@ -422,6 +428,10 @@ export function createEngine(loader) {
         build, tsum, items, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
         rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null,
       })),
+      chains: [...chains.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, scan, chain}) => ({
+        build, tsum, scan, chain, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
+        rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null,
+      })),
       histogram: histogram(sel, c, main.totals),
       medals,
     };
@@ -433,7 +443,7 @@ export function createEngine(loader) {
     if (!id) throw new Error('tsum: id is required');
     const f = parseFilter({...q, tsum: id});
     const c = coinCol(f);
-    const settings = new Map(), skillTypes = new Map(), versions = new Map(), devices = new Map(), field = new Map(), form = new Map();
+    const settings = new Map(), chains = new Map(), skillTypes = new Map(), versions = new Map(), devices = new Map(), field = new Map(), form = new Map();
     const into = (map, key, sh, i, extra) => {
       if (!map.has(key)) map.set(key, {a: acc(), ...extra});
       add(map.get(key).a, sh, i, c);
@@ -450,6 +460,8 @@ export function createEngine(loader) {
         const key = settingText(v);
         if (key !== undefined) into(settings, `${setting}\u0000${key}`, sh, i, {setting, key});
       }
+      const scan = playValue(s, PLAY_SETTINGS[0]), chain = playValue(s, PLAY_SETTINGS[1]);
+      into(chains, `${scan},${chain}`, sh, i, {key: `${scan},${chain}`, scan, chain});
       const skillType = sh.dict.skillType[sh.skillType[i]];
       into(skillTypes, skillType, sh, i, {key: skillType});
       const version = sh.dict.scriptVersion[sh.scriptVersion[i]];
@@ -515,6 +527,8 @@ export function createEngine(loader) {
       summary: summed,
       settings: [...settings.values()].sort((x, y) => cmp(x.setting, y.setting) || cmp(x.key, y.key))
         .map(g => ({setting: g.setting, ...group(g)})),
+      chains: [...chains.values()].map(g => ({scan: g.scan, chain: g.chain, ...group(g)}))
+        .sort((x, y) => y.rounds - x.rounds || cmp(x.scan, y.scan) || cmp(x.chain, y.chain)),
       skillTypes: [...skillTypes.values()].map(group).sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),
       versions: [...versions.values()].map(group).sort((x, y) => cmp(y.last, x.last) || cmp(x.key, y.key)),
       devices: [...devices.values()].map(group).sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),

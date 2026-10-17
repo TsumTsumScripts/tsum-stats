@@ -11,6 +11,8 @@ import (
 type TsumDetail struct {
 	Summary  Summary       `json:"summary"`
 	Settings []SettingStat `json:"settings"`
+	// Chains are by chains per scan and max chain length together, most played first.
+	Chains []ChainGroup `json:"chains"`
 	// SkillTypes are by the script's skill type, "" for the rounds sent without one.
 	SkillTypes []GroupStat `json:"skillTypes"`
 	Versions   []GroupStat `json:"versions"`
@@ -69,6 +71,14 @@ type SettingStat struct {
 	GroupStat
 }
 
+// ChainGroup is a GroupStat for one chains-per-scan × max-chain pair (Key is
+// "scan,chain"); Scan and Chain are playSettingSQL's text, "" when not recorded.
+type ChainGroup struct {
+	Scan  string `db:"scan" json:"scan"`
+	Chain string `db:"chain" json:"chain"`
+	GroupStat
+}
+
 // FieldStat is one Tsum's rate, with the sums behind it so the page can add
 // Tsums up.
 type FieldStat struct {
@@ -102,7 +112,7 @@ const skillWhere = "j.key = 'skillLevel' AND j.type NOT IN ('object', 'array')"
 // DescribeTsum is the Tsum page for tsum, within the rest of f (f.Tsums is
 // ignored). target, when set, counts the rounds under it.
 func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *int64) (TsumDetail, error) {
-	d := TsumDetail{Settings: []SettingStat{}, SkillTypes: []GroupStat{}, Versions: []GroupStat{}, Devices: []GroupStat{}, Field: []FieldStat{},
+	d := TsumDetail{Settings: []SettingStat{}, Chains: []ChainGroup{}, SkillTypes: []GroupStat{}, Versions: []GroupStat{}, Devices: []GroupStat{}, Field: []FieldStat{},
 		Form: []GroupStat{}, SkillBins: []SkillBin{}}
 	all := f
 	all.Tsums = nil
@@ -119,6 +129,11 @@ func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *
 			return db.NewQuery(`SELECT j.key AS setting, ` + settingValueSQL + ` AS k, ` + groupStats(c) + `
 				FROM ts_rounds, json_each(` + settingsSQL + `) AS j` + pairs + `
 				GROUP BY setting, k ORDER BY setting, k`).Bind(pp).All(&d.Settings)
+		},
+		func() error {
+			return db.NewQuery(`SELECT scan, chain, scan || ',' || chain AS k, ` + groupStats(c) + `
+				FROM (SELECT *, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` + playSettingSQL(PlaySettings[1]) + ` AS chain FROM ts_rounds` + where + `)
+				GROUP BY scan, chain ORDER BY rounds DESC, scan, chain`).Bind(p).All(&d.Chains)
 		},
 		func() error {
 			return db.NewQuery(`SELECT skill_type AS k, ` + groupStats(c) + ` FROM ts_rounds` + where +

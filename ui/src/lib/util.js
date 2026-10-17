@@ -124,6 +124,9 @@ const BUBBLES = {
 export const playValue = v => (v === '' ? '-' : v);
 /** A play setting's value as the script names it, or "Not recorded" ('' or '-'). */
 export const playValueName = (param, v) => (v === '' || v === '-' ? 'Not recorded' : param === 'bubble' ? BUBBLES[v] ?? v.replace(/_/g, ' ') : v);
+/** A chains-per-scan × max-chain pair as the page names it (summary.go: ChainStat), '' parts not recorded. */
+export const chainsLabel = (scan, chain) => (scan === '' && chain === '' ? 'Not recorded'
+  : `${scan === '' ? '?' : scan} per scan · max ${chain === '' ? '?' : chain}`);
 /** Numbers in order, names by their rounds. */
 export const byPlayValue = (a, b) => (Number.isFinite(Number(a.value)) && Number.isFinite(Number(b.value)) && a.value !== '' && b.value !== ''
   ? Number(a.value) - Number(b.value) : 0);
