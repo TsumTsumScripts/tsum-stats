@@ -62,6 +62,7 @@ type watchObs struct {
 	AliveActive   bool  // a run was active at that stamp
 	RequestAt     int64 // GAP asked the host to restart the device; 0 = no request
 	RequestReason string
+	UpdatingAt    int64  // GAP is restarting its own service on a new build; 0 = not updating
 	Warn          string // for the status line only: the device script could not write its stamp
 }
 
@@ -78,6 +79,9 @@ func parseWatch(out string) (watchObs, bool) {
 	if at, reason, _ := strings.Cut(strings.TrimSpace(kv(out, "request")), " "); at != "" {
 		o.RequestAt, _ = strconv.ParseInt(at, 10, 64)
 		o.RequestReason = strings.TrimSpace(reason)
+	}
+	if at, _, _ := strings.Cut(strings.TrimSpace(kv(out, "updating")), " "); at != "" {
+		o.UpdatingAt, _ = strconv.ParseInt(at, 10, 64)
 	}
 	return o, true
 }
@@ -139,6 +143,7 @@ const (
 	// GAP deletes its own request after 60 s and reboots by itself. One older
 	// than this was left by a GAP that died waiting, so it is only deleted.
 	requestStaleSec = 120
+	updatingSec     = 120 // how long GAP's update marker holds watch mode back
 	stuckEvery      = time.Hour // at most one restart per hour for a stuck start
 )
 
@@ -199,6 +204,12 @@ func decide(st watchState, o watchObs, now time.Time, lim WatchLimits, host host
 	}
 	if !o.Booted {
 		return decideBooting(st, o, now, lim, host)
+	}
+	// GAP is restarting itself on a new build: starting it now would race its own restart.
+	if o.UpdatingAt > 0 {
+		if age := o.Now - o.UpdatingAt; age >= -60 && age < updatingSec {
+			return decision{Why: "GAP is updating itself. Checking again shortly."}
+		}
 	}
 	// 2. GAP is not running: after a reboot, or it stopped.
 	if !o.Running {

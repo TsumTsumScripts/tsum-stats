@@ -126,6 +126,11 @@ func TestDecide(t *testing.T) {
 		{"healthy", watchState{}, healthy, mapped, watchWait, false, "GAP is running"},
 		{"old GAP without alive", watchState{}, with(func(o *watchObs) { o.Alive = 0 }), mapped, watchWait, false, "running"},
 
+		// GAP restarting itself on a new build.
+		{"updating, stopped", watchState{}, with(func(o *watchObs) { o.Running, o.UID, o.UpdatingAt = false, "", dev-10 }), mapped, watchWait, false, "updating itself"},
+		{"updating, frozen", watchState{}, with(func(o *watchObs) { o.Alive, o.UpdatingAt = dev-200, dev-10 }), mapped, watchWait, false, "updating itself"},
+		{"old update marker", watchState{}, with(func(o *watchObs) { o.Running, o.UID, o.UpdatingAt = false, "", dev-300 }), mapped, watchStart, false, "not running"},
+
 		// 1. GAP's restart request.
 		{"request, emulator mapped", watchState{}, request, mapped, watchEmulator, true, "GAP asked for a restart (command)"},
 		{"request, no emulator", watchState{}, request, unmapped, watchReboot, true, "Restarting Android"},
