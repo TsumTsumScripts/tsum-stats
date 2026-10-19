@@ -269,7 +269,7 @@ const LABELS = {
   start: 'Start service', restart: 'Restart service', stop: 'Stop service', log: 'Show service log',
   install: 'Install APK', update: 'Download & install the latest APK', 'add-source': 'Add the Tsum Tsum library',
   reconnect: 'Reconnect', reboot: 'Restart Android', 'restart-emulator': 'Restart the emulator',
-  'copy-script': 'Copy the script log', 'import-stats': 'Import round stats into Stats',
+  'copy-script': 'Copy the script log', 'copy-companion': 'Copy the GAP Companion log', 'import-stats': 'Import round stats into Stats',
   'delete-script': 'Delete the script log', 'delete-stats': 'Delete round stats',
 };
 

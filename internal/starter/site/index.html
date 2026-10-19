@@ -243,6 +243,7 @@
             <fieldset class="checks">
               <legend class="visually-hidden">What to include</legend>
               <label><input type="checkbox" name="part" value="script" checked> Script log <small>script*.log</small></label>
+              <label><input type="checkbox" name="part" value="companion" checked> GAP Companion log <small>companion*.log</small></label>
               <label><input type="checkbox" name="part" value="service" checked> Service log <small>service.log</small></label>
               <label><input type="checkbox" name="part" value="stats" checked> Round stats <small>stats_*.csv</small></label>
               <label><input type="checkbox" name="part" value="lists" checked> Tsum lists <small>tsum_list_*.csv</small></label>
@@ -256,6 +257,7 @@
             <div class="row">
               <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="import-stats">Import round stats into Stats</button>
               <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="copy-script">Copy script log to folder</button>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="copy-companion">Copy companion log to folder</button>
               <button class="patch patch--surface fbtn fbtn--sm" type="button" id="open-collected">Open the collected folder</button>
             </div>
             <p class="small">Copies land in <code id="collected-path">collected/</code>, one folder per device, laid out as on the device.</p>

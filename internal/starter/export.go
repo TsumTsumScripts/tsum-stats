@@ -15,7 +15,7 @@ import (
 )
 
 // ExportParts are what an export can carry; the page ticks all of them by default.
-var ExportParts = []string{"script", "service", "stats", "lists"}
+var ExportParts = []string{"script", "companion", "service", "stats", "lists"}
 
 // ExportRequest is one export: every part, per device, in one zip.
 type ExportRequest struct {

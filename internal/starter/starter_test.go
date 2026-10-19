@@ -58,6 +58,7 @@ case "$1" in
       *boot_id*) echo same-boot ;;
       *probe*) printf 'proto=1\r\ndevice_abi=x86_64\r\ninstalled=1\r\nrunning=1\r\nrc=0\r\n' ;;
       *" log"*) printf 'proto=1\n---BEGIN service.log---\nready\n---END service.log---\nrc=0\n' ;;
+      find*companion*) printf '/sdcard/Download/GeneralAutomationPlatform/logs/companion-0a1b2c3d4e5f.log\n' ;;
       find*script*) printf '/sdcard/Download/GeneralAutomationPlatform/logs/script.log\n/sdcard/Download/GeneralAutomationPlatform/logs/script.1.log\nfind: denied\n' ;;
       dumpsys*) echo '    versionName=3.1' ;;
     esac ;;
@@ -101,7 +102,7 @@ func TestDevicesProbeAndMerge(t *testing.T) {
 func TestExportZip(t *testing.T) {
 	s, _ := fakeStarter(t)
 	var buf bytes.Buffer
-	err := s.writeExport(context.Background(), &buf, ExportRequest{Serials: []string{"127.0.0.1:16384"}, Parts: []string{"script", "service", "stats"}})
+	err := s.writeExport(context.Background(), &buf, ExportRequest{Serials: []string{"127.0.0.1:16384"}, Parts: []string{"script", "companion", "service", "stats"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +114,7 @@ func TestExportZip(t *testing.T) {
 	for _, f := range zr.File {
 		names = append(names, f.Name)
 	}
-	want := "127.0.0.1_16384/logs/script.1.log 127.0.0.1_16384/logs/script.log 127.0.0.1_16384/service.log 127.0.0.1_16384/device.txt"
+	want := "127.0.0.1_16384/logs/script.1.log 127.0.0.1_16384/logs/script.log 127.0.0.1_16384/logs/companion-0a1b2c3d4e5f.log 127.0.0.1_16384/service.log 127.0.0.1_16384/device.txt"
 	if strings.Join(names, " ") != want {
 		t.Fatalf("zip holds %v", names)
 	}

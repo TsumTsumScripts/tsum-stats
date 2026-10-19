@@ -29,6 +29,8 @@ type Result struct {
 // What the file actions match. Rotated script logs are script.1.log and on.
 var fileKinds = map[string]struct{ glob, what string }{
 	"script": {"script*.log", "script log"},
+	// GAP's companion link log: connects, drops, commands.
+	"companion": {"companion*.log", "GAP Companion log"},
 	"stats":  {"stats_*.csv", "round stats"},
 	"lists":  {"tsum_list_*.csv", "Tsum lists"},
 }
@@ -113,6 +115,8 @@ func (s *Starter) Run(ctx context.Context, serial, action string, opt Options, l
 		return s.offerSource(ctx, serial, logf)
 	case "copy-script":
 		return s.copyFiles(ctx, serial, "script", logf)
+	case "copy-companion":
+		return s.copyFiles(ctx, serial, "companion", logf)
 	case "import-stats":
 		return s.importStats(ctx, serial, logf)
 	case "delete-script", "delete-stats":
