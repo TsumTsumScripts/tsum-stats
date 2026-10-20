@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { archiveKey } from "../src/archive";
 import { authContributor } from "../src/contributors";
-import { postRounds } from "../src/ingest";
+import { ingest } from "../src/ingest";
 import { DAY_MS, NOW, admin, batch, call, env, joinNew, json, one, r2json, r2keys, record, rollup, rows, series, upload, wipe } from "./helpers";
 import { checkAgainstReference, counted, tables } from "./reference";
 
@@ -116,10 +116,7 @@ describe("unlink", () => {
     // The upload's key is checked, then the unlink lands before its batch does.
     const late = await authContributor(new Request("https://x/", { headers: { authorization: "Bearer " + a.key } }), env);
     await unlink(a.key);
-    const req = new Request("https://tsum-stats.gapscripts.app/api/v1/rounds", {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(batch(series(4, { tag: "0a0000000009" }))),
-    });
-    await expect(postRounds(req, env, late, NOW)).rejects.toMatchObject({ status: 401, code: "unauthorized" });
+    await expect(ingest(batch(series(4, { tag: "0a0000000009" })).records as Record<string, unknown>[], env, late, NOW)).rejects.toMatchObject({ status: 401, code: "unauthorized" });
     expect(await one("SELECT count(*) AS n FROM devices")).toEqual({ n: 0 });
     expect(await one("SELECT count(*) AS n FROM rounds")).toEqual({ n: 3 });
     const [r] = await rollup();

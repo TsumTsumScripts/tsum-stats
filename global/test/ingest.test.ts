@@ -23,7 +23,8 @@ async function gzip(text: string): Promise<Uint8Array> {
 
 describe("bad requests", () => {
   it("needs a known key", async () => {
-    expect((await call("/api/v1/rounds", { body: batch([record()]) })).status).toBe(401);
+    // A key that matches nothing, or a header that is not a Bearer key, is refused, never taken as a join.
+    expect((await call("/api/v1/rounds", { body: batch([record()]), headers: { authorization: "Basic x" } })).status).toBe(401);
     const res = await call("/api/v1/rounds", { body: batch([record()]), key: "nope" });
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ ok: false, error: "unauthorized" });
@@ -373,6 +374,48 @@ describe("limits", () => {
     // The forwarder waits for Retry-After only on these: each says which limit it is.
     const quota = await call("/api/v1/rounds", { body: batch(series(3, { end: NOW - 7 * 3600_000 })), key: c.key, env: { ...env, QUOTA_PER_CONTRIBUTOR: "251" } });
     expect([quota.status, await quota.json(), quota.headers.get("retry-after")]).toEqual([429, { ok: false, error: "quota" }, String(6 * 3600)]);
+  });
+});
+
+describe("keyless uploads", () => {
+  type Joined = { ok: boolean; id: number; key: string; accepted?: number; error?: string };
+
+  it("joins, stores the batch and hands the key back with the reply", async () => {
+    const three = series(3);
+    const res = await call("/api/v1/rounds", { body: { ...batch(three), client: "app.gap.Tsum/5.3" }, ip: "192.0.2.70" });
+    expect(res.status).toBe(200);
+    const body = await json<Joined>(res);
+    expect(body).toMatchObject({ ok: true, accepted: 3, retry: [], keeps: 2, resend: 0 });
+    expect(body.key).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(await one("SELECT client, rounds_total FROM contributors WHERE id = ?1", body.id)).toEqual({ client: "app.gap.Tsum/5.3", rounds_total: 3 });
+    // The key works from then on, and a re-send under it is the same contributor's.
+    expect((await upload(body.key, three)).body).toMatchObject({ ok: true, unchanged: 3, duplicates: 0 });
+    expect((await call("/api/v1/me", { key: body.key })).status).toBe(200);
+  });
+
+  it("makes no contributor for a batch that is not one", async () => {
+    expect((await call("/api/v1/rounds", { body: { schema: "nope", records: [record()] }, ip: "192.0.2.71" })).status).toBe(400);
+    expect(await one("SELECT count(*) AS n FROM contributors WHERE id != 0")).toEqual({ n: 0 });
+    expect(await one("SELECT count(*) AS n FROM join_limits")).toEqual({ n: 0 });
+  });
+
+  it("counts against the join limit, and a refused join hands out no key", async () => {
+    const ip = "192.0.2.72";
+    for (let i = 0; i < 5; i++) expect((await call("/api/v1/rounds", { body: batch([record()]), ip })).status).toBe(200);
+    const sixth = await call("/api/v1/rounds", { body: batch([record()]), ip });
+    expect(sixth.status).toBe(429);
+    expect(await sixth.json()).toEqual({ ok: false, error: "join-limit" });
+  });
+
+  it("still hands the key over when the batch itself is refused", async () => {
+    const small = { ...env, QUOTA_PER_CONTRIBUTOR: "2" };
+    const res = await call("/api/v1/rounds", { body: batch(series(3)), ip: "192.0.2.73", env: small });
+    expect(res.status).toBe(429);
+    const body = await json<Joined>(res);
+    expect(body).toMatchObject({ ok: false, error: "quota" });
+    expect(body.key).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(await one("SELECT count(*) AS n FROM rounds")).toEqual({ n: 0 });
+    expect(await upload(body.key, series(2))).toMatchObject({ status: 200 });
   });
 });
 

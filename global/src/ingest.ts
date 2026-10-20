@@ -5,8 +5,10 @@
 // uploads at once cannot both pass a limit, and none lands after an unlink. The new
 // rounds, added up as the day tables keep them, also go to `pending`, from
 // which the hourly job adds them in without reading the rounds table again.
+// An upload with no key joins first and gets its key back with the reply
+// (CONTRACT §2.2.1): the Tsum script's way in, since it can reach no other route.
 import { LINKED_CHECK, spend } from "./budget";
-import type { Contributor } from "./contributors";
+import { authContributor, makeContributor, type Contributor } from "./contributors";
 import { hmacKey } from "./crypto";
 import { dayOf, keyDay } from "./days";
 import { limits, type Env } from "./env";
@@ -157,8 +159,29 @@ function readBatch(body: Record<string, unknown>): Record<string, unknown>[] {
   return records;
 }
 
-export async function postRounds(req: Request, env: Env, c: Contributor, nowMs: number): Promise<Response> {
-  const records = readBatch(await readObject(req));
+/** POST /api/v1/rounds, with a key, or with none to join first. */
+export async function postRounds(req: Request, env: Env, nowMs: number): Promise<Response> {
+  if (req.headers.has("authorization")) {
+    const c = await authContributor(req, env);
+    return ok(await ingest(readBatch(await readObject(req)), env, c, nowMs));
+  }
+  // The batch is read before joining, so a bad one makes no contributor.
+  const body = await readObject(req);
+  const records = readBatch(body);
+  const c = await makeContributor(req, env, nowMs, body.client);
+  const made = { id: c.id, key: c.key };
+  try {
+    return ok({ ...(await ingest(records, env, c, nowMs)), ...made });
+  } catch (e) {
+    // The key is the sender's only way back to this contributor: a refused
+    // batch still hands it over.
+    if (!(e instanceof HttpError)) throw e;
+    return Response.json({ ok: false, error: e.code, ...made }, { status: e.status, headers: e.headers });
+  }
+}
+
+/** Stores one batch under contributor c; the reply's fields. */
+export async function ingest(records: Record<string, unknown>[], env: Env, c: Contributor, nowMs: number): Promise<Record<string, unknown>> {
   const lim = limits(env);
   const db = env.DB;
   // A day already in the archive is final, even if ACCEPT_DAYS has grown since.
@@ -274,5 +297,5 @@ export async function postRounds(req: Request, env: Env, c: Contributor, nowMs: 
       WHERE id = ?1 AND (CASE WHEN day = ?2 THEN day_rounds ELSE 0 END) + ?3 > ?4`).bind(c.id, today, accepted, lim.quota));
   }
   await spend(db, nowMs, { est, cap: lim.budget - lim.reserve, reads, checks }, stmts);
-  return ok({ accepted, unchanged, duplicates, rejected, retry, keeps: KEEPS, resend: c.resend });
+  return { accepted, unchanged, duplicates, rejected, retry, keeps: KEEPS, resend: c.resend };
 }

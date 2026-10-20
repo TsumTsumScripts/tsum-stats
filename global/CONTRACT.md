@@ -12,8 +12,8 @@ tsum-stats install that joined; a **day** is a UTC calendar day
 ## 1. Uploads: `gap.round-stats/1`
 
 The Tsum script's own format (`tsum-tsum-script/app.gap.Tsum/src/roundShare.ts`).
-The forwarder sends exactly what the script would, so a device can later post
-directly with no new contract.
+The forwarder sends exactly what the script sends when it posts directly
+(Share round stats, §2.2.1).
 
 ```json
 {
@@ -136,7 +136,7 @@ otherwise join, or spend its visitors' joins. A request body may be gzipped
 | Route | Auth | Does |
 |:--|:--|:--|
 | `POST /api/v1/join` | none | Makes a contributor |
-| `POST /api/v1/rounds` | contributor | Takes a `gap.round-stats/1` batch |
+| `POST /api/v1/rounds` | contributor, or none to join first (§2.2.1) | Takes a `gap.round-stats/1` batch |
 | `GET /api/v1/me` | contributor | The contributor's own record |
 | `POST /api/v1/me/unlink` | contributor | Unlinks the contributor |
 | `GET /api/v1/admin/contributors` | admin | Every contributor's record |
@@ -153,7 +153,7 @@ admin key is the `ADMIN_KEY` secret, compared in constant time.
 | Status | code | When |
 |:--|:--|:--|
 | 400 | `bad-request` | Unreadable JSON, wrong `schema`, `records` not 1–250 objects |
-| 401 | `unauthorized` | No key, or one that matches no active/banned contributor; or, for an upload, the contributor unlinked while the upload was on the way (checked in the upload's own batch) |
+| 401 | `unauthorized` | No key (an upload with no `Authorization` header joins instead, §2.2.1), or one that matches no active/banned contributor; or, for an upload, the contributor unlinked while the upload was on the way (checked in the upload's own batch) |
 | 404 | `not-found` | No such route |
 | 405 | `method` | Wrong method |
 | 413 | `too-large` | Body over 1 MiB |
@@ -258,6 +258,25 @@ again), its quota (`429 quota`, on accepted rows) and today's budget
 
 The quota counts accepted rows; the budget counts every row written. A batch
 of 250 records takes about 15 D1 statements in all.
+
+### 2.2.1 An upload with no key
+
+The Tsum script can only send to the one URL the player's GAP setting names,
+so it cannot call `/join`. An upload with **no `Authorization` header at all**
+joins first, as §2.1 does (same join limit, same budget, `client` read from
+the batch's own `client` field), then is stored under the new contributor.
+A header that is not a valid Bearer key is still a 401, never a join.
+
+- The batch is read and checked (400 `bad-request`) **before** joining, so a
+  bad one makes no contributor and counts no join.
+- A refused join (429 `join-limit`, 503 `budget`) writes nothing and hands out
+  no key.
+- Otherwise the reply carries `id` and `key` beside the usual fields: on
+  **200** with `ok: true`, and also on a refusal of the batch itself
+  (`quota`, `budget`), since the contributor exists by then and the key is
+  the sender's only way back to it.
+- The sender keeps the key and sends it from then on; a 401 for it later
+  (unlinked) means dropping it and sending keyless again.
 
 ### 2.3 `GET /api/v1/me`
 

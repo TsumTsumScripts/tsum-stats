@@ -189,8 +189,8 @@ by-hand deploy when the Devkit is not available.
 | `global/src/index.ts` | Routing, the JSON-only POST rule, the cron entry |
 | `global/src/env.ts`, `global/src/http.ts`, `global/src/crypto.ts`, `global/src/days.ts` | Bindings and tunables; replies and bodies; hashes, HMAC and keys; UTC days, keys, bins |
 | `global/src/catalog.ts` | Tsum ids and medal Tsums, bundled from `ui/public/data/catalog.json` |
-| `global/src/records.ts`, `global/src/ingest.ts` | An upload's records → rounds (read as `csv.go` reads them); `POST /api/v1/rounds` in one D1 batch, sums to `pending` |
-| `global/src/contributors.ts`, `global/src/admin.ts` | Join, bearer check, `/me`, unlink; the admin routes |
+| `global/src/records.ts`, `global/src/ingest.ts` | An upload's records → rounds (read as `csv.go` reads them); `POST /api/v1/rounds` in one D1 batch, sums to `pending`; a keyless upload (the Tsum script) joins first and gets its key back (CONTRACT §2.2.1) |
+| `global/src/contributors.ts`, `global/src/admin.ts` | Join (`makeContributor`, shared with keyless uploads), bearer check, `/me`, unlink; the admin routes |
 | `global/src/budget.ts`, `global/src/run.ts` | The day's write and read budget (§2.6); one invocation's D1/R2 share |
 | `global/src/job.ts` | The hourly job: claims dirty days, runs each step on its own |
 | `global/src/rollup.ts`, `global/src/parts.ts`, `global/src/unlink.ts`, `global/src/archive.ts` | Steps: `cells`/`cell_bins`/`contrib_cells`; part files, compaction and the manifest; finishing unlinks; archive, drop and restore |
@@ -263,7 +263,7 @@ Paths here are in other checkouts beside this one, under `~/Projects/GAP/`.
 
 | Tree | Path | Relationship |
 |:--|:--|:--|
-| **tsum-tsum-script** | `../tsum-tsum-script` | Writes what this imports: `app.gap.Tsum/src/roundStats.ts` (the stats CSV, the round's UUIDv7 id), `tsumList.ts` (`tsum_list_*.csv`), the live events (`EVENTS.md` there). `roundShare.ts` is the `gap.round-stats/1` upload format the forwarder and Worker reuse (`global/CONTRACT.md` §1). `starter/build-starter.sh` copies `tsum-stats.txt` into the starter bundle (`MIN_STATS` is the oldest version it accepts); its `starter/device/gap-service.sh` is what `internal/starter` drives |
+| **tsum-tsum-script** | `../tsum-tsum-script` | Writes what this imports: `app.gap.Tsum/src/roundStats.ts` (the stats CSV, the round's UUIDv7 id), `tsumList.ts` (`tsum_list_*.csv`), the live events (`EVENTS.md` there). `roundShare.ts` is the `gap.round-stats/1` upload format the forwarder and Worker reuse (`global/CONTRACT.md` §1), and posts it straight to the Worker with no key at first (§2.2.1). `starter/build-starter.sh` copies `tsum-stats.txt` into the starter bundle (`MIN_STATS` is the oldest version it accepts); its `starter/device/gap-service.sh` is what `internal/starter` drives |
 | **general-automation-app** | `../general-automation-app` | GAP, the host app: dials the events listener, keeps the device files the importer pulls. Its `tools/stats-catalog.js` regenerates `ui/public/data/catalog.json` from the script's `tsums.dat` and `../tools/tsum_box_counts.json` |
 | **tsum-tsum-website** | `../tsum-tsum-website` | The public site: its felt design (`src/css/felt.css`, mirrored by the starter page) and the links to the global site (`global/WEBSITE-LINKS.md`) |
 | **tools** (GAP Devkit) | `../tools` | `DEPLOYMENTS.md` § Tsum Tsum Stats and § Tsum Tsum global stats: the cards that release the binaries (`deploy/components.mjs`, `tsum-stats`) and deploy the Worker (`deploy/tsumglobal.mjs`), on the personal Cloudflare account only. The Devkit itself is `devkit/` |

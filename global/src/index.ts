@@ -15,7 +15,7 @@ const ADMIN_POSTS = ["ban", "unban", "merge", "rebuild", "restore", "rollup", "r
 type Handler = (req: Request, env: Env, nowMs: number) => Promise<Response>;
 const ROUTES: Record<string, [string, Handler]> = {
   "/api/v1/join": ["POST", join],
-  "/api/v1/rounds": ["POST", async (req, env, now) => postRounds(req, env, await authContributor(req, env), now)],
+  "/api/v1/rounds": ["POST", postRounds],
   "/api/v1/me": ["GET", async (req, env, now) => me(env, await authContributor(req, env), now)],
   "/api/v1/me/unlink": ["POST", async (req, env, now) => unlink(env, await authContributor(req, env), now)],
   "/api/v1/admin/contributors": ["GET", async (req, env) => (await authAdmin(req, env), contributors(env))],

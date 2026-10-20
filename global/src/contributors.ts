@@ -59,7 +59,17 @@ export function joinAddress(ip: string): string {
 /** POST /api/v1/join: a new contributor and its key, shown once. */
 export async function join(req: Request, env: Env, nowMs: number): Promise<Response> {
   const body = await readObject(req);
-  const client = typeof body.client === "string" ? body.client.slice(0, 64) : null;
+  const made = await makeContributor(req, env, nowMs, body.client);
+  return ok({ id: made.id, key: made.key }, 201);
+}
+
+/**
+ * A new contributor, its key, and the record an upload under it needs. Shared
+ * by /join and a keyless upload (postRounds), so both count against the same
+ * join limit.
+ */
+export async function makeContributor(req: Request, env: Env, nowMs: number, client: unknown): Promise<Contributor & { key: string }> {
+  const name = typeof client === "string" ? client.slice(0, 64) : null;
   const now = Math.floor(nowMs / 1000), day = dayOf(now);
   const lim = limits(env);
   const db = env.DB;
@@ -69,7 +79,7 @@ export async function join(req: Request, env: Env, nowMs: number): Promise<Respo
   // writes nothing. Ids are never handed out twice, even after the newest
   // contributor's row is deleted: archive files and merges name contributors by id.
   const key = newKey();
-  const [, , made] = await spend(db, nowMs, {
+  const [, , made, resend] = await spend(db, nowMs, {
     // join_limits, the id sequence, and the contributor with its key's index.
     est: 4,
     cap: lim.budget - lim.reserve,
@@ -81,9 +91,17 @@ export async function join(req: Request, env: Env, nowMs: number): Promise<Respo
       ON CONFLICT (key) DO UPDATE SET value = max(CAST(value AS INTEGER) + 1, (SELECT max(id) + 1 FROM contributors))`),
     db.prepare(`INSERT INTO contributors (id, key_hash, created_at, client)
       VALUES ((SELECT CAST(value AS INTEGER) FROM state WHERE key = 'contributor_seq'), ?1, ?2, ?3) RETURNING id`)
-      .bind(await sha256Hex(key), now, client),
+      .bind(await sha256Hex(key), now, name),
+    db.prepare("SELECT coalesce((SELECT CAST(value AS INTEGER) FROM state WHERE key = 'resend'), 0) AS resend"),
   ]);
-  return ok({ id: (made.results[0] as { id: number }).id, key }, 201);
+  return {
+    id: (made.results[0] as { id: number }).id,
+    status: "active",
+    day: null,
+    day_rounds: 0,
+    resend: (resend.results[0] as { resend: number }).resend,
+    key,
+  };
 }
 
 /** GET /api/v1/me. */
