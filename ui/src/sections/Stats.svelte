@@ -617,7 +617,7 @@
         {/if}
       {/snippet}
       {#if views.chainsView === 'best'}
-        <ChainBest chains={summary.chains} tsums={[...tableRows].sort((a, c) => c.rounds - a.rounds).map(t => t.tsum)} {unit} {nameOf} {colorOf} {focusOn} />
+        <ChainBest chains={summary?.chains ?? []} tsums={[...tableRows].sort((a, c) => c.rounds - a.rounds).map(t => t.tsum)} {unit} {nameOf} {colorOf} {focusOn} />
       {:else}
         <Chart draw={drawChains} args={args?.chains} {unit} size="square" />
       {/if}
