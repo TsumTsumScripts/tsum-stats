@@ -17,7 +17,7 @@
   import Panel from '../components/Panel.svelte';
   import Seg from '../components/Seg.svelte';
   import TsumCell from '../components/TsumCell.svelte';
-  import {drawCompare, drawDaily, drawEfficiency, drawChains, drawHistogram, drawItems, drawShare} from '../lib/charts.js';
+  import {drawBonus, drawCompare, drawDaily, drawEfficiency, drawChains, drawHistogram, drawItems, drawShare} from '../lib/charts.js';
   import {cardContext} from '../lib/card.js';
   import {expand, shared, toast} from '../lib/ui.svelte.js';
   import {
@@ -89,7 +89,7 @@
 
   // Chart views are a per-browser preference, not part of the link.
   const VIEW_KEY = 'tsum-stats.views';
-  const defaultViews = {compare: 'rate', eff: 'rate', effMetric: 'rate', daily: 'stack', share: 'donut', shareMetric: 'coins', items: 'rate', chains: 'rate', chainsView: 'all'};
+  const defaultViews = {compare: 'rate', eff: 'rate', effMetric: 'rate', daily: 'stack', share: 'donut', shareMetric: 'coins', items: 'rate', chains: 'rate', chainsView: 'all', bonus: 'rounds'};
   const views = $state({...defaultViews, ...loadPref(VIEW_KEY, {})});
   function setView(key, v) {
     views[key] = v;
@@ -365,6 +365,16 @@
   const histSub = $derived(summary && (noSpreads ? `not available ${noSpreads}: ${noSpreadsWhy}`
     : `how many rounds ended with each amount of ${basis}, by Tsum${summary.global ? ' · ≈ from 2 % wide bins' : ''}`));
 
+  // The coin bonus over the +Coin rounds: how much it adds on average, and how often a jackpot (11× and over) comes.
+  const bonusSub = $derived.by(() => {
+    const b = summary?.bonus ?? [];
+    const rounds = b.reduce((n, s) => n + s.rounds, 0), base = b.reduce((n, s) => n + s.base, 0), extra = b.reduce((n, s) => n + s.extra, 0);
+    if (!rounds) return 'rounds played with the +Coin item, by the multiplier they drew';
+    const jackpots = b.filter(s => s.times > 10).reduce((n, s) => n + s.rounds, 0);
+    return `${fmt(rounds)} rounds with +Coin · the bonus added ${base ? pct(extra / base) : '—'} to their base coins`
+      + (jackpots ? ` · 11× or more 1 in ${fmt(rounds / jackpots)}` : '');
+  });
+
   // Each chart's draw arguments; null until there is a summary.
   const byRounds = $derived(summary ? summary.tsums.filter(ranked).sort((a, c) => c.rounds - a.rounds) : []);
   // Shares are of every Tsum in the filter, ranked or not; the table lists the ranked ones.
@@ -382,6 +392,7 @@
     items: [summary.mix, views.items],
     chains: [summary.chains, views.chains],
     hist: [summary.histogram, summary.totals, spreadCtx],
+    bonus: [summary.bonus, views.bonus],
   });
 
   // ---- Tables ----
@@ -627,6 +638,15 @@
       <Chart draw={drawHistogram} args={args?.hist} {unit} bind:legend={legends.hist} />
       <Legend items={legends.hist} />
     </Panel>
+
+    {#if !globalSite}
+      <Panel id="s-bonus" class="anchor" title="Coin bonus" sub={bonusSub}>
+        {#snippet tools()}
+          <Seg sm label="Measure" value={views.bonus} onpick={v => setView('bonus', v)} options={[['rounds', 'Rounds'], ['extra', 'Coins added']]} />
+        {/snippet}
+        <Chart draw={drawBonus} args={args?.bonus} {unit} />
+      </Panel>
+    {/if}
 
     <Panel id="s-tsums" class="anchor" title="Tsums" sub="click a name to focus on it · tick several to compare them">
       {#snippet tools()}

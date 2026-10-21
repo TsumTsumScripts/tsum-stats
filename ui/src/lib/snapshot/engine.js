@@ -117,6 +117,17 @@ export const JACKPOT_TIMES = 10;
 /** Whether round i of month sh is a jackpot (queries.go: jackpotSQL); one without both figures is not. */
 const isJackpot = (sh, i) => sh.finalCoins[i] !== null && sh.baseCoins[i] !== null && sh.finalCoins[i] > JACKPOT_TIMES * sh.baseCoins[i];
 
+/** The +Coin item's coin-bonus multipliers, 1 for none (queries.go: BonusTimes). */
+export const BONUS_TIMES = [1, 1.1, 1.3, 1.5, 2, 2.5, 3, 4, 5, 6, 11, 21, 51];
+/**
+ * The multiplier of a +Coin round with both coin figures (queries.go: bonusTier):
+ * the ratio in whole hundredths (summary.go: bonusStats), then the nearest on a log scale.
+ */
+export function bonusTier(base, final) {
+  const ratio = Math.max(Math.round(final * 100 / base), 1) / 100;
+  return BONUS_TIMES.reduce((best, t) => (Math.abs(Math.log(ratio / t)) < Math.abs(Math.log(ratio / best)) ? t : best));
+}
+
 /** The query parameters as the server reads them. */
 
 export function parseFilter(q) {
@@ -384,6 +395,22 @@ export function createEngine(loader) {
     return h;
   }
 
+  /** The +Coin rounds per multiplier, least first (summary.go: bonusStats). */
+  function bonus(sel) {
+    const by = new Map();
+    each(sel, (sh, i) => {
+      const items = itemsOf(sh, i), base = sh.baseCoins[i], final = sh.finalCoins[i];
+      if (items < 0 || !(items & 1) || !(base > 0) || !(final > 0)) return;
+      const times = bonusTier(base, final);
+      const b = by.get(times) ?? {times, rounds: 0, base: 0, extra: 0};
+      b.rounds++;
+      b.base += base;
+      b.extra += final - base;
+      by.set(times, b);
+    });
+    return BONUS_TIMES.filter(t => by.has(t)).map(t => by.get(t));
+  }
+
   // ---- The routes ----
 
   /** /api/stats/summary (summary.go: Summarize). tz is the viewer's minutes east of UTC. */
@@ -439,6 +466,7 @@ export function createEngine(loader) {
         rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null,
       })),
       histogram: histogram(sel, c, main.totals),
+      bonus: bonus(sel),
       medals,
     };
   }

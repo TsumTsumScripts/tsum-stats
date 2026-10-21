@@ -543,6 +543,45 @@ export function drawHistogram(container, hist, totals, ctx) {
   return keyLegend(top);
 }
 
+// ---- The +Coin item's coin bonus, one column per multiplier ----
+
+/** A share to two significant figures under 1 %, so the rare multipliers do not read 0 %. */
+const sharePct = v => `${v < 0.01 ? v * 100 < 0.1 ? (v * 100).toPrecision(1) : (v * 100).toPrecision(2) : (v * 100).toFixed(1)}%`;
+const timesLabel = t => `${t}×`;
+
+/**
+ * bonus: the summary's [{times, rounds, base, extra}] (summary.go: BonusStat).
+ * metric 'rounds' is each multiplier's share of the +Coin rounds; 'extra' its
+ * share of the coins the bonus added, where the rare jackpots weigh in.
+ */
+export function drawBonus(container, bonus, metric) {
+  const f = frame(container, {top: 24, right: 12, bottom: 26, left: 44});
+  const {g, inner} = f;
+  const rounds = d3.sum(bonus, s => s.rounds), extra = d3.sum(bonus, s => s.extra);
+  if (!rounds) return empty(f, 'No +Coin rounds match these filters');
+  const get = metric === 'extra' ? s => (extra ? s.extra / extra : 0) : s => s.rounds / rounds;
+  const x = d3.scaleBand().domain(bonus.map(s => s.times)).range([0, inner.w]).padding(0.18);
+  const y = d3.scaleLinear().domain([0, d3.max(bonus, get)]).nice().range([inner.h, 0]);
+  g.append('g').attr('class', 'grid').call(d3.axisLeft(y).ticks(5).tickSize(-inner.w).tickFormat(''));
+  g.append('g').attr('class', 'axis').attr('transform', `translate(0,${inner.h})`)
+    .call(d3.axisBottom(x).tickFormat(timesLabel).tickSizeOuter(0));
+  g.append('g').attr('class', 'axis').call(d3.axisLeft(y).ticks(5).tickFormat(d3.format('.0%')).tickSizeOuter(0));
+  const cols = g.append('g').selectAll('g').data(bonus).join('g').attr('transform', s => `translate(${x(s.times)},0)`);
+  cols.append('rect').attr('width', x.bandwidth()).attr('y', -20).attr('height', inner.h + 20).attr('fill', 'transparent');
+  // At least 2px, so a multiplier that came up once still shows.
+  cols.append('rect').attr('width', x.bandwidth()).attr('rx', Math.min(4, x.bandwidth() / 4))
+    .attr('y', s => Math.min(y(get(s)), inner.h - 2)).attr('height', s => Math.max(2, inner.h - y(get(s)))).attr('fill', css('--coin'));
+  if (x.bandwidth() >= 30) {
+    cols.append('text').attr('class', 'value-label').attr('x', x.bandwidth() / 2).attr('y', s => Math.min(y(get(s)), inner.h - 2) - 5)
+      .attr('text-anchor', 'middle').text(s => sharePct(get(s)));
+  }
+  hoverable(cols, s => [[b(`${timesLabel(s.times)} coin bonus`)],
+    [b(fmt(s.rounds)), ` rounds · ${sharePct(s.rounds / rounds)}`, s.rounds < rounds ? ` · 1 in ${fmt(rounds / s.rounds)}` : ''],
+    [b(fmt(s.extra)), ` coins added · ${extra ? sharePct(s.extra / extra) : '—'} of the bonus`],
+    ['Average ', b(fmt(s.extra / s.rounds)), ' added a round']]);
+  return [];
+}
+
 // ---- One Tsum's coins per round, a line per skill level ----
 
 /**

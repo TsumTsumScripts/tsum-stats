@@ -119,6 +119,8 @@ function compareSummary(c: Case, want: any, got: any): string[] {
   for (const v of [want, got]) {
     delete v.global;
     delete v.histogram;
+    // The global site has no coin-bonus multipliers (its engine answers none).
+    delete v.bonus;
     v.tsums = sortTsums(v.tsums);
     v.medals.tsums = sortTsums(v.medals.tsums);
     v.dailyTsums = [...v.dailyTsums].sort(by("day", "tsum"));

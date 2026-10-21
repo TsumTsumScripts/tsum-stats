@@ -417,8 +417,10 @@ async function check(engine, q, {spreads = true, medalSpreads = spreads, range =
   assert.ok(got.daily.every((d, i) => !i || got.daily[i - 1].day < d.day), 'days in order');
   assert.ok(got.histogram.bins.every((b, i) => !i || got.histogram.bins[i - 1].from <= b.from), 'buckets in order');
 
+  // The cells keep no coin-bonus multipliers: the global engine answers none.
+  assert.deepEqual(got.bonus, [], 'no coin bonus');
   const {global, histogram, ...rest} = got;
-  const [w, g] = [normalize({...want, histogram: undefined}), normalize(structuredClone({...rest, histogram: undefined}))];
+  const [w, g] = [normalize({...want, histogram: undefined, bonus: undefined}), normalize(structuredClone({...rest, histogram: undefined, bonus: undefined}))];
   if (cut) { aboutOnly(w, spreads, medalSpreads); aboutOnly(g); }
   else markBinned(w, q);
   const problems = [...diff({...w, medals: undefined}, {...g, medals: undefined}, spreads), ...diff(w.medals, g.medals, medalSpreads, '.medals')];

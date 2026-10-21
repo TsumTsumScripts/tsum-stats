@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"regexp"
 	"strings"
@@ -55,6 +56,27 @@ type Filter struct {
 // multipliers (1.1, 1.3, 1.5, 2, 2.5, 3, 4, 5, 6, 11, 21, 51); the 11× and over
 // come about once in 400 rounds and can move a Tsum's figures by a tenth.
 const JackpotTimes = 10
+
+// BonusTimes are the +Coin item's coin-bonus multipliers, and 1 for a round it
+// paid nothing extra. A round's final coins over its base coins is snapped to
+// the nearest (bonusTier), since the game rounds coins: 4 base coins at 1.3×
+// pay 5.
+var BonusTimes = []float64{1, 1.1, 1.3, 1.5, 2, 2.5, 3, 4, 5, 6, 11, 21, 51}
+
+// bonusTier is the multiplier in BonusTimes nearest ratio, on a log scale.
+func bonusTier(ratio float64) float64 {
+	best := BonusTimes[0]
+	for _, t := range BonusTimes[1:] {
+		if math.Abs(math.Log(ratio/t)) < math.Abs(math.Log(ratio/best)) {
+			best = t
+		}
+	}
+	return best
+}
+
+// bonusRoundSQL keeps the rounds that used the +Coin item and have both coin
+// figures, the rounds a coin bonus can be read from.
+const bonusRoundSQL = "json_valid(settings) AND json_extract(settings, '$.bonusCoin') AND base_coins > 0 AND final_coins > 0"
 
 // jackpotSQL is true for a coin-bonus jackpot round; a round without both figures is not one.
 var jackpotSQL = fmt.Sprintf("COALESCE(final_coins > %d * base_coins, 0)", JackpotTimes)

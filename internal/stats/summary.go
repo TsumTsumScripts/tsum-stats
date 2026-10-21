@@ -20,6 +20,8 @@ type Summary struct {
 	Mix        []MixStat     `json:"mix"`
 	Chains     []ChainStat   `json:"chains"`
 	Histogram  CoinHistogram `json:"histogram"`
+	// Bonus is the +Coin item's coin bonus: its rounds per multiplier.
+	Bonus []BonusStat `json:"bonus"`
 	// Medals are the same totals and per-Tsum figures for medals, over the
 	// rounds that earned any, so the page can show them beside coins.
 	Medals StatSet `json:"medals"`
@@ -151,6 +153,15 @@ type CoinBin struct {
 	Rounds int64  `db:"rounds" json:"rounds"`
 }
 
+// BonusStat is one coin-bonus multiplier (BonusTimes): the rounds that drew
+// it, their base coins and the coins the bonus added (final less base).
+type BonusStat struct {
+	Times  float64 `json:"times"`
+	Rounds int64   `json:"rounds"`
+	Base   int64   `json:"base"`
+	Extra  int64   `json:"extra"`
+}
+
 // Rate columns: coins and seconds over rounds that have both. c is the coin
 // column the page asked for (Filter.coin), never user text.
 func rateCoins(c string) string {
@@ -229,7 +240,7 @@ func stddev(v *float64) *float64 {
 // viewer's clock. The queries run at once, so db must be the pool (app.DB()),
 // not a transaction.
 func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
-	s := Summary{Daily: []DayStat{}, DailyTsums: []DayTsumStat{}, Mix: []MixStat{}, Chains: []ChainStat{}}
+	s := Summary{Daily: []DayStat{}, DailyTsums: []DayTsumStat{}, Mix: []MixStat{}, Chains: []ChainStat{}, Bonus: []BonusStat{}}
 	c := f.col()
 	where, p := f.where()
 	p["shift"] = strconv.Itoa(tzMinutes) + " minutes"
@@ -257,6 +268,7 @@ func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
 				AVG(` + c + `) AS avg_coins, ` + rateExpr(c) + ` AS coins_per_sec FROM ts_rounds` + where + ` GROUP BY day, tsum ORDER BY day`).Bind(p).All(&s.DailyTsums)
 		},
 		func() (err error) { s.Mix, err = mixStats(db, f); return err },
+		func() (err error) { s.Bonus, err = bonusStats(db, f); return err },
 		func() error {
 			return db.NewQuery(`SELECT build, tsum, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` + playSettingSQL(PlaySettings[1]) + ` AS chain,
 				COUNT(*) AS rounds, SUM(` + c + `) AS coins, COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs
@@ -285,6 +297,39 @@ func mixStats(db dbx.Builder, f Filter) ([]MixStat, error) {
 		COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs
 		FROM ts_rounds` + where + ` GROUP BY build, tsum, items ORDER BY rounds DESC`).Bind(p).All(&mix)
 	return mix, err
+}
+
+// bonusStats is the summary's Bonus: the +Coin rounds per multiplier, least
+// first. SQL groups them by the ratio in hundredths, Go snaps those to tiers.
+func bonusStats(db dbx.Builder, f Filter) ([]BonusStat, error) {
+	where, p := f.whereAnd(bonusRoundSQL)
+	var rows []struct {
+		Pct    int64 `db:"pct"`
+		Rounds int64 `db:"rounds"`
+		Base   int64 `db:"base"`
+		Final  int64 `db:"final"`
+	}
+	err := db.NewQuery(`SELECT CAST(ROUND(final_coins * 100.0 / base_coins) AS INTEGER) AS pct, COUNT(*) AS rounds,
+		SUM(base_coins) AS base, SUM(final_coins) AS final FROM ts_rounds` + where + ` GROUP BY pct`).Bind(p).All(&rows)
+	byTier := map[float64]*BonusStat{}
+	for _, r := range rows {
+		t := bonusTier(float64(max(r.Pct, 1)) / 100)
+		b := byTier[t]
+		if b == nil {
+			b = &BonusStat{Times: t}
+			byTier[t] = b
+		}
+		b.Rounds += r.Rounds
+		b.Base += r.Base
+		b.Extra += r.Final - r.Base
+	}
+	out := []BonusStat{}
+	for _, t := range BonusTimes {
+		if b := byTier[t]; b != nil {
+			out = append(out, *b)
+		}
+	}
+	return out, err
 }
 
 // statSet is the totals and per-Tsum figures, with their spreads, of f.col().
