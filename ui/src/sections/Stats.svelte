@@ -17,7 +17,7 @@
   import Panel from '../components/Panel.svelte';
   import Seg from '../components/Seg.svelte';
   import TsumCell from '../components/TsumCell.svelte';
-  import {drawBonus, drawCompare, drawDaily, drawEfficiency, drawChains, drawHistogram, drawItems, drawShare} from '../lib/charts.js';
+  import {BONUS_TSUM_ROUNDS, bonusTiers, drawBonus, drawCompare, drawDaily, drawEfficiency, drawChains, drawHistogram, drawItems, drawShare} from '../lib/charts.js';
   import {cardContext} from '../lib/card.js';
   import {expand, shared, toast} from '../lib/ui.svelte.js';
   import {
@@ -89,7 +89,7 @@
 
   // Chart views are a per-browser preference, not part of the link.
   const VIEW_KEY = 'tsum-stats.views';
-  const defaultViews = {compare: 'rate', eff: 'rate', effMetric: 'rate', daily: 'stack', share: 'donut', shareMetric: 'coins', items: 'rate', chains: 'rate', chainsView: 'all', bonus: 'rounds'};
+  const defaultViews = {compare: 'rate', eff: 'rate', effMetric: 'rate', daily: 'stack', share: 'donut', shareMetric: 'coins', items: 'rate', chains: 'rate', chainsView: 'all', bonus: 'rounds', bonusView: 'tiers'};
   const views = $state({...defaultViews, ...loadPref(VIEW_KEY, {})});
   function setView(key, v) {
     views[key] = v;
@@ -121,7 +121,7 @@
   let navTick = $state(0);
   // Rows ticked in the Tsum table for the next comparison.
   const ticked = new SvelteSet();
-  const legends = $state({compare: [], daily: [], share: [], hist: []});
+  const legends = $state({compare: [], daily: [], share: [], hist: [], bonus: []});
 
   const catalog = shared.catalog;
   const nameOf = id => (id ? tsumName(catalog, id, filter.build || 'global') : '');
@@ -365,15 +365,21 @@
   const histSub = $derived(summary && (noSpreads ? `not available ${noSpreads}: ${noSpreadsWhy}`
     : `how many rounds ended with each amount of ${basis}, by Tsum${summary.global ? ' · ≈ from 2 % wide bins' : ''}`));
 
-  // The coin bonus over the +Coin rounds: how much it adds on average, and how often a jackpot (11× and over) comes.
-  const bonusSub = $derived.by(() => {
-    const b = summary?.bonus ?? [];
-    const rounds = b.reduce((n, s) => n + s.rounds, 0), base = b.reduce((n, s) => n + s.base, 0), extra = b.reduce((n, s) => n + s.extra, 0);
-    if (!rounds) return 'rounds played with the +Coin item, by the multiplier they drew';
-    const jackpots = b.filter(s => s.times > 10).reduce((n, s) => n + s.rounds, 0);
-    return `${fmt(rounds)} rounds with +Coin · the bonus added ${base ? pct(extra / base) : '—'} to their base coins`
-      + (jackpots ? ` · 11× or more 1 in ${fmt(rounds / jackpots)}` : '');
+  // The coin bonus over the filter's +Coin rounds: what it adds, against what +Coin costs.
+  const bonus = $derived.by(() => {
+    const tiers = bonusTiers(summary?.bonus.tsums ?? []);
+    const rounds = tiers.reduce((n, s) => n + s.rounds, 0), base = tiers.reduce((n, s) => n + s.base, 0), extra = tiers.reduce((n, s) => n + s.extra, 0);
+    const cost = itemsCost(1), jackpots = tiers.filter(s => s.times > 10).reduce((n, s) => n + s.rounds, 0);
+    return {rounds, cost, jackpots, lift: base ? extra / base : null, added: rounds ? extra / rounds : null,
+      // The base coins at which the bonus, on average, pays for the item.
+      breakEven: base && extra ? cost / (extra / base) : null};
   });
+  const bonusSub = $derived(!bonus.rounds ? 'rounds played with the +Coin item, by the multiplier they drew' : {
+    tiers: `${fmt(bonus.rounds)} rounds with +Coin · solid: this filter · faint: all time · rule: the commonly cited odds`,
+    time: 'the bonus as a share of base coins, per day · with and without the rare 11×, 21× and 51×',
+    waterfall: 'the base coins of the +Coin rounds, and what each multiplier added to make the final coins',
+    tsums: `each Tsum with ${BONUS_TSUM_ROUNDS}+ rounds with +Coin, most played first · the multiplier is luck, so each should look like all time · right: the bonus over base coins`,
+  }[views.bonusView]);
 
   // Each chart's draw arguments; null until there is a summary.
   const byRounds = $derived(summary ? summary.tsums.filter(ranked).sort((a, c) => c.rounds - a.rounds) : []);
@@ -392,7 +398,7 @@
     items: [summary.mix, views.items],
     chains: [summary.chains, views.chains],
     hist: [summary.histogram, summary.totals, spreadCtx],
-    bonus: [summary.bonus, views.bonus],
+    bonus: [views.bonusView, summary.bonus, views.bonus, ctx],
   });
 
   // ---- Tables ----
@@ -642,9 +648,24 @@
     {#if !globalSite}
       <Panel id="s-bonus" class="anchor" title="Coin bonus" sub={bonusSub}>
         {#snippet tools()}
-          <Seg sm label="Measure" value={views.bonus} onpick={v => setView('bonus', v)} options={[['rounds', 'Rounds'], ['extra', 'Coins added']]} />
+          <Seg sm label="Chart" value={views.bonusView} onpick={v => setView('bonusView', v)}
+            options={[['tiers', 'Multipliers'], ['time', 'Over time'], ['waterfall', 'Waterfall'], ['tsums', 'By Tsum']]} />
+          <Seg sm label="Measure" value={views.bonus} onpick={v => setView('bonus', v)} hidden={views.bonusView !== 'tiers'}
+            options={[['rounds', 'Rounds'], ['extra', 'Coins added']]} />
         {/snippet}
-        <Chart draw={drawBonus} args={args?.bonus} {unit} />
+        {#if bonus.rounds}
+          <dl class="bonus-pay">
+            <div><dt>Bonus</dt><dd>+{pct(bonus.lift)} <small>of base coins</small></dd></div>
+            <div><dt>Adds a round</dt><dd class="coin">{fmt(bonus.added)}</dd></div>
+            <div><dt>+Coin costs</dt><dd>{fmt(bonus.cost)}</dd></div>
+            <div><dt>Net a round</dt><dd class:coin={bonus.added >= bonus.cost}>{bonus.added >= bonus.cost ? '+' : ''}{fmt(bonus.added - bonus.cost)}</dd></div>
+            <div title="The base coins at which the average bonus pays for the item: below this a +Coin round loses coins on average">
+              <dt>Pays for itself from</dt><dd>{fmt(bonus.breakEven)} <small>base coins</small></dd></div>
+            {#if bonus.jackpots}<div><dt>11× or more</dt><dd>1 in {fmt(bonus.rounds / bonus.jackpots)}</dd></div>{/if}
+          </dl>
+        {/if}
+        <Chart draw={drawBonus} args={args?.bonus} {unit} size={views.bonusView === 'tsums' ? 'square' : ''} bind:legend={legends.bonus} />
+        <Legend items={legends.bonus} />
       </Panel>
     {/if}
 

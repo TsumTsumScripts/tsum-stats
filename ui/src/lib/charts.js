@@ -543,43 +543,210 @@ export function drawHistogram(container, hist, totals, ctx) {
   return keyLegend(top);
 }
 
-// ---- The +Coin item's coin bonus, one column per multiplier ----
+// ---- The +Coin item's coin bonus ----
+
+/**
+ * The commonly cited odds of each +Coin multiplier, as shares of rounds. They
+ * leave 4× out and add up to 98.91 %; a multiplier without one gets no marker.
+ */
+export const BONUS_ODDS = new Map([[1.1, 0.283], [1.3, 0.414], [1.5, 0.248], [2, 0.0288], [2.5, 0.0036], [3, 0.0031],
+  [5, 0.0021], [6, 0.0037], [11, 0.0013], [21, 0.001], [51, 0.0005]]);
 
 /** A share to two significant figures under 1 %, so the rare multipliers do not read 0 %. */
 const sharePct = v => `${v < 0.01 ? v * 100 < 0.1 ? (v * 100).toPrecision(1) : (v * 100).toPrecision(2) : (v * 100).toFixed(1)}%`;
 const timesLabel = t => `${t}×`;
+/** 11× and over: the jackpots (queries.go: JackpotTimes). */
+const isJackpotTier = t => t > 10;
+
+/** Rows of {times, rounds, base, extra} summed per multiplier, least first. */
+export function bonusTiers(rows) {
+  return [...d3.rollup(rows, rs => ({rounds: d3.sum(rs, r => r.rounds), base: d3.sum(rs, r => r.base), extra: d3.sum(rs, r => r.extra)}), r => r.times)]
+    .map(([times, s]) => ({times, ...s})).sort((a, c) => a.times - c.times);
+}
 
 /**
- * bonus: the summary's [{times, rounds, base, extra}] (summary.go: BonusStat).
- * metric 'rounds' is each multiplier's share of the +Coin rounds; 'extra' its
- * share of the coins the bonus added, where the rare jackpots weigh in.
+ * bonus: the summary's {tsums, daily, all} (summary.go: CoinBonus). view:
+ * 'tiers' a column per multiplier against all time and the cited odds, by
+ * metric ('rounds' or 'extra', the coins the bonus added); 'time' the bonus
+ * per day; 'waterfall' base coins up to final coins, a step per multiplier;
+ * 'tsums' each Tsum's multipliers, to see whether they are luck alone.
  */
-export function drawBonus(container, bonus, metric) {
+export function drawBonus(container, view, bonus, metric, ctx) {
+  if (view === 'time') return drawBonusDays(container, bonus.daily);
+  if (view === 'waterfall') return drawBonusWaterfall(container, bonusTiers(bonus.tsums));
+  if (view === 'tsums') return drawBonusTsums(container, bonus, ctx);
+  return drawBonusTiers(container, bonusTiers(bonus.tsums), bonusTiers(bonus.all), metric);
+}
+
+function drawBonusTiers(container, tiers, all, metric) {
   const f = frame(container, {top: 24, right: 12, bottom: 26, left: 44});
   const {g, inner} = f;
-  const rounds = d3.sum(bonus, s => s.rounds), extra = d3.sum(bonus, s => s.extra);
+  const extra = metric === 'extra';
+  // Each set's shares by multiplier: of its rounds, or of the coins its bonus added.
+  const shares = set => {
+    const total = d3.sum(set, s => (extra ? s.extra : s.rounds));
+    return new Map(set.map(s => [s.times, total ? (extra ? s.extra : s.rounds) / total : 0]));
+  };
+  const mine = shares(tiers), base = shares(all);
+  // The odds as coins added: each multiplier's chance times what it adds.
+  const oddsWeight = [...BONUS_ODDS].reduce((n, [t, p]) => n + p * (extra ? t - 1 : 1), 0);
+  const odds = new Map([...BONUS_ODDS].map(([t, p]) => [t, p * (extra ? t - 1 : 1) / oddsWeight]));
+  const rounds = d3.sum(tiers, s => s.rounds), allRounds = d3.sum(all, s => s.rounds);
   if (!rounds) return empty(f, 'No +Coin rounds match these filters');
-  const get = metric === 'extra' ? s => (extra ? s.extra / extra : 0) : s => s.rounds / rounds;
-  const x = d3.scaleBand().domain(bonus.map(s => s.times)).range([0, inner.w]).padding(0.18);
-  const y = d3.scaleLinear().domain([0, d3.max(bonus, get)]).nice().range([inner.h, 0]);
+  const byTimes = new Map(tiers.map(s => [s.times, s]));
+  const domain = [...new Set([...tiers, ...all].map(s => s.times).concat([...BONUS_ODDS.keys()]))].sort((a, c) => a - c);
+  const x = d3.scaleBand().domain(domain).range([0, inner.w]).padding(0.14);
+  const y = d3.scaleLinear().domain([0, d3.max([...mine.values(), ...base.values(), ...odds.values()])]).nice().range([inner.h, 0]);
   g.append('g').attr('class', 'grid').call(d3.axisLeft(y).ticks(5).tickSize(-inner.w).tickFormat(''));
   g.append('g').attr('class', 'axis').attr('transform', `translate(0,${inner.h})`)
     .call(d3.axisBottom(x).tickFormat(timesLabel).tickSizeOuter(0));
   g.append('g').attr('class', 'axis').call(d3.axisLeft(y).ticks(5).tickFormat(d3.format('.0%')).tickSizeOuter(0));
-  const cols = g.append('g').selectAll('g').data(bonus).join('g').attr('transform', s => `translate(${x(s.times)},0)`);
-  cols.append('rect').attr('width', x.bandwidth()).attr('y', -20).attr('height', inner.h + 20).attr('fill', 'transparent');
-  // At least 2px, so a multiplier that came up once still shows.
-  cols.append('rect').attr('width', x.bandwidth()).attr('rx', Math.min(4, x.bandwidth() / 4))
-    .attr('y', s => Math.min(y(get(s)), inner.h - 2)).attr('height', s => Math.max(2, inner.h - y(get(s)))).attr('fill', css('--coin'));
-  if (x.bandwidth() >= 30) {
-    cols.append('text').attr('class', 'value-label').attr('x', x.bandwidth() / 2).attr('y', s => Math.min(y(get(s)), inner.h - 2) - 5)
-      .attr('text-anchor', 'middle').text(s => sharePct(get(s)));
+  const bw = x.bandwidth(), inset = bw * 0.2;
+  const cols = g.append('g').selectAll('g').data(domain).join('g').attr('transform', t => `translate(${x(t)},0)`);
+  cols.append('rect').attr('width', bw).attr('y', -20).attr('height', inner.h + 20).attr('fill', 'transparent');
+  const top = v => Math.min(y(v), inner.h - 2), height = v => Math.max(2, inner.h - y(v));
+  // All time behind, full width; this filter in front, narrower; the odds a rule across.
+  cols.filter(t => base.has(t)).append('rect').attr('width', bw).attr('rx', Math.min(4, bw / 4))
+    .attr('y', t => top(base.get(t))).attr('height', t => height(base.get(t))).attr('fill', css('--faint')).attr('fill-opacity', 0.35);
+  cols.filter(t => mine.has(t)).append('rect').attr('x', inset).attr('width', bw - 2 * inset).attr('rx', Math.min(4, bw / 4))
+    .attr('y', t => top(mine.get(t))).attr('height', t => height(mine.get(t))).attr('fill', css('--coin'));
+  cols.filter(t => odds.has(t)).append('line').attr('x1', -1).attr('x2', bw + 1).attr('y1', t => y(odds.get(t))).attr('y2', t => y(odds.get(t)))
+    .attr('stroke', css('--ink')).attr('stroke-width', 2).attr('stroke-linecap', 'round');
+  if (bw >= 30) {
+    const peak = t => Math.min(...[mine, base, odds].filter(m => m.has(t)).map(m => y(m.get(t))), inner.h - 2);
+    cols.filter(t => mine.has(t)).append('text').attr('class', 'value-label').attr('x', bw / 2).attr('y', t => peak(t) - 5)
+      .attr('text-anchor', 'middle').text(t => sharePct(mine.get(t)));
   }
-  hoverable(cols, s => [[b(`${timesLabel(s.times)} coin bonus`)],
-    [b(fmt(s.rounds)), ` rounds · ${sharePct(s.rounds / rounds)}`, s.rounds < rounds ? ` · 1 in ${fmt(rounds / s.rounds)}` : ''],
-    [b(fmt(s.extra)), ` coins added · ${extra ? sharePct(s.extra / extra) : '—'} of the bonus`],
-    ['Average ', b(fmt(s.extra / s.rounds)), ' added a round']]);
+  const what = extra ? 'of the coins added' : 'of rounds';
+  hoverable(cols, t => {
+    const s = byTimes.get(t);
+    return [[b(`${timesLabel(t)} coin bonus`)],
+      s ? [b(fmt(s.rounds)), ` rounds · ${sharePct(mine.get(t))} ${what}`] : ['None in this filter'],
+      ...(s && !extra && s.rounds < rounds ? [[`1 in ${fmt(rounds / s.rounds)} rounds`]] : []),
+      ...(s ? [[b(fmt(s.extra)), ' coins added · ', b(fmt(s.extra / s.rounds)), ' a round']] : []),
+      [sw(css('--faint')), 'All time ', b(base.has(t) ? sharePct(base.get(t)) : '—'), dim(` of ${fmt(allRounds)}`)],
+      [sw(css('--ink')), 'Cited odds ', b(odds.has(t) ? sharePct(odds.get(t)) : 'none given')]];
+  });
+  return [{label: 'This filter', color: css('--coin')}, {label: 'All time', color: css('--faint')}, {label: 'Commonly cited odds', color: css('--ink')}];
+}
+
+/** The bonus over base coins per day, with and without the 11×-and-over rounds, and the filter's own. */
+function drawBonusDays(container, daily) {
+  const f = frame(container, {top: 12, right: 16, bottom: 26, left: 44});
+  const {g, inner} = f;
+  const pts = [...d3.group(daily, r => r.day)].map(([day, rs]) => {
+    const jp = rs.filter(r => isJackpotTier(r.times));
+    const base = d3.sum(rs, r => r.base), extra = d3.sum(rs, r => r.extra);
+    const jpBase = d3.sum(jp, r => r.base), jpExtra = d3.sum(jp, r => r.extra);
+    return {day, date: parseDay(day), rounds: d3.sum(rs, r => r.rounds), jackpots: d3.sum(jp, r => r.rounds), base, extra,
+      lift: base ? extra / base : null, steady: base > jpBase ? (extra - jpExtra) / (base - jpBase) : null};
+  }).filter(p => p.lift !== null).sort((a, c) => a.date - c.date);
+  if (!pts.length) return empty(f, 'No +Coin rounds match these filters');
+  const avg = d3.sum(pts, p => p.extra) / d3.sum(pts, p => p.base);
+  const x = dayScale(f, pts);
+  const y = d3.scaleLinear().domain([0, Math.max(avg, d3.max(pts, p => Math.max(p.lift, p.steady ?? 0))) * 1.05]).nice().range([inner.h, 0]);
+  dayAxes(f, x, y, d3.format('.0%'));
+  g.append('line').attr('class', 'ref-line').attr('x1', 0).attr('x2', inner.w).attr('y1', y(avg)).attr('y2', y(avg)).attr('stroke-dasharray', '4 4');
+  g.append('text').attr('class', 'ref-label').attr('x', 4).attr('y', y(avg) - 5).attr('text-anchor', 'start').text(`avg ${pct(avg)}`);
+  bandLine(f, pts.filter(p => p.steady !== null), x, y, css('--score'), {mid: p => p.steady});
+  bandLine(f, pts, x, y, css('--coin'), {mid: p => p.lift});
+  dayHover(f, x, pts, (p, e) => showTip([[b(dayLabel.format(p.date))], [`${fmt(p.rounds)} rounds with +Coin`],
+    [sw(css('--coin')), 'Bonus ', b(pct(p.lift)), ' of base coins'],
+    [sw(css('--score')), 'Without 11× and over ', b(pct(p.steady))],
+    ...(p.jackpots ? [[b(fmt(p.jackpots)), ` at 11× or more`]] : [])], e));
+  return [{label: 'Every +Coin round', color: css('--coin')}, {label: 'Without 11× and over', color: css('--score')}];
+}
+
+/** Base coins, a step per multiplier of the coins it added, and the final coins they make. */
+function drawBonusWaterfall(container, tiers) {
+  const f = frame(container, {top: 24, right: 12, bottom: 26, left: 52});
+  const {g, inner} = f;
+  if (!tiers.length) return empty(f, 'No +Coin rounds match these filters');
+  const base = d3.sum(tiers, s => s.base), final = base + d3.sum(tiers, s => s.extra);
+  let at = base;
+  const steps = [{key: 'Base', from: 0, to: base, kind: 'total'},
+    ...tiers.filter(s => s.extra > 0).map(s => ({key: timesLabel(s.times), from: at, to: (at += s.extra), kind: 'step', s})),
+    {key: 'Final', from: 0, to: final, kind: 'total'}];
+  const x = d3.scaleBand().domain(steps.map(s => s.key)).range([0, inner.w]).padding(0.2);
+  const y = d3.scaleLinear().domain([0, final]).nice().range([inner.h, 0]);
+  g.append('g').attr('class', 'grid').call(d3.axisLeft(y).ticks(5).tickSize(-inner.w).tickFormat(''));
+  g.append('g').attr('class', 'axis').attr('transform', `translate(0,${inner.h})`).call(d3.axisBottom(x).tickSizeOuter(0));
+  g.append('g').attr('class', 'axis').call(d3.axisLeft(y).ticks(5).tickFormat(v => compact.format(v)).tickSizeOuter(0));
+  const bw = x.bandwidth();
+  // A rule from each bar's top to the next one's foot.
+  g.append('g').selectAll('line').data(steps.slice(0, -1)).join('line').attr('class', 'ref-line')
+    .attr('x1', s => x(s.key) + bw).attr('x2', s => x(s.key) + x.step()).attr('y1', s => y(s.to)).attr('y2', s => y(s.to)).style('pointer-events', 'none');
+  const cols = g.append('g').selectAll('g').data(steps).join('g').attr('transform', s => `translate(${x(s.key)},0)`);
+  cols.append('rect').attr('width', bw).attr('y', -20).attr('height', inner.h + 20).attr('fill', 'transparent');
+  cols.append('rect').attr('width', bw).attr('rx', Math.min(4, bw / 4)).attr('y', s => Math.min(y(s.to), y(s.from) - 2))
+    .attr('height', s => Math.max(2, y(s.from) - y(s.to))).attr('fill', s => css(s.kind === 'step' ? '--coin' : '--faint'))
+    .attr('fill-opacity', s => (s.kind === 'step' ? 1 : 0.6));
+  if (bw >= 30) {
+    cols.append('text').attr('class', 'value-label').attr('x', bw / 2).attr('y', s => Math.min(y(s.to), y(s.from) - 2) - 5).attr('text-anchor', 'middle')
+      .text(s => (s.kind === 'step' ? `+${compact.format(s.to - s.from)}` : compact.format(s.to)));
+  }
+  hoverable(cols, s => (s.kind === 'step'
+    ? [[b(`${s.key} coin bonus`)], [b(`+${fmt(s.s.extra)}`), ` coins · ${pct(s.s.extra / (final - base))} of the bonus`],
+      [`${fmt(s.s.rounds)} rounds · `, b(fmt(s.s.extra / s.s.rounds)), ' a round']]
+    : [[b(s.key === 'Base' ? 'Base coins' : 'Final coins')], [b(fmt(s.to)), ' coins'],
+      ...(s.key === 'Final' ? [['The bonus added ', b(pct((final - base) / base))]] : [])]));
   return [];
+}
+
+/** The multipliers grouped for the per-Tsum stacks, least first. */
+const BONUS_GROUPS = [['1.1× or less', t => t <= 1.1], ['1.3×', t => t === 1.3], ['1.5×', t => t === 1.5], ['2×', t => t === 2],
+  ['2.5–6×', t => t >= 2.5 && t <= 6], ['11× and over', isJackpotTier]];
+/** Rounds with +Coin a Tsum needs to get a row. */
+export const BONUS_TSUM_ROUNDS = 50;
+
+/** A 100 % bar per Tsum of its multipliers, under the cited odds and all time; a Tsum's should look like them. */
+function drawBonusTsums(container, bonus, ctx) {
+  const rowOf = (key, label, tiers, id = null) => {
+    const rounds = d3.sum(tiers, s => s.rounds);
+    return {key, label, id, rounds, lift: d3.sum(tiers, s => s.base) ? d3.sum(tiers, s => s.extra) / d3.sum(tiers, s => s.base) : null,
+      shares: BONUS_GROUPS.map(([, has]) => (rounds ? d3.sum(tiers.filter(s => has(s.times)), s => s.rounds) / rounds : 0))};
+  };
+  const oddsTotal = d3.sum(BONUS_ODDS.values());
+  const odds = {key: 'odds', label: 'Cited odds', id: null, rounds: null,
+    lift: d3.sum([...BONUS_ODDS], ([t, p]) => p * (t - 1)) / oddsTotal,
+    shares: BONUS_GROUPS.map(([, has]) => d3.sum([...BONUS_ODDS].filter(([t]) => has(t)), ([, p]) => p) / oddsTotal)};
+  const tsums = [...d3.group(bonus.tsums, r => r.tsum)].map(([id, rs]) => rowOf(id, ctx.nameOf(id) || 'Not identified', rs, id))
+    .filter(r => r.rounds >= BONUS_TSUM_ROUNDS).sort((a, c) => c.rounds - a.rounds);
+  const rows = [odds, rowOf('all', 'All time', bonus.all), ...tsums];
+  const left = Math.min(200, container.clientWidth * 0.38);
+  const f = frame(container, {top: 4, right: 56, bottom: 8, left}, rows.length * ROW_H + 12);
+  const {g, inner} = f;
+  if (!tsums.length) return empty(f, `No Tsum has ${BONUS_TSUM_ROUNDS} +Coin rounds in these filters`);
+  const y = d3.scaleBand().domain(rows.map(r => r.key)).range([0, rows.length * ROW_H]).padding(0.22);
+  const x = d3.scaleLinear().domain([0, 1]).range([0, inner.w]);
+  const coin = css('--coin');
+  const color = i => d3.interpolateRgb(css('--panel'), coin)(0.3 + 0.7 * i / (BONUS_GROUPS.length - 1));
+  const rg = g.append('g').selectAll('g').data(rows).join('g').attr('transform', r => `translate(0,${y(r.key)})`);
+  rg.append('rect').attr('x', -left).attr('width', inner.w + left + 50).attr('height', y.bandwidth()).attr('fill', 'transparent');
+  rg.each(function (r) {
+    let at = 0;
+    r.shares.forEach((v, i) => {
+      const w = x(v);
+      if (w > 0) {
+        d3.select(this).append('rect').attr('x', x(at) + (at ? 1 : 0)).attr('width', Math.max(1, w - (at ? 2 : 0)))
+          .attr('height', y.bandwidth()).attr('rx', 3).attr('fill', color(i));
+        if (w > 38) {
+          d3.select(this).append('text').attr('x', x(at) + w / 2).attr('y', y.bandwidth() / 2).attr('dy', '0.35em').attr('text-anchor', 'middle')
+            .attr('class', 'value-label').style('fill', i >= 3 ? css('--accent-ink') : null).text(`${Math.round(v * 100)}%`);
+        }
+      }
+      at += v;
+    });
+  });
+  rg.append('text').attr('x', inner.w + 6).attr('y', y.bandwidth() / 2).attr('dy', '0.35em').attr('class', 'value-label').text(r => `+${pct(r.lift)}`);
+  const maxChars = Math.max(8, Math.floor((left - 12) / 7));
+  rg.append('text').attr('x', -8).attr('y', y.bandwidth() / 2).attr('dy', '0.35em').attr('text-anchor', 'end').attr('class', 'tick-label')
+    .style('font-weight', r => (r.id ? null : 800))
+    .text(r => (r.label.length > maxChars ? r.label.slice(0, maxChars - 1) + '…' : r.label));
+  hoverable(rg, r => [[b(r.label)], r.rounds === null ? ['The commonly cited odds'] : [`${fmt(r.rounds)} rounds with +Coin`],
+    ['Bonus ', b(pct(r.lift)), ' of base coins'],
+    ...BONUS_GROUPS.map(([name], i) => [sw(color(i)), `${name} `, b(sharePct(r.shares[i]))])], r => (r.id ? e => ctx.onPick(r.id, e) : null));
+  return BONUS_GROUPS.map(([label], i) => ({label, color: color(i)}));
 }
 
 // ---- One Tsum's coins per round, a line per skill level ----

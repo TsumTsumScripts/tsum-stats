@@ -395,20 +395,34 @@ export function createEngine(loader) {
     return h;
   }
 
-  /** The +Coin rounds per multiplier, least first (summary.go: bonusStats). */
-  function bonus(sel) {
+  /**
+   * The +Coin rounds of sel per groupOf(sh, i) and multiplier, by group then
+   * multiplier (summary.go: bonusStats), each {key, times, rounds, base, extra}.
+   */
+  function bonusStats(sel, groupOf) {
     const by = new Map();
     each(sel, (sh, i) => {
       const items = itemsOf(sh, i), base = sh.baseCoins[i], final = sh.finalCoins[i];
       if (items < 0 || !(items & 1) || !(base > 0) || !(final > 0)) return;
-      const times = bonusTier(base, final);
-      const b = by.get(times) ?? {times, rounds: 0, base: 0, extra: 0};
+      const key = groupOf(sh, i), times = bonusTier(base, final);
+      const k = key + '\u0000' + times;
+      const b = by.get(k) ?? {key, times, rounds: 0, base: 0, extra: 0};
       b.rounds++;
       b.base += base;
       b.extra += final - base;
-      by.set(times, b);
+      by.set(k, b);
     });
-    return BONUS_TIMES.filter(t => by.has(t)).map(t => by.get(t));
+    return [...by.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : a.times - b.times));
+  }
+
+  /** The summary's bonus (summary.go: coinBonus): per Tsum and day in the filter, and over every complete round. */
+  async function coinBonus(sel, dayOf) {
+    const strip = ({key, ...b}) => b;
+    return {
+      tsums: bonusStats(sel, (sh, i) => sh.dict.tsum[sh.tsum[i]]).map(({key, ...b}) => ({tsum: key, ...b})),
+      daily: bonusStats(sel, (sh, i) => dayOf(sh.at[i])).map(({key, ...b}) => ({day: key, ...b})),
+      all: bonusStats(await select(parseFilter({})), () => '').map(strip),
+    };
   }
 
   // ---- The routes ----
@@ -466,7 +480,7 @@ export function createEngine(loader) {
         rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null,
       })),
       histogram: histogram(sel, c, main.totals),
-      bonus: bonus(sel),
+      bonus: await coinBonus(sel, dayOf),
       medals,
     };
   }

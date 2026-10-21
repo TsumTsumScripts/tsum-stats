@@ -418,7 +418,7 @@ async function check(engine, q, {spreads = true, medalSpreads = spreads, range =
   assert.ok(got.histogram.bins.every((b, i) => !i || got.histogram.bins[i - 1].from <= b.from), 'buckets in order');
 
   // The cells keep no coin-bonus multipliers: the global engine answers none.
-  assert.deepEqual(got.bonus, [], 'no coin bonus');
+  assert.deepEqual(got.bonus, {tsums: [], daily: [], all: []}, 'no coin bonus');
   const {global, histogram, ...rest} = got;
   const [w, g] = [normalize({...want, histogram: undefined, bonus: undefined}), normalize(structuredClone({...rest, histogram: undefined, bonus: undefined}))];
   if (cut) { aboutOnly(w, spreads, medalSpreads); aboutOnly(g); }

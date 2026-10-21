@@ -536,7 +536,7 @@ export function createGlobalEngine(loader) {
       })),
       histogram: main.spreads ? histogram(sel, k, main) : {width: 0, cap: null, bins: []},
       // The cells keep no coin-bonus multipliers, only whether a round was a jackpot.
-      bonus: [],
+      bonus: {tsums: [], daily: [], all: []},
       medals: plain(medals),
       // spreads: whether the primary stat's quartiles, P90 and histogram are there.
       // range: the outlier range applied ('base', 'final' or 'medals'), and ignored: those that were not.

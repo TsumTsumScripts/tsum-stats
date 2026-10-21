@@ -358,6 +358,12 @@ section[hidden] { display: none !important; }
 .charts { display: grid; gap: 16px; grid-template-columns: 1fr; }
 @media (min-width: 960px) { .charts { grid-template-columns: 1fr 1fr; } .charts .wide { grid-column: 1 / -1; } }
 .chart { width: 100%; height: 280px; overflow-y: auto; overflow-x: hidden; }
+/* The Coin bonus panel's figures above its chart: what +Coin adds against what it costs. */
+.bonus-pay { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 0 0 10px; }
+.bonus-pay dt { color: var(--faint); font: 800 11px var(--font-body); text-transform: uppercase; letter-spacing: 0.04em; }
+.bonus-pay dd { margin: 0; font: 800 18px var(--font-display); color: var(--ink); }
+.bonus-pay dd.coin { color: var(--coin); }
+.bonus-pay small { color: var(--muted); font: 700 12px var(--font-body); }
 .chart.tall { height: 420px; }
 .chart.short { height: 200px; }
 .chart.square { height: 360px; }

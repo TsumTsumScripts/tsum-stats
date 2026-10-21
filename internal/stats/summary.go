@@ -1,8 +1,11 @@
 package stats
 
 import (
+	"cmp"
 	"encoding/json"
 	"math"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,7 +24,7 @@ type Summary struct {
 	Chains     []ChainStat   `json:"chains"`
 	Histogram  CoinHistogram `json:"histogram"`
 	// Bonus is the +Coin item's coin bonus: its rounds per multiplier.
-	Bonus []BonusStat `json:"bonus"`
+	Bonus CoinBonus `json:"bonus"`
 	// Medals are the same totals and per-Tsum figures for medals, over the
 	// rounds that earned any, so the page can show them beside coins.
 	Medals StatSet `json:"medals"`
@@ -153,6 +156,16 @@ type CoinBin struct {
 	Rounds int64  `db:"rounds" json:"rounds"`
 }
 
+// CoinBonus is the +Coin rounds (bonusRoundSQL) per multiplier: per Tsum and
+// per day in the filter, and over every complete round of all time (the
+// filter a bare link gives), the baseline the filter's rounds are held to.
+// Each list is in its key's order, then the multiplier's.
+type CoinBonus struct {
+	Tsums []BonusTsum `json:"tsums"`
+	Daily []BonusDay  `json:"daily"`
+	All   []BonusStat `json:"all"`
+}
+
 // BonusStat is one coin-bonus multiplier (BonusTimes): the rounds that drew
 // it, their base coins and the coins the bonus added (final less base).
 type BonusStat struct {
@@ -160,6 +173,16 @@ type BonusStat struct {
 	Rounds int64   `json:"rounds"`
 	Base   int64   `json:"base"`
 	Extra  int64   `json:"extra"`
+}
+
+type BonusTsum struct {
+	Tsum string `json:"tsum"`
+	BonusStat
+}
+
+type BonusDay struct {
+	Day string `json:"day"`
+	BonusStat
 }
 
 // Rate columns: coins and seconds over rounds that have both. c is the coin
@@ -240,7 +263,7 @@ func stddev(v *float64) *float64 {
 // viewer's clock. The queries run at once, so db must be the pool (app.DB()),
 // not a transaction.
 func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
-	s := Summary{Daily: []DayStat{}, DailyTsums: []DayTsumStat{}, Mix: []MixStat{}, Chains: []ChainStat{}, Bonus: []BonusStat{}}
+	s := Summary{Daily: []DayStat{}, DailyTsums: []DayTsumStat{}, Mix: []MixStat{}, Chains: []ChainStat{}}
 	c := f.col()
 	where, p := f.where()
 	p["shift"] = strconv.Itoa(tzMinutes) + " minutes"
@@ -268,7 +291,7 @@ func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
 				AVG(` + c + `) AS avg_coins, ` + rateExpr(c) + ` AS coins_per_sec FROM ts_rounds` + where + ` GROUP BY day, tsum ORDER BY day`).Bind(p).All(&s.DailyTsums)
 		},
 		func() (err error) { s.Mix, err = mixStats(db, f); return err },
-		func() (err error) { s.Bonus, err = bonusStats(db, f); return err },
+		func() (err error) { s.Bonus, err = coinBonus(db, f, tzMinutes); return err },
 		func() error {
 			return db.NewQuery(`SELECT build, tsum, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` + playSettingSQL(PlaySettings[1]) + ` AS chain,
 				COUNT(*) AS rounds, SUM(` + c + `) AS coins, COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs
@@ -299,36 +322,70 @@ func mixStats(db dbx.Builder, f Filter) ([]MixStat, error) {
 	return mix, err
 }
 
-// bonusStats is the summary's Bonus: the +Coin rounds per multiplier, least
-// first. SQL groups them by the ratio in hundredths, Go snaps those to tiers.
-func bonusStats(db dbx.Builder, f Filter) ([]BonusStat, error) {
-	where, p := f.whereAnd(bonusRoundSQL)
-	var rows []struct {
-		Pct    int64 `db:"pct"`
-		Rounds int64 `db:"rounds"`
-		Base   int64 `db:"base"`
-		Final  int64 `db:"final"`
+// coinBonus is the summary's Bonus, its days shifted as Summarize's are.
+func coinBonus(db dbx.Builder, f Filter, tzMinutes int) (CoinBonus, error) {
+	var tsums, days, all []bonusGroup
+	err := runAll([]func() (err error){
+		func() (err error) { tsums, err = bonusStats(db, f, "tsum", 0); return err },
+		func() (err error) { days, err = bonusStats(db, f, "date(played_at, {:shift})", tzMinutes); return err },
+		func() (err error) { all, err = bonusStats(db, ParseFilter(url.Values{}), "''", 0); return err },
+	})
+	cb := CoinBonus{Tsums: []BonusTsum{}, Daily: []BonusDay{}, All: []BonusStat{}}
+	for _, g := range tsums {
+		cb.Tsums = append(cb.Tsums, BonusTsum{g.key, g.BonusStat})
 	}
-	err := db.NewQuery(`SELECT CAST(ROUND(final_coins * 100.0 / base_coins) AS INTEGER) AS pct, COUNT(*) AS rounds,
-		SUM(base_coins) AS base, SUM(final_coins) AS final FROM ts_rounds` + where + ` GROUP BY pct`).Bind(p).All(&rows)
-	byTier := map[float64]*BonusStat{}
+	for _, g := range days {
+		cb.Daily = append(cb.Daily, BonusDay{g.key, g.BonusStat})
+	}
+	for _, g := range all {
+		cb.All = append(cb.All, g.BonusStat)
+	}
+	return cb, err
+}
+
+type bonusGroup struct {
+	key string
+	BonusStat
+}
+
+// bonusStats is f's +Coin rounds per group (an SQL expression) and
+// multiplier, by group then multiplier. SQL groups them by the ratio in
+// hundredths, Go snaps those to tiers.
+func bonusStats(db dbx.Builder, f Filter, group string, tzMinutes int) ([]bonusGroup, error) {
+	where, p := f.whereAnd(bonusRoundSQL)
+	p["shift"] = strconv.Itoa(tzMinutes) + " minutes"
+	var rows []struct {
+		G      string `db:"g"`
+		Pct    int64  `db:"pct"`
+		Rounds int64  `db:"rounds"`
+		Base   int64  `db:"base"`
+		Final  int64  `db:"final"`
+	}
+	err := db.NewQuery(`SELECT ` + group + ` AS g, CAST(ROUND(final_coins * 100.0 / base_coins) AS INTEGER) AS pct, COUNT(*) AS rounds,
+		SUM(base_coins) AS base, SUM(final_coins) AS final FROM ts_rounds` + where + ` GROUP BY g, pct`).Bind(p).All(&rows)
+	type key struct {
+		g string
+		t float64
+	}
+	by := map[key]*bonusGroup{}
 	for _, r := range rows {
-		t := bonusTier(float64(max(r.Pct, 1)) / 100)
-		b := byTier[t]
+		k := key{r.G, bonusTier(float64(max(r.Pct, 1)) / 100)}
+		b := by[k]
 		if b == nil {
-			b = &BonusStat{Times: t}
-			byTier[t] = b
+			b = &bonusGroup{key: k.g, BonusStat: BonusStat{Times: k.t}}
+			by[k] = b
 		}
 		b.Rounds += r.Rounds
 		b.Base += r.Base
 		b.Extra += r.Final - r.Base
 	}
-	out := []BonusStat{}
-	for _, t := range BonusTimes {
-		if b := byTier[t]; b != nil {
-			out = append(out, *b)
-		}
+	out := make([]bonusGroup, 0, len(by))
+	for _, b := range by {
+		out = append(out, *b)
 	}
+	slices.SortFunc(out, func(a, b bonusGroup) int {
+		return cmp.Or(strings.Compare(a.key, b.key), cmp.Compare(a.Times, b.Times))
+	})
 	return out, err
 }
 
