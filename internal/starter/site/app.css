@@ -43,12 +43,11 @@
 .step h3 { display: flex; align-items: center; gap: 8px; }
 .step__n { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
   background: var(--ink); color: var(--fill); font: 800 13px var(--font-body); }
-.pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 1100px) { .steps { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .steps #updates { grid-column: 1 / -1; } }
 /* The sidebar is in view beside everything, so Change device is only for one column. */
 #change-device { display: none; }
 @media (max-width: 860px) {
-  .layout, .steps, .pair { grid-template-columns: minmax(0, 1fr); }
+  .layout, .steps { grid-template-columns: minmax(0, 1fr); }
   .sidebar { position: static; }
   #change-device { display: inline-flex; }
 }
@@ -91,8 +90,8 @@
 #status-card[data-tone="ok"] { --fill: var(--jade-fill); --edge: var(--jade-edge); --thread: var(--jade-thread); --ink: var(--jade-ink); }
 #status-card[data-tone="warn"] { --fill: var(--marigold-fill); --edge: var(--marigold-edge); --thread: var(--marigold-thread); --ink: var(--marigold-ink); }
 #status-card[data-tone="bad"] { --fill: var(--rose-fill); --edge: var(--rose-edge); --thread: var(--rose-thread); --ink: var(--rose-ink); }
-.checks { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: 4px 14px; }
-.checks label { display: flex; align-items: baseline; gap: 8px; font-weight: 700; font-size: 15px; flex-wrap: wrap; }
+.checks { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: 4px 14px; }
+.checks label { display: flex; align-items: baseline; gap: 8px; font-weight: 700; font-size: 15px; }
 .checks input { width: 18px; height: 18px; accent-color: #1c1b2b; flex: none; transform: translateY(3px); }
 #all-devices-label { grid-column: 1 / -1; }
 
@@ -179,9 +178,8 @@
 .choice:disabled { opacity: .5; }
 .choice:disabled input { cursor: not-allowed; }
 
-/* Watch mode: its card, the switch, and the pill in the Devices header. */
-.watch-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
-.switch { position: relative; display: inline-flex; align-items: center; gap: 10px; font-weight: 800; cursor: pointer; }
+/* Watch mode: its folded row, the switch, and the pill in the Devices list. */
+.switch { position: relative; align-self: flex-start; display: inline-flex; align-items: center; gap: 10px; font-weight: 800; cursor: pointer; }
 /* The checkbox covers the whole control, invisible, so clicks and the keyboard reach it. */
 .switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
 .switch__track { position: relative; flex: none; width: 52px; height: 30px; border-radius: 999px; background: #1c1b2b; border: 2px solid currentColor; }
@@ -197,5 +195,7 @@
 .watch-events time { flex: none; font-variant-numeric: tabular-nums; opacity: .8; }
 .watch-events li[data-ok="false"] span::before { content: '✕ '; font-weight: 800; }
 .watch-error { font-weight: 700; background: var(--rose-fill); color: var(--rose-ink); border-radius: 14px; padding: 8px 14px; }
+.exp-tag { border-radius: 999px; padding: 1px 10px; font-weight: 800; font-size: 12px; letter-spacing: .06em;
+  text-transform: uppercase; background: var(--marigold-fill); color: var(--marigold-ink); }
 .watch-pill { align-self: flex-start; border-radius: 999px; padding: 2px 12px; font-weight: 800; font-size: 13px; background: var(--jade-fill); color: var(--jade-ink); }
 #watch-mapping, #watch-file { overflow-wrap: anywhere; }

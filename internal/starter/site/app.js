@@ -417,6 +417,7 @@ function renderWatch() {
   }
   $('#watch-on').checked = v.on;
   $('#watch-on-label').textContent = v.on ? 'On' : 'Off';
+  $('#watch-summary').textContent = v.on ? 'on for this device' : 'off';
   const m = v.mapping.match;
   $('#watch-mapping').textContent = m
     ? `Emulator: ${m.label}, instance ${m.id}${m.name && m.name !== m.id ? ` “${m.name}”` : ''} (adb port ${m.port}).`

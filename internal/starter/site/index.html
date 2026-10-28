@@ -211,69 +211,64 @@
           <pre class="console" id="console" tabindex="0" aria-label="Activity log"></pre>
         </section>
 
-        <div class="pair" data-device-part hidden>
-          <!-- Watch mode (watch.go): this program keeps GAP running on the device. -->
-          <div class="patch patch--grape card" id="watch-card" aria-labelledby="watch-title">
-            <div class="watch-head">
-              <h3 id="watch-title">Keep GAP running</h3>
-              <label class="switch">
-                <input type="checkbox" role="switch" id="watch-on" aria-describedby="watch-what">
-                <span class="switch__track" aria-hidden="true"></span>
-                <span class="visually-hidden">Watch this device</span>
-                <span class="switch__label" id="watch-on-label" aria-hidden="true">Off</span>
-              </label>
-            </div>
-            <p class="watch-status" id="watch-status" role="status"></p>
-            <ul class="watch-events" id="watch-events" aria-label="Last actions" hidden></ul>
-            <div class="row">
-              <button class="patch patch--paper fbtn fbtn--sm" type="button" id="watch-restart-emu">Restart emulator now…</button>
-              <button class="patch patch--surface fbtn fbtn--sm" type="button" id="watch-reboot">Restart Android…</button>
-            </div>
-            <p class="small watch-error" id="watch-error" role="alert" hidden></p>
-            <details class="more">
-              <summary>What watch mode does</summary>
-              <p class="small" id="watch-what">Checks this device every 15 seconds. It starts GAP after the device
-                restarts, restarts GAP when it stops answering, and restarts a frozen emulator. GAP can also restart the
-                device and carry on afterwards.</p>
-              <p class="small" id="watch-mapping"></p>
-              <p class="small">Watch mode runs inside this program: keep this window and its terminal open, or it stops.
-                Its limits are in <code id="watch-file">watch.json</code> in this folder, and what it did in
-                <code>watch.log</code>.</p>
-            </details>
+        <!-- The export: the thing people are asked for most when something goes wrong. -->
+        <div class="patch patch--jade card" id="export" data-needs-device>
+          <h3>Export logs &amp; stats</h3>
+          <p class="small">Zips these up from this device and asks where to save it. Send that one file when you ask
+            for help.</p>
+          <fieldset class="checks">
+            <legend class="visually-hidden">What to include</legend>
+            <label title="script*.log"><input type="checkbox" name="part" value="script" checked> Script log</label>
+            <label title="companion*.log"><input type="checkbox" name="part" value="companion" checked> GAP Companion log</label>
+            <label title="service.log"><input type="checkbox" name="part" value="service" checked> Service log</label>
+            <label title="stats_*.csv"><input type="checkbox" name="part" value="stats" checked> Round stats</label>
+            <label title="tsum_list_*.csv"><input type="checkbox" name="part" value="lists" checked> Tsum lists</label>
+            <label id="all-devices-label" hidden><input type="checkbox" id="all-devices"> Every connected device, not just this one</label>
+          </fieldset>
+          <div class="row">
+            <button class="patch patch--paper fbtn" type="button" id="export-btn">Save as zip…</button>
+            <span class="small" id="export-status" role="status"></span>
           </div>
-
-          <!-- The export: the thing people are asked for most when something goes wrong. -->
-          <div class="patch patch--jade card" id="export" data-needs-device>
-            <h3>Export logs &amp; stats</h3>
-            <p class="small">Zips these up from this device and asks where to save it. Send that one file when you ask
-              for help.</p>
-            <fieldset class="checks">
-              <legend class="visually-hidden">What to include</legend>
-              <label title="script*.log"><input type="checkbox" name="part" value="script" checked> Script log</label>
-              <label title="companion*.log"><input type="checkbox" name="part" value="companion" checked> GAP Companion log</label>
-              <label title="service.log"><input type="checkbox" name="part" value="service" checked> Service log</label>
-              <label title="stats_*.csv"><input type="checkbox" name="part" value="stats" checked> Round stats</label>
-              <label title="tsum_list_*.csv"><input type="checkbox" name="part" value="lists" checked> Tsum lists</label>
-              <label id="all-devices-label" hidden><input type="checkbox" id="all-devices"> Every connected device, not just this one</label>
-            </fieldset>
+          <details class="more">
+            <summary>Copy or import without zipping</summary>
             <div class="row">
-              <button class="patch patch--paper fbtn" type="button" id="export-btn">Save as zip…</button>
-              <span class="small" id="export-status" role="status"></span>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="import-stats">Import round stats into Stats</button>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="copy-script">Copy script log to folder</button>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="copy-companion">Copy companion log to folder</button>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" id="open-collected">Open the collected folder</button>
             </div>
-            <details class="more">
-              <summary>Copy or import without zipping</summary>
-              <div class="row">
-                <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="import-stats">Import round stats into Stats</button>
-                <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="copy-script">Copy script log to folder</button>
-                <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="copy-companion">Copy companion log to folder</button>
-                <button class="patch patch--surface fbtn fbtn--sm" type="button" id="open-collected">Open the collected folder</button>
-              </div>
-              <p class="small">Copies land in <code id="collected-path">collected/</code>, one folder per device, laid out as on the device.</p>
-            </details>
-          </div>
+            <p class="small">Copies land in <code id="collected-path">collected/</code>, one folder per device, laid out as on the device.</p>
+          </details>
         </div>
 
         <!-- Used now and then: folded until opened. -->
+
+        <!-- Watch mode (watch.go): this program keeps GAP running on the device.
+             Experimental: folded, and off for every device until turned on here. -->
+        <details class="patch patch--grape card fold" id="watch-card" data-device-part hidden>
+          <summary><h3 id="watch-title">Keep GAP running</h3><span class="exp-tag">Experimental</span><span class="small" id="watch-summary">off</span></summary>
+          <p class="small" id="watch-what">Experimental, and off unless you turn it on. Checks this device every 15
+            seconds: starts GAP after the device restarts, restarts GAP when it stops answering, and restarts a frozen
+            emulator. GAP can also restart the device and carry on afterwards.</p>
+          <label class="switch">
+            <input type="checkbox" role="switch" id="watch-on" aria-describedby="watch-what">
+            <span class="switch__track" aria-hidden="true"></span>
+            <span class="visually-hidden">Watch this device</span>
+            <span class="switch__label" id="watch-on-label" aria-hidden="true">Off</span>
+          </label>
+          <p class="watch-status" id="watch-status" role="status"></p>
+          <ul class="watch-events" id="watch-events" aria-label="Last actions" hidden></ul>
+          <div class="row">
+            <button class="patch patch--paper fbtn fbtn--sm" type="button" id="watch-restart-emu">Restart emulator now…</button>
+            <button class="patch patch--surface fbtn fbtn--sm" type="button" id="watch-reboot">Restart Android…</button>
+          </div>
+          <p class="small watch-error" id="watch-error" role="alert" hidden></p>
+          <p class="small" id="watch-mapping"></p>
+          <p class="small">Watch mode runs inside this program: keep this window and its terminal open, or it stops.
+            Its limits are in <code id="watch-file">watch.json</code> in this folder, and what it did in
+            <code>watch.log</code>.</p>
+        </details>
+
         <details class="patch card fold" data-needs-device hidden>
           <summary><h3>Service log</h3><span class="small">what the service printed when it started</span></summary>
           <p class="small">On the device at <code>/data/local/tmp/gap/service.log</code>.</p>
@@ -332,7 +327,7 @@
                 <li><b>started by the app itself</b>: a rooted device. The app manages the service; after updating the app,
                   reboot the device.</li>
                 <li><b>Replaced the ADB server</b>: harmless. Android Studio or your emulator manager reconnects.</li>
-                <li><b>Watch mode</b> keeps GAP running while this program runs. It restarts MuMu Player 12, LDPlayer 9
+                <li><b>Keep GAP running</b> (watch mode, experimental and off unless turned on) keeps GAP running while this program runs. It restarts MuMu Player 12, LDPlayer 9
                   and BlueStacks 5 on Windows, and BlueStacks Air on a Mac; elsewhere it uses adb only.</li>
                 <li>Stuck? Export logs &amp; stats and share the zip.</li>
               </ul>
