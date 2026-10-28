@@ -70,9 +70,9 @@ function describe(d) {
     case 'not installed':
       return {tone: 'bad', next: hasApks
         ? 'Install the app (the APK in this bundle, or the latest published one), then press Start service.'
-        : 'Press Download & install the latest APK, then Start service.'};
+        : 'Press Install the latest APK, then Start service.'};
     case 'wrong ABI':
-      return {tone: 'bad', next: `The installed app was built for another processor. Download the latest APK, which fetches the build for ${d.abi}, then press Start service.`};
+      return {tone: 'bad', next: `The installed app was built for another processor. Install the latest APK, which fetches the build for ${d.abi}, then press Start service.`};
     case 'unreadable':
       return {tone: 'bad', next: 'The device answered, but not in a way this tool could read. Refresh; if it stays like this, reconnect the device.'};
     case 'unauthorized':
@@ -118,8 +118,8 @@ const dotOf = serial => {
   return state.dots[serial];
 };
 
-function badge(d, big = false) {
-  const b = el('span', {class: 'port-badge' + (big ? ' port-badge--big' : ''), title: d.serial}, identity(d).badge);
+function badge(d) {
+  const b = el('span', {class: 'port-badge', title: d.serial}, identity(d).badge);
   b.style.setProperty('--badge-dot', dotOf(d.serial));
   return b;
 }
@@ -156,8 +156,9 @@ function renderStatus() {
   $('#adb-warning').textContent = adb.warning || '';
   $('#channel-line').textContent = s.channel
     ? `Pre-release channel: ${s.channel}`
-    : 'Published releases. Fetches the build made for this device, checked against its published checksum.';
-  $('#update-btn').textContent = s.channel ? 'Download & install the latest pre-release APK' : 'Download & install the latest APK';
+    : 'Published releases: the build made for this device, checked against its published checksum.';
+  $('#update-btn').textContent = s.channel ? 'Install the latest pre-release APK' : 'Install the latest APK';
+  $('#channel-summary').textContent = s.channel ? `on: ${s.channel}` : 'channel URL';
   $('#channel-url').value = s.channel || '';
   $('#collected-path').textContent = s.collected;
   $('#foot').replaceChildren(
@@ -188,8 +189,7 @@ function renderDevices(scanning = false) {
       'aria-label': `${label(d)}${id.model ? ', ' + id.model : ''}, service ${d.service}${picked ? ', selected' : ''}`,
       onclick: () => choose(d.serial),
     },
-    el('span', {class: 'device__top'}, el('span', {class: 'device__model'}, id.name), el('span', {class: 'device__picked'}, '✓ Selected')),
-    el('span', {class: 'device__port'}, badge(d)),
+    el('span', {class: 'device__top'}, el('span', {class: 'device__model'}, id.name), badge(d)),
     el('span', {class: 'device__serial'}, [id.model, d.serial].filter(Boolean).join('  ·  ')),
     el('span', {class: 'device__meta'},
       el('span', {class: 'svc ' + svcClass(d)}, d.busy ? 'busy' : d.service),
@@ -199,15 +199,16 @@ function renderDevices(scanning = false) {
 
 async function renderDevice() {
   const d = current();
-  $('#device').hidden = !d;
-  if (!d) return;
+  $$('[data-device-part]').forEach(n => { n.hidden = !d; });
+  if (!d) {
+    $$('[data-needs-device]').forEach(n => { n.hidden = true; });
+    return;
+  }
   const {tone, next} = describe(d);
   const id = identity(d);
   $('#device-title').textContent = id.name;
   $('#device-sub').textContent = [id.model, d.serial, d.abi !== '-' ? d.abi : ''].filter(Boolean).join('  ·  ');
-  $('#device-badge').replaceChildren(badge(d, true));
-  $$('[data-device-badge]').forEach(n => n.replaceChildren(badge(d)));
-  $$('[data-device-name]').forEach(n => { n.textContent = id.name; });
+  $('#device-badge').replaceChildren(badge(d));
   $('#status-card').dataset.tone = tone;
   $('#status-text').textContent = d.busy ? 'busy' : d.service;
   $('#next-step').textContent = next;
@@ -267,7 +268,7 @@ function startActivity(title) {
 
 const LABELS = {
   start: 'Start service', restart: 'Restart service', stop: 'Stop service', log: 'Show service log',
-  install: 'Install APK', update: 'Download & install the latest APK', 'add-source': 'Add the Tsum Tsum library',
+  install: 'Install APK', update: 'Install the latest APK', 'add-source': 'Add the Tsum Tsum library',
   reconnect: 'Reconnect', reboot: 'Restart Android', 'restart-emulator': 'Restart the emulator',
   'copy-script': 'Copy the script log', 'copy-companion': 'Copy the GAP Companion log', 'import-stats': 'Import round stats into Stats',
   'delete-script': 'Delete the script log', 'delete-stats': 'Delete round stats',
@@ -624,7 +625,7 @@ function choose(serial) {
   $('#service-log').hidden = true;
   post('remember', {serial}).catch(() => {});
   renderDevices();
-  renderDevice().then(() => $('#device').scrollIntoView({behavior: 'smooth', block: 'start'}));
+  renderDevice().then(() => $('#working-on').scrollIntoView({behavior: 'smooth', block: 'nearest'}));
   loadWatch();
 }
 
@@ -694,14 +695,14 @@ function renderUpdate() {
   if (!all) return;
   const ready = Object.keys(UPDATE_NAMES).filter(k => all[k].available && !all[k].disabled);
   $('#update-banner').hidden = !ready.length;
-  $('#update-banner-text').textContent = ready.map(k => `${k === 'stats' ? 'tsum-stats' : 'The starter'} ${all[k].latest} is out.`).join(' ');
+  $('#update-banner').title = ready.map(k => `${k === 'stats' ? 'tsum-stats' : 'The starter'} ${all[k].latest} is out.`).join(' ');
   for (const row of $$('[data-update]')) {
     const u = all[row.dataset.update];
     row.querySelector('[data-update-line]').textContent = updateLine(u);
     row.querySelector('[data-update-apply]').hidden = !(u.available && !u.disabled);
   }
   $('#update-check').hidden = all.stats.disabled && all.starter.disabled;
-  $('#update-checked').textContent = all.checked ? `Last checked ${new Date(all.checked).toLocaleString()}.` : '';
+  $('#update-checked').textContent = all.checked ? `Checked ${since(all.checked)}.` : '';
 }
 
 async function loadUpdate() {
@@ -796,6 +797,14 @@ function wire() {
   $('#watch-restart-emu').addEventListener('click', confirmRestartEmulator);
   $('#watch-reboot').addEventListener('click', confirmReboot);
   $('#quit').addEventListener('click', confirmQuit);
+  $$('a[href^="#"]').forEach(a => a.addEventListener('click', () => openFold(a.getAttribute('href'))));
+  openFold(location.hash);
+}
+
+// A link to a folded section (Help in the header) opens it.
+function openFold(hash) {
+  const t = hash && document.getElementById(hash.slice(1));
+  if (t instanceof HTMLDetailsElement) t.open = true;
 }
 
 // The bundle path's own separator, so a Windows path stays one.

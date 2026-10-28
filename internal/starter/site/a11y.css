@@ -90,7 +90,7 @@ body.felt-body::after { display: none; }
 
 /* The chosen device keeps its "Chosen" tag and outline; the others stay readable. */
 .device[aria-pressed="true"] { outline-color: var(--a-accent); }
-.device-grid:has(.device[aria-pressed="true"]) .device[aria-pressed="false"] { opacity: 1; }
+.device-list:has(.device[aria-pressed="true"]) .device[aria-pressed="false"] { opacity: 1; }
 
 /* --- Appearance popover ---------------------------------------------------- */
 

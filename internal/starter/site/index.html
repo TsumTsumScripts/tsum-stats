@@ -19,7 +19,7 @@
   <script src="app.js" defer></script>
 </head>
 <body class="felt-body">
-<!-- One copy of the felt coin; the header and the page head reuse it. -->
+<!-- One copy of the felt coin, for the header. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
     <filter id="felt-noise" x="-15%" y="-15%" width="130%" height="130%">
@@ -40,15 +40,6 @@
       </g>
       <circle cx="50" cy="50" r="40.5" fill="none" stroke="#fff4cc" stroke-width="2.4" stroke-dasharray="4.2 3.2" stroke-linecap="round"/>
     </symbol>
-    <symbol id="medal" viewBox="0 0 100 104">
-      <g filter="url(#felt-noise)">
-        <polygon points="32.4,11.5 67.6,11.5 92.5,36.4 92.5,71.6 67.6,96.5 32.4,96.5 7.5,71.6 7.5,36.4" fill="#4f86b8"/>
-        <polygon points="32.4,7.5 67.6,7.5 92.5,32.4 92.5,67.6 67.6,92.5 32.4,92.5 7.5,67.6 7.5,32.4" fill="#6fb4e3"/>
-        <polygon points="35.5,15 64.5,15 85,35.5 85,64.5 64.5,85 35.5,85 15,64.5 15,35.5" fill="#bfe0f7"/>
-        <polygon points="50,21 54.6,41.2 70,30 58.8,45.4 79,50 58.8,54.6 70,70 54.6,58.8 50,79 45.4,58.8 30,70 41.2,54.6 21,50 41.2,45.4 30,30 45.4,41.2" fill="#ffffff"/>
-      </g>
-      <polygon points="34.3,12 65.7,12 88,34.3 88,65.7 65.7,88 34.3,88 12,65.7 12,34.3" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-dasharray="4.2 3.2" stroke-linecap="round"/>
-    </symbol>
   </defs>
 </svg>
 
@@ -59,9 +50,10 @@
       <span class="felt-brand__name">Tsum Tsum Starter</span>
     </a>
     <nav aria-label="Main" class="felt-nav">
-      <a class="patch patch--marigold felt-pill felt-pill--on" href="#devices" aria-current="page">Devices</a>
+      <!-- A newer tsum-stats or starter is out. -->
+      <a class="patch patch--periwinkle felt-pill" href="#updates" id="update-banner" hidden>Update ready</a>
       <a class="patch patch--jade felt-pill" href="#export">Export logs &amp; stats</a>
-      <a class="patch patch--periwinkle felt-pill" href="/" target="_blank" rel="noopener">Stats site ↗</a>
+      <a class="patch patch--surface felt-pill" href="/" target="_blank" rel="noopener">Stats site ↗</a>
       <a class="patch patch--rose felt-pill" href="#help">Help</a>
       <button class="patch patch--surface felt-pill appearance-btn" type="button" popovertarget="appearance"
         aria-label="Appearance">Aa</button>
@@ -99,17 +91,7 @@
   </div>
 
   <main class="felt-wrap" id="top">
-    <div class="felt-pagehead">
-      <span class="patch patch--jade kicker">Service starter</span>
-      <h1>Start the service <span class="patch patch--jade felt-pagehead__accent">in one click.</span></h1>
-      <p class="felt-pagehead__body">
-        GAP needs a helper service on the phone or emulator. Android only lets a computer start it, and it stops when
-        the device restarts. Pick your device below and press <b>Start service</b>. Rooted devices start it themselves.
-      </p>
-      <p class="adb-line" id="adb-line" hidden></p>
-      <svg class="felt-sticker" style="top:-6px;right:24px;width:74px;height:77px;transform:rotate(14deg)" aria-hidden="true"><use href="#coin"/></svg>
-      <svg class="felt-sticker" style="top:92px;right:110px;width:46px;height:48px;transform:rotate(-12deg)" aria-hidden="true"><use href="#medal"/></svg>
-    </div>
+    <h1 class="visually-hidden">Tsum Tsum Starter</h1>
 
     <!-- adb is missing: the one download this tool makes without being told. -->
     <section class="patch patch--marigold card" id="adb-card" hidden aria-labelledby="adb-title">
@@ -127,44 +109,40 @@
 
     <p class="patch patch--grape note" id="adb-warning" hidden role="status"></p>
 
-    <!-- A newer tsum-stats or starter is out. -->
-    <div class="patch patch--periwinkle note update-banner" id="update-banner" hidden role="status">
-      <p id="update-banner-text"></p>
-      <a class="patch patch--paper fbtn fbtn--sm" href="#updates">See updates</a>
-    </div>
-
-    <section id="devices" aria-labelledby="devices-title" class="stack">
-      <div class="section-head">
-        <h2 id="devices-title">Your devices</h2>
-        <div class="row">
-          <span class="watch-pill" id="watch-pill" hidden></span>
-          <button class="patch patch--surface fbtn fbtn--sm" id="refresh" type="button">Refresh</button>
-          <button class="patch patch--surface fbtn fbtn--sm" id="adb-restart" type="button"
-            title="Missing a device? Restarts adb (kill-server, then start-server) and looks again.">Restart adb</button>
+    <!-- Devices down the side; what to do with the chosen one beside them. -->
+    <div class="layout">
+      <section id="devices" class="sidebar" aria-labelledby="devices-title">
+        <div class="section-head">
+          <h2 id="devices-title">Devices</h2>
+          <div class="row row--tight">
+            <button class="patch patch--surface fbtn fbtn--xs" id="refresh" type="button" aria-label="Refresh"
+              title="Look for devices again">↻</button>
+            <button class="patch patch--surface fbtn fbtn--xs" id="adb-restart" type="button"
+              title="Missing a device? Restarts adb (kill-server, then start-server) and looks again.">Restart adb</button>
+          </div>
         </div>
-      </div>
-      <p class="muted" id="devices-intro">Every phone and emulator adb can see. Choose the one to work on; it stays chosen the next time too.</p>
-      <div class="device-grid" id="device-list" aria-live="polite"></div>
-    </section>
+        <span class="watch-pill" id="watch-pill" hidden></span>
+        <div class="device-list" id="device-list" aria-live="polite"></div>
+        <p class="small muted">GAP needs a helper service that only a computer can start, and it stops when the
+          device restarts. Pick a device, then press <b>Start service</b>.</p>
+        <p class="adb-line" id="adb-line" hidden></p>
+      </section>
 
-    <!-- The chosen device. Everything here acts on it. -->
-    <section id="device" class="stack" hidden aria-labelledby="device-title">
-      <!-- Stays on screen while scrolling the panel, so every button below is
-           plainly for this one device. -->
-      <div class="patch patch--paper working-on" id="working-on">
-        <div class="working-on__who">
-          <span class="kicker-sm">Everything below is for</span>
+      <div class="main-col">
+        <!-- The chosen device. Stays on screen while scrolling, so every button
+             below is plainly for this one device. -->
+        <div class="patch patch--paper working-on" id="working-on" data-device-part hidden>
+          <span class="kicker-sm">For</span>
+          <span id="device-badge"></span>
           <h2 id="device-title">Device</h2>
           <span class="working-on__meta" id="device-sub"></span>
+          <a class="patch patch--surface fbtn fbtn--xs" href="#devices" id="change-device">Change device</a>
         </div>
-        <span id="device-badge"></span>
-        <a class="patch patch--surface fbtn fbtn--sm" href="#devices" id="change-device">Change device</a>
-      </div>
 
-      <div class="panel-grid">
-        <div class="stack">
-          <div class="patch card" id="status-card">
-            <span class="kicker-sm">Service</span>
+        <!-- The three things most visits are for, in the order they are done. -->
+        <div class="steps">
+          <div class="patch card step" id="status-card" data-device-part hidden>
+            <h3><span class="step__n" aria-hidden="true">1</span>Service</h3>
             <p class="status-big" id="status-text">-</p>
             <p class="next" id="next-step"></p>
             <div class="row" id="service-actions">
@@ -178,41 +156,14 @@
             <p class="small" id="root-note">Not needed on a rooted device: the app starts the service itself.</p>
           </div>
 
-          <!-- Watch mode (watch.go): this program keeps GAP running on the device. -->
-          <div class="patch patch--grape card" id="watch-card" aria-labelledby="watch-title">
-            <div class="watch-head">
-              <h3 id="watch-title">Keep GAP running (watch mode)</h3>
-              <label class="switch">
-                <input type="checkbox" role="switch" id="watch-on" aria-describedby="watch-what">
-                <span class="switch__track" aria-hidden="true"></span>
-                <span class="visually-hidden">Watch this device</span>
-                <span class="switch__label" id="watch-on-label" aria-hidden="true">Off</span>
-              </label>
-            </div>
-            <p class="small" id="watch-what">Checks this device every 15 seconds. It starts GAP after the device
-              restarts, restarts GAP when it stops answering, and restarts a frozen emulator. GAP can also restart the
-              device and carry on afterwards.</p>
-            <p class="small" id="watch-mapping"></p>
-            <p class="watch-status" id="watch-status" role="status"></p>
-            <ul class="watch-events" id="watch-events" aria-label="Last actions" hidden></ul>
+          <div class="patch patch--periwinkle card step" data-needs-device hidden>
+            <h3><span class="step__n" aria-hidden="true">2</span>GAP app &amp; library</h3>
+            <p class="small" id="channel-line"></p>
             <div class="row">
-              <button class="patch patch--paper fbtn fbtn--sm" type="button" id="watch-restart-emu">Restart emulator now…</button>
-              <button class="patch patch--surface fbtn fbtn--sm" type="button" id="watch-reboot">Restart Android…</button>
-            </div>
-            <p class="small watch-error" id="watch-error" role="alert" hidden></p>
-            <p class="small">Watch mode runs inside this program: keep this window and its terminal open, or it stops.
-              Its limits are in <code id="watch-file">watch.json</code> in this folder, and what it did in
-              <code>watch.log</code>.</p>
-          </div>
-
-          <div class="patch patch--periwinkle card" data-needs-device>
-            <h3>The app</h3>
-            <p id="channel-line" class="small"></p>
-            <div class="row">
-              <button class="patch patch--paper fbtn fbtn--sm" type="button" data-action="update" id="update-btn">Download &amp; install the latest APK</button>
+              <button class="patch patch--paper fbtn" type="button" data-action="update" id="update-btn">Install the latest APK</button>
               <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="add-source">Add the Tsum Tsum library</button>
             </div>
-            <p class="small">Installing also asks GAP on the device to add the Tsum Tsum library to its Sources: tap Add there.</p>
+            <p class="small">Installing also asks GAP to add the Tsum Tsum library to its Sources: tap Add on the device.</p>
             <div class="row" id="install-row" hidden>
               <label class="field">
                 <span>APK in this bundle</span>
@@ -222,150 +173,181 @@
             </div>
           </div>
 
-          <div class="patch card" data-needs-device>
-            <h3>Service log</h3>
-            <p class="small">What the service printed when it started, on the device at <code>/data/local/tmp/gap/service.log</code>.</p>
-            <div class="row">
-              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="log">Show service log</button>
-              <button class="patch patch--surface fbtn fbtn--sm" type="button" id="follow-btn">Follow live</button>
+          <div class="patch card step" id="updates" aria-labelledby="updates-title">
+            <h3 id="updates-title"><span class="step__n" aria-hidden="true">3</span>Updates</h3>
+            <div class="update-row" data-update="starter">
+              <p><b>Starter</b> <span data-update-line></span></p>
+              <button class="patch patch--paper fbtn fbtn--sm" type="button" data-update-apply hidden>Update</button>
             </div>
-            <pre class="console console--inline" id="service-log" hidden tabindex="0" aria-label="Service log"></pre>
+            <div class="update-row" data-update="stats">
+              <p><b>tsum-stats</b> <span data-update-line></span></p>
+              <button class="patch patch--paper fbtn fbtn--sm" type="button" data-update-apply hidden>Update</button>
+            </div>
+            <div class="row">
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" id="update-check">Check for updates</button>
+              <span class="small" id="update-checked"></span>
+            </div>
+            <details class="more">
+              <summary>How updating works</summary>
+              <p class="small">The starter is this folder's scripts; tsum-stats serves this page and the Stats site.
+                Updating downloads the new version from GitHub, checks it against the published checksum and restarts
+                the starter in this window; the page reloads by itself. Your adb, APKs, copied files and settings stay
+                as they are. It also looks every few hours while open.</p>
+            </details>
+            <pre class="console console--inline" id="update-log" hidden></pre>
           </div>
         </div>
 
-        <div class="stack">
+        <!-- What the last action said. -->
+        <section class="patch card card--console" id="activity" aria-labelledby="activity-title" hidden>
+          <div class="section-head">
+            <h3 id="activity-title">Activity</h3>
+            <button class="patch patch--surface fbtn fbtn--xs" type="button" id="clear-log">Clear</button>
+          </div>
+          <div class="verdict" id="verdict" role="status" hidden>
+            <p id="verdict-text"></p>
+            <button class="patch patch--paper fbtn fbtn--sm" type="button" id="verdict-open" hidden>Open the folder</button>
+          </div>
+          <pre class="console" id="console" tabindex="0" aria-label="Activity log"></pre>
+        </section>
+
+        <div class="pair" data-device-part hidden>
+          <!-- Watch mode (watch.go): this program keeps GAP running on the device. -->
+          <div class="patch patch--grape card" id="watch-card" aria-labelledby="watch-title">
+            <div class="watch-head">
+              <h3 id="watch-title">Keep GAP running</h3>
+              <label class="switch">
+                <input type="checkbox" role="switch" id="watch-on" aria-describedby="watch-what">
+                <span class="switch__track" aria-hidden="true"></span>
+                <span class="visually-hidden">Watch this device</span>
+                <span class="switch__label" id="watch-on-label" aria-hidden="true">Off</span>
+              </label>
+            </div>
+            <p class="watch-status" id="watch-status" role="status"></p>
+            <ul class="watch-events" id="watch-events" aria-label="Last actions" hidden></ul>
+            <div class="row">
+              <button class="patch patch--paper fbtn fbtn--sm" type="button" id="watch-restart-emu">Restart emulator now…</button>
+              <button class="patch patch--surface fbtn fbtn--sm" type="button" id="watch-reboot">Restart Android…</button>
+            </div>
+            <p class="small watch-error" id="watch-error" role="alert" hidden></p>
+            <details class="more">
+              <summary>What watch mode does</summary>
+              <p class="small" id="watch-what">Checks this device every 15 seconds. It starts GAP after the device
+                restarts, restarts GAP when it stops answering, and restarts a frozen emulator. GAP can also restart the
+                device and carry on afterwards.</p>
+              <p class="small" id="watch-mapping"></p>
+              <p class="small">Watch mode runs inside this program: keep this window and its terminal open, or it stops.
+                Its limits are in <code id="watch-file">watch.json</code> in this folder, and what it did in
+                <code>watch.log</code>.</p>
+            </details>
+          </div>
+
           <!-- The export: the thing people are asked for most when something goes wrong. -->
-          <div class="patch patch--jade card card--export" id="export" data-needs-device>
+          <div class="patch patch--jade card" id="export" data-needs-device>
             <h3>Export logs &amp; stats</h3>
-            <p class="for-device">From <span data-device-badge></span> <span data-device-name></span></p>
-            <p>Zips up everything below from this device and asks where to save it. Send that one file when you
-              ask for help.</p>
+            <p class="small">Zips these up from this device and asks where to save it. Send that one file when you ask
+              for help.</p>
             <fieldset class="checks">
               <legend class="visually-hidden">What to include</legend>
-              <label><input type="checkbox" name="part" value="script" checked> Script log <small>script*.log</small></label>
-              <label><input type="checkbox" name="part" value="companion" checked> GAP Companion log <small>companion*.log</small></label>
-              <label><input type="checkbox" name="part" value="service" checked> Service log <small>service.log</small></label>
-              <label><input type="checkbox" name="part" value="stats" checked> Round stats <small>stats_*.csv</small></label>
-              <label><input type="checkbox" name="part" value="lists" checked> Tsum lists <small>tsum_list_*.csv</small></label>
+              <label title="script*.log"><input type="checkbox" name="part" value="script" checked> Script log</label>
+              <label title="companion*.log"><input type="checkbox" name="part" value="companion" checked> GAP Companion log</label>
+              <label title="service.log"><input type="checkbox" name="part" value="service" checked> Service log</label>
+              <label title="stats_*.csv"><input type="checkbox" name="part" value="stats" checked> Round stats</label>
+              <label title="tsum_list_*.csv"><input type="checkbox" name="part" value="lists" checked> Tsum lists</label>
               <label id="all-devices-label" hidden><input type="checkbox" id="all-devices"> Every connected device, not just this one</label>
             </fieldset>
             <div class="row">
               <button class="patch patch--paper fbtn" type="button" id="export-btn">Save as zip…</button>
+              <span class="small" id="export-status" role="status"></span>
             </div>
-            <p class="small" id="export-status" role="status"></p>
-            <hr>
-            <div class="row">
-              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="import-stats">Import round stats into Stats</button>
-              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="copy-script">Copy script log to folder</button>
-              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="copy-companion">Copy companion log to folder</button>
-              <button class="patch patch--surface fbtn fbtn--sm" type="button" id="open-collected">Open the collected folder</button>
-            </div>
-            <p class="small">Copies land in <code id="collected-path">collected/</code>, one folder per device, laid out as on the device.</p>
-          </div>
-
-          <div class="patch patch--rose card" data-needs-device>
-            <h3>Clear files off the device</h3>
-            <p class="small">Nothing keeps a second copy, so export first if you want to keep them. Each shows the
-              files and asks before deleting.</p>
-            <div class="row">
-              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-delete="script">Delete script log…</button>
-              <button class="patch patch--surface fbtn fbtn--sm" type="button" data-delete="stats">Delete round stats…</button>
-            </div>
+            <details class="more">
+              <summary>Copy or import without zipping</summary>
+              <div class="row">
+                <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="import-stats">Import round stats into Stats</button>
+                <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="copy-script">Copy script log to folder</button>
+                <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="copy-companion">Copy companion log to folder</button>
+                <button class="patch patch--surface fbtn fbtn--sm" type="button" id="open-collected">Open the collected folder</button>
+              </div>
+              <p class="small">Copies land in <code id="collected-path">collected/</code>, one folder per device, laid out as on the device.</p>
+            </details>
           </div>
         </div>
-      </div>
-    </section>
 
-    <!-- What the last action said. -->
-    <section class="patch card card--console" id="activity" aria-labelledby="activity-title" hidden>
-      <div class="section-head">
-        <h3 id="activity-title">Activity</h3>
-        <button class="patch patch--surface fbtn fbtn--sm" type="button" id="clear-log">Clear</button>
-      </div>
-      <div class="verdict" id="verdict" role="status" hidden>
-        <p id="verdict-text"></p>
-        <button class="patch patch--paper fbtn fbtn--sm" type="button" id="verdict-open" hidden>Open the folder</button>
-      </div>
-      <pre class="console" id="console" tabindex="0" aria-label="Activity log"></pre>
-    </section>
+        <!-- Used now and then: folded until opened. -->
+        <details class="patch card fold" data-needs-device hidden>
+          <summary><h3>Service log</h3><span class="small">what the service printed when it started</span></summary>
+          <p class="small">On the device at <code>/data/local/tmp/gap/service.log</code>.</p>
+          <div class="row">
+            <button class="patch patch--surface fbtn fbtn--sm" type="button" data-action="log">Show service log</button>
+            <button class="patch patch--surface fbtn fbtn--sm" type="button" id="follow-btn">Follow live</button>
+          </div>
+          <pre class="console console--inline" id="service-log" hidden tabindex="0" aria-label="Service log"></pre>
+        </details>
 
-    <section class="stack" id="updates" aria-labelledby="updates-title">
-      <h2 id="updates-title">Updates</h2>
-      <div class="patch card">
-        <div class="update-row" data-update="starter">
-          <p><b>Starter</b> <span data-update-line></span></p>
-          <button class="patch patch--paper fbtn fbtn--sm" type="button" data-update-apply hidden>Update the starter</button>
-        </div>
-        <div class="update-row" data-update="stats">
-          <p><b>tsum-stats</b> <span data-update-line></span></p>
-          <button class="patch patch--paper fbtn fbtn--sm" type="button" data-update-apply hidden>Update tsum-stats</button>
-        </div>
-        <div class="row">
-          <button class="patch patch--surface fbtn fbtn--sm" type="button" id="update-check">Check for updates</button>
-          <span class="small muted" id="update-checked"></span>
-        </div>
-        <p class="small">The starter is this folder's scripts; tsum-stats serves this page and the Stats site.
-          Updating downloads the new version from GitHub, checks it against the published checksum and restarts the
-          starter in this window; the page reloads by itself. Your adb, APKs, copied files and settings stay as they
-          are. It also looks every few hours while open.</p>
-        <pre class="console console--inline" id="update-log" hidden></pre>
-      </div>
-    </section>
+        <details class="patch card fold" data-needs-device hidden>
+          <summary><h3>Clear files off the device</h3><span class="small">script log, round stats</span></summary>
+          <p class="small">Nothing keeps a second copy, so export first if you want to keep them. Each shows the
+            files and asks before deleting.</p>
+          <div class="row">
+            <button class="patch patch--surface fbtn fbtn--sm" type="button" data-delete="script">Delete script log…</button>
+            <button class="patch patch--surface fbtn fbtn--sm" type="button" data-delete="stats">Delete round stats…</button>
+          </div>
+        </details>
 
-    <section class="stack" id="settings" aria-labelledby="settings-title">
-      <h2 id="settings-title">Testing a pre-release</h2>
-      <div class="patch card">
-        <p class="small">A tester is given a folder URL (or its catalogue file's address). With it set, <b>Download &amp;
-          install the latest APK</b> takes that folder's build instead of the published release. Kept in
-          <code>channel.txt</code>.</p>
-        <form class="row" id="channel-form">
-          <label class="field field--grow">
-            <span>Channel URL</span>
-            <input type="url" id="channel-url" placeholder="https://example.com/alpha/alpha.json" autocomplete="off">
-          </label>
-          <button class="patch patch--paper fbtn fbtn--sm" type="submit">Use this channel</button>
-          <button class="patch patch--surface fbtn fbtn--sm" type="button" id="channel-off">Back to releases</button>
-        </form>
-      </div>
-    </section>
+        <details class="patch card fold" id="settings">
+          <summary><h3>Testing a pre-release</h3><span class="small" id="channel-summary">channel URL</span></summary>
+          <p class="small">A tester is given a folder URL (or its catalogue file's address). With it set, <b>Install the
+            latest APK</b> takes that folder's build instead of the published release. Kept in
+            <code>channel.txt</code>.</p>
+          <form class="row" id="channel-form">
+            <label class="field field--grow">
+              <span>Channel URL</span>
+              <input type="url" id="channel-url" placeholder="https://example.com/alpha/alpha.json" autocomplete="off">
+            </label>
+            <button class="patch patch--paper fbtn fbtn--sm" type="submit">Use this channel</button>
+            <button class="patch patch--surface fbtn fbtn--sm" type="button" id="channel-off">Back to releases</button>
+          </form>
+        </details>
 
-    <section class="stack" id="help" aria-labelledby="help-title">
-      <h2 id="help-title">Help</h2>
-      <div class="help-grid">
-        <div class="patch patch--surface card">
-          <h3>Getting a device listed</h3>
-          <ul>
-            <li>Start your emulator, or plug the phone in with USB debugging on: Settings &gt; About phone, tap
-              <b>Build number</b> seven times, then Developer options &gt; USB debugging.</li>
-            <li>The first time, the phone asks <i>Allow USB debugging?</i> Tap Allow, then Refresh.</li>
-            <li>A device you expect is missing, or stuck <b>offline</b>? <b>Restart adb</b> restarts the adb server and
-              looks again.</li>
-            <li>MuMu, LDPlayer, Nox and MEmu are found on their usual ports, four instances each. Another port: set
-              <code>GAP_EXTRA_PORTS="12345"</code> before starting.</li>
-          </ul>
-        </div>
-        <div class="patch patch--surface card">
-          <h3>When something is wrong</h3>
-          <ul>
-            <li><b>wrong ABI</b>: the installed app was built for another processor. Download the latest APK; it fetches
-              the build for this device.</li>
-            <li><b>started by the app itself</b>: a rooted device. The app manages the service; after updating the app,
-              reboot the device.</li>
-            <li><b>Replaced the ADB server</b>: harmless. Android Studio or your emulator manager reconnects.</li>
-            <li><b>Watch mode</b> keeps GAP running while this program runs. It restarts MuMu Player 12, LDPlayer 9
-              and BlueStacks 5 on Windows, and BlueStacks Air on a Mac; elsewhere it uses adb only.</li>
-            <li>Stuck? Export logs &amp; stats and share the zip.</li>
-          </ul>
-        </div>
-        <div class="patch patch--surface card">
-          <h3>Stats</h3>
-          <p class="small">The <a href="/" target="_blank" rel="noopener">Stats site</a> runs here too, at the same
-            address. <b>Import round stats into Stats</b> copies a device's <code>stats_*.csv</code> and Tsum lists
-            into it; the app can also send rounds live (Settings &gt; Script events).</p>
-          <p class="small"><b>Stop</b> at the top of the page stops both, and closes the starter's terminal window.</p>
-        </div>
+        <details class="patch card fold" id="help">
+          <summary><h3>Help</h3><span class="small">getting a device listed · when something is wrong · stats</span></summary>
+          <div class="help-grid">
+            <div>
+              <h4>Getting a device listed</h4>
+              <ul>
+                <li>Start your emulator, or plug the phone in with USB debugging on: Settings &gt; About phone, tap
+                  <b>Build number</b> seven times, then Developer options &gt; USB debugging.</li>
+                <li>The first time, the phone asks <i>Allow USB debugging?</i> Tap Allow, then Refresh.</li>
+                <li>A device you expect is missing, or stuck <b>offline</b>? <b>Restart adb</b> restarts the adb server and
+                  looks again.</li>
+                <li>MuMu, LDPlayer, Nox and MEmu are found on their usual ports, four instances each. Another port: set
+                  <code>GAP_EXTRA_PORTS="12345"</code> before starting.</li>
+              </ul>
+            </div>
+            <div>
+              <h4>When something is wrong</h4>
+              <ul>
+                <li><b>wrong ABI</b>: the installed app was built for another processor. Install the latest APK; it
+                  fetches the build for this device.</li>
+                <li><b>started by the app itself</b>: a rooted device. The app manages the service; after updating the app,
+                  reboot the device.</li>
+                <li><b>Replaced the ADB server</b>: harmless. Android Studio or your emulator manager reconnects.</li>
+                <li><b>Watch mode</b> keeps GAP running while this program runs. It restarts MuMu Player 12, LDPlayer 9
+                  and BlueStacks 5 on Windows, and BlueStacks Air on a Mac; elsewhere it uses adb only.</li>
+                <li>Stuck? Export logs &amp; stats and share the zip.</li>
+              </ul>
+            </div>
+            <div>
+              <h4>Stats</h4>
+              <p class="small">The <a href="/" target="_blank" rel="noopener">Stats site</a> runs here too, at the same
+                address. <b>Import round stats into Stats</b> copies a device's <code>stats_*.csv</code> and Tsum lists
+                into it; the app can also send rounds live (Settings &gt; Script events).</p>
+              <p class="small"><b>Stop</b> at the top of the page stops both, and closes the starter's terminal window.</p>
+            </div>
+          </div>
+        </details>
       </div>
-    </section>
+    </div>
   </main>
 
   <footer class="felt-wrap foot">
