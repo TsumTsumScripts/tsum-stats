@@ -45,9 +45,12 @@
   background: var(--ink); color: var(--fill); font: 800 13px var(--font-body); }
 .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 1100px) { .steps { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .steps #updates { grid-column: 1 / -1; } }
+/* The sidebar is in view beside everything, so Change device is only for one column. */
+#change-device { display: none; }
 @media (max-width: 860px) {
   .layout, .steps, .pair { grid-template-columns: minmax(0, 1fr); }
   .sidebar { position: static; }
+  #change-device { display: inline-flex; }
 }
 
 /* Folded sections: the summary is the heading row. */
