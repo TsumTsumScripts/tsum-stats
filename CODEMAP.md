@@ -164,6 +164,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `components/` top bar | `LivePills.svelte` (live devices), `SnapshotNote.svelte`, `GlobalNote.svelte`, `ThemePicker.svelte`, `Dropdown.svelte` |
 | `components/` building blocks | `CopyButton.svelte` (copy as an image), `Panel.svelte`, `Chart.svelte`, `Legend.svelte`, `Tip.svelte`, `DataTable.svelte` (TanStack core; client or server paging), `Seg.svelte`, `Toasts.svelte`, `Avatar.svelte`, `TsumCell.svelte`, `TsumChip.svelte`, `TsumCombo.svelte` (text box with its own suggestion list, in place of `<datalist>`) |
 | `ui/src/lib/util.js` | Formats, `api()`, the catalog, Tsum colours, `IMAGE_URL` |
+| `ui/src/lib/fit.js` | A number too long for its box shows its short form, 1.3B (`fit`, the action; `refit`, which the copy card calls too) |
 | `ui/src/lib/ui.svelte.js` | Shared page state: catalog, devices, tooltip, toasts, expanded panel, theme |
 | `ui/src/lib/realtime.js` | PocketBase realtime over SSE, resubscribing on reconnect |
 | `ui/src/lib/card.js` | Copy as an image: the compact card, or the Tsum page's one tall card of every panel (Copy all) (title, condensed panel, the page's `cardContext`: Tsum, filters, rounds), drawn with html-to-image, onto the clipboard |

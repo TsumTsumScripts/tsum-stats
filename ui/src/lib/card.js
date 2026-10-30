@@ -6,6 +6,7 @@
 // the card's width instead of shrinking the page's picture.
 import {getContext, setContext} from 'svelte';
 import {toBlob} from 'html-to-image';
+import {refit} from './fit.js';
 import {isGlobal} from './global/client.js';
 import {isSnapshot} from './snapshot/client.js';
 import {IMAGE_URL, fmt, initials} from './util.js';
@@ -324,6 +325,8 @@ async function render(opts) {
   try {
     const {card, body, sections} = opts.root ? buildFullCard(opts) : buildCard(opts);
     h.append(card);
+    // A figure measured for the page's tile is measured again for the card's narrower one.
+    card.querySelectorAll('.fit').forEach(refit);
     for (const {body: b, from} of sections ?? [{body, from: opts.from}]) {
       redrawCharts(b, from);
       trimCharts(b);

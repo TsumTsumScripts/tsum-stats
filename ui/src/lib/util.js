@@ -9,6 +9,9 @@ const nf = new Intl.NumberFormat();
 const nf1 = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1});
 export const fmt = v => (v === null || v === undefined ? '—' : nf.format(Math.round(v)));
 export const fmt1 = v => (v === null || v === undefined ? '—' : nf1.format(v));
+// A figure's short form, for a box it does not fit (lib/fit.js): 1.3B, 12M, 4.5K.
+const nfShort = new Intl.NumberFormat(undefined, {notation: 'compact'});
+export const fmtShort = v => (v === null || v === undefined ? '—' : nfShort.format(Math.round(v)));
 
 export function fmtDuration(sec) {
   if (sec === null || sec === undefined) return '—';

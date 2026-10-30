@@ -336,12 +336,15 @@ section[hidden] { display: none !important; }
 
 /* KPI cards */
 /* A wrapping row rather than a grid: a tile grows to fit its figure (a theme's wide font included)
-   instead of letting it spill out, and the row's tiles share what is left. */
+   instead of letting it spill out, and the row's tiles share what is left. A number with a short
+   form (.fit, lib/fit.js) does not widen its tile: where it does not fit, it shows 1.3B instead. */
 .kpis { display: flex; flex-wrap: wrap; gap: 12px; }
 .kpi { flex: 1 1 170px; max-width: 100%; padding: 14px 16px; }
 .kpi .label { font-size: 13px; color: var(--muted); }
 .kpi .value { font-family: var(--font-display); font-weight: 800; font-size: 26px; line-height: 1.15; margin-top: 2px; white-space: nowrap; }
 .kpi .note { font-size: 12px; color: var(--faint); margin-top: 2px; }
+.fit { contain: inline-size; }
+.fit:not(.short) .fit-short, .fit.short .fit-full { display: none; }
 .kpi.score .value { color: var(--score); text-shadow: 0 2px 0 var(--score-shadow); }
 .kpi.coin .value { color: var(--coin); text-shadow: 0 2px 0 var(--coin-shadow); }
 .kpi.medal .value { color: var(--medal); text-shadow: 0 2px 0 var(--medal-shadow); }

@@ -166,6 +166,10 @@ hour is the same
 rate × 3600. The spread figures (quartiles, median, 90th percentile) are
 nearest-rank values, so each is a real round's coins.
 
+**A number too long for its tile** (or the Catalog's *Cost to max* tile) shows
+in short, 1.3B or 12M; point at it for the full figure. A copied image does the
+same for its own, narrower tiles.
+
 **Less item costs** under the switch (`net=1`) subtracts what each round's
 boost items cost from its coins, base or final, in every figure, chart, the
 coin range and the Rounds table's rate and *Net coins* column: +Score, +Coin

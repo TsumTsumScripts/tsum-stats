@@ -8,8 +8,9 @@
   import Seg from '../../components/Seg.svelte';
   import {drawMaxOut} from '../../lib/charts.js';
   import {isSnapshot} from '../../lib/snapshot/client.js';
+  import {fit} from '../../lib/fit.js';
   import {theme} from '../../lib/ui.svelte.js';
-  import {api, css, fmt, loadPref, parseUTC, savePref} from '../../lib/util.js';
+  import {api, css, fmt, fmtShort, loadPref, parseUTC, savePref} from '../../lib/util.js';
 
   // totals: maxOutTotals() over the shown Tsums; shown: how many that is.
   let {build, totals, shown} = $props();
@@ -62,7 +63,7 @@
     {#each units as [u, label, cls] (u)}
       <div class="panel kpi {cls}">
         <div class="label">{label} to max</div>
-        <div class="value">{fmt(totals[u].cost)}</div>
+        <div class="value fit" use:fit><span class="fit-full">{fmt(totals[u].cost)}</span><span class="fit-short" title={fmt(totals[u].cost)}>{fmtShort(totals[u].cost)}</span></div>
         <div class="note">{fmt(totals[u].boxes)} boxes for {fmt(totals[u].tsums)} Tsums</div>
       </div>
       <div class="panel kpi">
