@@ -587,6 +587,11 @@ everyone's rounds, and in the *Midnight Felt* theme until you pick another:
   round counts on the day it ended, in your time zone, so day totals and date
   ranges differ a little where rounds cross midnight. The From and To fields
   say UTC.
+- **The overview leads with the total** base or final coins, or medals, earned
+  in the filter, where the Stats page here leads with the rate: one rate over
+  everyone's play together says nothing. The rate tiles (coins per second,
+  medals per hour) are not there; the Tsums table, the charts and the Tsum page
+  keep each Tsum's rate.
 - **The quartiles, median and P90 are approximate**, marked ≈. They come from
   bins 2 % wide, so each is within 2 % of the exact figure, and exact under
   100. Every count, total, average, best and rate is exact.

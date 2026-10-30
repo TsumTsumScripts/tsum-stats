@@ -568,7 +568,7 @@
 
     <div id="s-overview" class="anchor">
       {#if summary}<Kpis t={summary.totals} m={summary.medals.totals} coins={filter.coins} {basis} approx={Boolean(summary.global)}
-        missing={noSpreads && `no median ${noSpreads}`} />{/if}
+        totalFirst={Boolean(summary.global)} missing={noSpreads && `no median ${noSpreads}`} />{/if}
     </div>
 
     <Panel id="s-compare" class="anchor" title="Head to head" sub="the Tsums in the filter side by side · the best in each row is marked"
