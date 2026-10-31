@@ -1,5 +1,8 @@
-<!-- A top-bar button that opens a panel under it. Escape or a click elsewhere closes it. -->
+<!-- A top-bar button that opens a panel under it, above the whole page (lib/popup.js).
+     Escape or a click elsewhere closes it. -->
 <script>
+  import {popup} from '../lib/popup.js';
+
   /** label: the button's content; children: the panel's. */
   let {label, children, id = undefined, title = undefined, btnClass = 'btn', align = 'right'} = $props();
   let open = $state(false);
@@ -16,6 +19,6 @@
     {@render label()}
   </button>
   <!-- A link inside closes it, as it leads elsewhere. -->
-  {#if open}<div class="dropdown-panel" class:left={align === 'left'} role="presentation"
+  {#if open}<div class="dropdown-panel" role="presentation" use:popup={{align: align === 'left' ? 'start' : 'end', gap: 8}}
     onclick={e => { if (e.target.closest('a')) open = false; }}>{@render children()}</div>{/if}
 </div>

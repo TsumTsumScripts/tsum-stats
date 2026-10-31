@@ -13,6 +13,7 @@
 <script>
   import {createTable, getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel} from '@tanstack/table-core';
   import {untrack} from 'svelte';
+  import {popup} from '../lib/popup.js';
   import {fmt, loadPref, savePref} from '../lib/util.js';
 
   let {
@@ -126,11 +127,11 @@
     };
   });
 
-  let menu;
+  let menu, menuOpen = $state(false);
   const cellClass = m => [m?.num ? 'num' : '', (typeof m?.cls === 'function' ? m.cls() : m?.cls) || ''].join(' ').trim() || null;
 </script>
 
-<svelte:document onclick={e => { if (menu && !menu.contains(e.target)) menu.open = false; }} />
+<svelte:document onclick={e => { if (menu && !menu.contains(e.target)) menuOpen = false; }} />
 
 <!-- The pager sticks to the bottom of the window while the table is in view. -->
 <div class="dt">
@@ -140,13 +141,18 @@
     {/if}
     <div class="spacer"></div>
     <span class="sub">{view.count}</span>
-    <details class="col-menu" bind:this={menu}>
+    <details class="col-menu" bind:this={menu} bind:open={menuOpen}>
       <summary class="btn">Columns</summary>
-      <div class="panel col-list">
-        {#each view.hideable as c (c.id)}
-          <label><input type="checkbox" checked={c.on} onchange={e => c.set(e.target.checked)}>{c.label}</label>
-        {/each}
-      </div>
+      <!-- Above the whole page (lib/popup.js), so the panels after this one never cover it. -->
+      {#if menuOpen}
+        <div class="panel col-list" use:popup={{align: 'end'}}>
+          <div class="col-scroll">
+            {#each view.hideable as c (c.id)}
+              <label><input type="checkbox" checked={c.on} onchange={e => c.set(e.target.checked)}>{c.label}</label>
+            {/each}
+          </div>
+        </div>
+      {/if}
     </details>
   </div>
 

@@ -1,9 +1,11 @@
 <!-- A text box with a list of suggestions right under it, in place of the browser's
      <datalist>, whose popup the browser places itself and can leave away from its box.
+     The list is above the whole page (lib/popup.js).
      options: [{value, sub}]. onpick(text) is called when a suggestion is chosen, on
      Enter, and shortly after typing; it returns true when it took the text, which
      then clears the box. -->
 <script>
+  import {popup} from '../lib/popup.js';
   import {debounce} from '../lib/util.js';
 
   let {options, onpick, id = undefined, placeholder = '', label = undefined, wrapClass = ''} = $props();
@@ -50,7 +52,7 @@
     oninput={() => { open = true; active = -1; takeSoon(); }} onkeydown={key}>
   {#if open && shown.length}
     <!-- mousedown, not click: the box would lose focus first and close the list. -->
-    <ul class="combo-list" id={listId} role="listbox">
+    <ul class="combo-list" id={listId} role="listbox" use:popup={{align: 'stretch'}}>
       {#each shown as o, i (o.value)}
         <li id="{listId}-{i}" role="option" aria-selected={String(i === active)} class:active={i === active}
           onmousedown={e => { e.preventDefault(); take(o.value); }}>

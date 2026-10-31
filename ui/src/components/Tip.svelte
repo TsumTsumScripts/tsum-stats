@@ -1,5 +1,6 @@
-<!-- The chart tooltip, beside the pointer and kept inside the window. -->
+<!-- The chart tooltip, beside the pointer and kept inside the window, above the whole page (lib/popup.js). -->
 <script>
+  import {popup} from '../lib/popup.js';
   import {tip} from '../lib/ui.svelte.js';
 
   const PAD = 14;
@@ -12,7 +13,7 @@
 <svelte:window bind:innerWidth bind:innerHeight />
 
 {#if tip.lines}
-  <div class="tip" style:left="{left}px" style:top="{top}px" bind:offsetWidth={w} bind:offsetHeight={h}>
+  <div class="tip" use:popup style:left="{left}px" style:top="{top}px" bind:offsetWidth={w} bind:offsetHeight={h}>
     {#each tip.lines as line, i (i)}
       {#if i}<br>{/if}
       {#each line as part, j (j)}
