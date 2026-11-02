@@ -4,7 +4,8 @@
   what owning it says (level, skill, boxes to max), and its best rounds.
   On the global site it is every contributor's rounds of it: by skill level
   and items, ranked among every Tsum, by UTC day; no rounds, settings or
-  Tsum lists, so no best rounds, recent form or boxes to max.
+  Tsum lists, so no best rounds, recent form or boxes to max. It lists the
+  Tsums new in the last 30 days under the header, whichever Tsum is shown.
 -->
 <script>
   import {onMount} from 'svelte';
@@ -12,6 +13,7 @@
   import Avatar from '../components/Avatar.svelte';
   import Chart from '../components/Chart.svelte';
   import TsumCombo from '../components/TsumCombo.svelte';
+  import NewTsums from '../components/NewTsums.svelte';
   import Panel from '../components/Panel.svelte';
   import Seg from '../components/Seg.svelte';
   import {drawDaily, drawHistogram, drawItems, drawSkillSpread} from '../lib/charts.js';
@@ -182,6 +184,7 @@
   // ---- The picker ----
 
   const pickOptions = $derived(played.map(t => ({value: tsumName(catalog, t.tsum), sub: `${fmt(t.rounds)} rounds`})));
+  const playedRounds = $derived(new Map(played.map(t => [t.tsum, t.rounds])));
 
   function pick(typed) {
     const text = typed.trim().toLowerCase();
@@ -388,6 +391,9 @@
       </div>
     {/if}
   </div>
+
+  <!-- The global site: one click to each new Tsum, from any Tsum's page too (the tab keeps the last one picked). -->
+  {#if globalSite}<NewTsums build={filter.build || 'global'} current={filter.id} played={playedRounds} onpick={id => set({id})} />{/if}
 
   {#if !filter.id}
     <div class="panel">

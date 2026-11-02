@@ -277,7 +277,13 @@ building the site needs nothing else. The generator also assigns each Tsum its
 chart colour, keeping one once given and handing a new Tsum the next free slot;
 a Tsum the catalog does not know falls back to a hue derived from its id. Box
 counts come from a box-count file, and without it the counts already in the
-catalog are kept. The global site's Worker bundles this file when it is
+catalog are kept. `released` (`{global, jp}`, each a `YYYY-MM-DD`) is the day
+a Tsum came out in each build, for the global site's New Tsums: the generator
+reads it from the asset diffs (`gameres_diff_*.txt`, `gameres_jp_diff_*.txt`
+in the GAP folder), as the first diff that added its block art or name strip,
+the later of the two, once the catalog names it in that build. A day once
+recorded is kept, since old diffs get deleted; the page picks the last 30 days
+in the browser, so the list ages without a deploy. The global site's Worker bundles this file when it is
 deployed: rounds of a Tsum it lacks are kept but stay out of the global
 figures until a deploy carries a catalog that has it, then a `rebuild` brings
 them in (`global/CLOUDFLARE-SETUP.md`, *After launch*).

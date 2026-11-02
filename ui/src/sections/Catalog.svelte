@@ -1,12 +1,14 @@
 <!-- The Catalog: every Tsum the chosen build has, marked with what the
      player's latest Tsum List export says they own, from any device or one.
      The global site is no one's collection: there it is the roster, with the
-     rounds every contributor has played of each Tsum. -->
+     rounds every contributor has played of each Tsum, under the Tsums new in
+     the last 30 days. -->
 <script>
   import {onMount} from 'svelte';
   import {isGlobal} from '../lib/global/client.js';
   import {isSnapshot} from '../lib/snapshot/client.js';
   import Avatar from '../components/Avatar.svelte';
+  import NewTsums from '../components/NewTsums.svelte';
   import Seg from '../components/Seg.svelte';
   import MaxOut from './catalog/MaxOut.svelte';
   import {maxOutTotals, toMax} from '../lib/boxes.js';
@@ -292,6 +294,7 @@
   </div>
 
   {#if globalSite && loaded}
+    <NewTsums build={prefs.names === 'all' ? filter.build : prefs.names === 'jp' ? 'jp' : 'global'} {played} />
     <!-- The roster, with what every contributor has played of each Tsum. -->
     <div class="grid" class:list={prefs.view === 'list'}>
       {#if !view.shown.length}

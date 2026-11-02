@@ -626,6 +626,13 @@ everyone's rounds, and in the *Midnight Felt* theme until you pick another:
   here; days the site archived before it told jackpots apart keep theirs in. Not there: recent form, boxes to the next skill, other settings,
   versions, devices and best rounds. The Catalog links each
   played Tsum to it.
+- **New Tsums.** The Tsum page, under its header whichever Tsum it shows, and
+  the Catalog, above the roster, list the Tsums added to the game in the last
+  30 days, on INTL or JP, newest first: each with the build and day it came out
+  there, and its rounds, and a link to its Tsum page. The day is the first time
+  the game's files had the Tsum, its art and that build's name (`released` in
+  the catalog); INTL often has a Tsum's art weeks before its English name, and
+  it counts from the name. With none in the last 30 days, the list is not shown.
 - **Not there:** the Rounds table, Help, and anything about
   one player's collection. The Catalog lists every Tsum with its global
   rounds.

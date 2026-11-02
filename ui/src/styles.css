@@ -747,6 +747,14 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 .tsum-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
 .tsum-tile { display: flex; align-items: center; gap: 8px; text-align: left; min-width: 0; }
 .tsum-tile .tile-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* New Tsums (components/NewTsums.svelte): links dressed as tiles, the name over the
+   build's day and the rounds; the Tsum on show is ringed. */
+.new-tsums .tsum-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.new-tsums .tsum-tile { text-decoration: none; padding: 6px 14px 6px 8px; border-radius: 18px; }
+.new-tsums .tile-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.new-tsums .tile-text .sub { font-family: var(--font-body); font-size: 12px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.new-tsums .tile-text .tag { margin-right: 4px; }
+.new-tsums .tsum-tile[aria-current] { border-color: var(--accent-a); }
 .breakdown { table-layout: fixed; min-width: 760px; }
 .breakdown .bd-c-label { width: 22%; }
 .breakdown .bd-c-rate { width: 16%; }

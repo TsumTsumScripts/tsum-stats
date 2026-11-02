@@ -162,7 +162,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `ui/src/sections/Help.svelte` | How to get data in |
 | `components/` dialogs | `DataDialog.svelte` (what is stored, importing), `PublishDialog.svelte` (Share), `ContributeDialog.svelte` (the global stats) |
 | `components/` top bar | `LivePills.svelte` (live devices), `SnapshotNote.svelte`, `GlobalNote.svelte`, `ThemePicker.svelte`, `Dropdown.svelte` |
-| `components/` building blocks | `CopyButton.svelte` (copy as an image), `Panel.svelte`, `Chart.svelte`, `Legend.svelte`, `Tip.svelte`, `DataTable.svelte` (TanStack core; client or server paging), `Seg.svelte`, `Toasts.svelte`, `Avatar.svelte`, `TsumCell.svelte`, `TsumChip.svelte`, `TsumCombo.svelte` (text box with its own suggestion list, in place of `<datalist>`) |
+| `components/` building blocks | `CopyButton.svelte` (copy as an image), `Panel.svelte`, `Chart.svelte`, `Legend.svelte`, `Tip.svelte`, `DataTable.svelte` (TanStack core; client or server paging), `Seg.svelte`, `Toasts.svelte`, `Avatar.svelte`, `TsumCell.svelte`, `TsumChip.svelte`, `TsumCombo.svelte` (text box with its own suggestion list, in place of `<datalist>`), `NewTsums.svelte` (the global site's Tsums out in the last 30 days, from the catalog's `released`; on the Tsum page and the Catalog) |
 | `ui/src/lib/util.js` | Formats, `api()`, the catalog, Tsum colours, `IMAGE_URL` |
 | `ui/src/lib/fit.js` | A number too long for its box shows its short form, 1.3B (`fit`, the action; `refit`, which the copy card calls too) |
 | `ui/src/lib/popup.js` | `popup`, the action every popup uses (menus, suggestion lists, the column picker, the tooltip, toasts): the browser's top layer, above every panel and dialog whatever its z-index, placed at its anchor |
