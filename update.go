@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -126,18 +128,10 @@ func selfUpdate(pinURL string, log func(string, ...any)) (bool, error) {
 		os.Remove(tmp)
 		return false, err
 	}
-	// Windows cannot overwrite a running exe but can rename it away.
-	old := exe + ".old"
-	os.Remove(old)
-	if err := os.Rename(exe, old); err != nil {
+	if err := swapBinary(exe, tmp); err != nil {
 		os.Remove(tmp)
 		return false, err
 	}
-	if err := os.Rename(tmp, exe); err != nil {
-		os.Rename(old, exe)
-		return false, err
-	}
-	os.Remove(old) // fails on Windows while running; the next start clears it
 	log("Installed tsum-stats %s.", pin["version"])
 	return true, nil
 }
@@ -182,9 +176,70 @@ func restart() {
 	os.Exit(0)
 }
 
-// clearOld removes the binary an earlier update renamed away.
+// clearOld removes the binaries earlier updates renamed away.
 func clearOld() {
 	if exe, err := os.Executable(); err == nil {
-		os.Remove(exe + ".old")
+		clearOldOf(exe)
 	}
+}
+
+// clearOldOf removes exe.old and every exe.old-<n>; one still running stays
+// until a later start.
+func clearOldOf(exe string) {
+	os.Remove(exe + ".old")
+	dir, base := filepath.Split(exe)
+	entries, _ := os.ReadDir(filepath.Clean(dir))
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), base+".old-") {
+			os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
+}
+
+// How long swapBinary waits between tries of a rename that failed: antivirus
+// scanning a fresh exe holds it for a moment. A var so tests can shorten it.
+var renameWaits = []time.Duration{250 * time.Millisecond, 500 * time.Millisecond, time.Second, 2 * time.Second}
+
+// swapBinary puts the checked download tmp in place of exe. Windows cannot
+// overwrite a running exe but can rename it away, to exe.old, which the next
+// start deletes. On failure exe is left as it was.
+func swapBinary(exe, tmp string) error {
+	old := exe + ".old"
+	if err := os.Remove(old); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		// An earlier update's .old is still locked (that copy still running,
+		// or read-only): step around it rather than fail on it.
+		old = fmt.Sprintf("%s.old-%d", exe, time.Now().UnixNano())
+	}
+	if err := retryRename(exe, old); err != nil {
+		return lockedHint(err)
+	}
+	if err := retryRename(tmp, exe); err != nil {
+		os.Rename(old, exe)
+		return lockedHint(err)
+	}
+	os.Remove(old) // fails on Windows while running; the next start clears it
+	return nil
+}
+
+// retryRename renames from to to, trying again after each of renameWaits.
+func retryRename(from, to string) error {
+	err := os.Rename(from, to)
+	for _, d := range renameWaits {
+		if err == nil {
+			break
+		}
+		time.Sleep(d)
+		err = os.Rename(from, to)
+	}
+	return err
+}
+
+// lockedHint adds what to do to an access-denied error, which here means
+// something else holds the program open.
+func lockedHint(err error) error {
+	if !errors.Is(err, fs.ErrPermission) {
+		return err
+	}
+	return fmt.Errorf("%w (another copy of tsum-stats may still be running, or antivirus may be scanning it: "+
+		"close the starter, end any tsum-stats in Task Manager, and start it again)", err)
 }

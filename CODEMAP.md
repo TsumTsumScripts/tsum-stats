@@ -79,8 +79,8 @@ Cloudflare account only, never the GAP one (`global/README.md`,
 |:--|:--|
 | `main.go` | The command line: PocketBase app, every flag (`--events-addr`, `--import-dir`, `--web-dir`, `--global-url`, `--starter`, ...), `serve` when launched bare, the `web export`, `snapshot` and `update` commands; embeds `web/` |
 | `launch.go` | The data folder (`dataDir`), opening the browser, the already-running checks |
-| `update.go` | Self-update from the pin (`updateURL`, set by the build): compare versions, download, check sha256, swap, restart |
-| `update_test.go` | Version order and pin parsing |
+| `update.go` | Self-update from the pin (`updateURL`, set by the build): compare versions, download, check sha256, swap (retries a locked rename, steps around a locked `.old`), restart |
+| `update_test.go` | Version order, pin parsing, and swapping the binary (locked `.old`, retries, access denied) |
 
 ### `internal/stats/` -- the stats server
 
