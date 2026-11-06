@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="100" viewBox="0 0 1200 100">
+  <!-- One repeat of the clay snow ledge: a flat top, then a fat rounded rim with five broad lobes of
+       different sizes. The rim starts and ends at the same height and slope, and is drawn three times
+       (one repeat either side) so the shading blur never meets an edge: the tile repeats with no seam.
+       Colours are sampled from the village's roof snow (final-village-2x.png). -->
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fdf1d6"/>
+      <stop offset=".38" stop-color="#f7eace"/>
+      <stop offset=".66" stop-color="#ead9b5"/>
+      <stop offset="1" stop-color="#cdb98f"/>
+    </linearGradient>
+    <path id="rim" d="
+      M0 0 H1200 V46
+      C1186 46 1176 66 1146 69
+      C1112 72 1096 51 1072 48
+      C1052 46 1032 45 1012 47
+      C992 49 982 84 930 87
+      C874 90 852 56 824 50
+      C806 47 790 48 774 50
+      C760 56 744 64 716 65
+      C684 66 664 50 640 47
+      C620 45 600 45 584 47
+      C566 50 556 78 516 80
+      C470 82 450 54 424 49
+      C404 46 382 48 364 51
+      C344 60 326 74 288 75
+      C246 76 226 52 196 48
+      C170 45 150 45 132 47
+      C114 50 104 68 76 70
+      C46 72 28 47 0 46 Z"/>
+    <filter id="clay" x="-100" y="-20" width="1400" height="140" filterUnits="userSpaceOnUse">
+      <!-- warm shade tucked under the rim -->
+      <feOffset in="SourceAlpha" dy="-7" result="up"/>
+      <feGaussianBlur in="up" stdDeviation="5" result="upb"/>
+      <feComposite in="SourceAlpha" in2="upb" operator="out" result="under"/>
+      <feFlood flood-color="#a5996f" flood-opacity=".6"/>
+      <feComposite in2="under" operator="in" result="shade"/>
+      <!-- soft highlight just above the rim, where the light catches the roll -->
+      <feOffset in="SourceAlpha" dy="-15" result="up2"/>
+      <feGaussianBlur in="up2" stdDeviation="4" result="up2b"/>
+      <feComposite in="up2b" in2="upb" operator="out" result="band"/>
+      <feFlood flood-color="#fffaf0" flood-opacity=".55"/>
+      <feComposite in2="band" operator="in" result="hi"/>
+      <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="hi"/><feMergeNode in="shade"/></feMerge>
+    </filter>
+    <filter id="grain" x="0" y="0" width="1200" height="100" filterUnits="userSpaceOnUse">
+      <!-- faint clay grain, stitched so it tiles -->
+      <feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch" seed="7" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 .45  0 0 0 0 .38  0 0 0 0 .25  0 0 0 .09 0" result="g"/>
+      <feComposite in="g" in2="SourceAlpha" operator="in"/>
+    </filter>
+  </defs>
+  <g filter="url(#clay)" fill="url(#body)">
+    <use xlink:href="#rim" x="-1200"/>
+    <use xlink:href="#rim"/>
+    <use xlink:href="#rim" x="1200"/>
+  </g>
+  <use xlink:href="#rim" filter="url(#grain)"/>
+</svg>

@@ -1,0 +1,335 @@
+/* The shared look of the two Winter themes, winter-village.css and frosted-hearth.css, which
+   @import this file (the leading _ keeps it out of the Theme picker; site.go: Themes).
+   Inspired by ../design/winter: clay winter-village dioramas on an iced ledge.
+   A pine-green night with gold bokeh, falling snow and four clay snowflakes drifting at
+   three depths; teal panels (hue 185) that frost from the bottom up, each wearing a clay
+   snow cap, with window frost growing in from their lower corners; KPI tiles in cranberry,
+   gold, pine teal and icy blue; Nunito throughout. A maxed Tsum's card is a block of ice that
+   shimmers (a sweep of light, twinkling glints, drifting refraction).
+   The art sits beside this file in winter/: the snowflakes were made in Midjourney and cut
+   out; the snow ledge (snowledge.svg) and the frost (frost-*.svg) are drawn, the ledge's
+   colours sampled from the village art's roof snow. Text is 4.5:1 or better on the lightest
+   part of every panel and tile it sits on. Every rule below the tokens starts with :root so
+   it beats the page's own styles (docs/USING.md, Themes). Motion stops for people who prefer
+   reduced motion: the page's rule covers elements, the last block here the pseudo-elements. */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap');
+
+:root {
+  color-scheme: dark;
+  --font-body: 'Nunito', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Nunito', 'Segoe UI', system-ui, sans-serif;
+  --radius: 16px;
+
+  /* Page: a pine-green winter night */
+  --bg: #121a1b;
+  --bg-top: #24463c;
+  --bg-mid: #1c362f;
+  --bg-bottom: #101716;
+  --dots: transparent;
+  --noise: none;
+  --topbar-bg: rgba(17, 33, 31, 0.8);
+  --hairline: rgba(190, 225, 245, 0.16);
+  --backdrop: rgba(6, 14, 14, 0.78);
+
+  /* Panels: teal, darkest at the top, frosting toward the bottom */
+  --panel: #1e4a4d;
+  --panel-hi: #295c60;
+  --panel-top: #1b4346;
+  --panel-bottom: #2f6266;
+  --panel-edge: #34696d;
+  --seam: transparent;
+  --well: rgba(0, 0, 0, 0.24);
+  --cell: rgba(255, 255, 255, 0.06);
+  --sticky-bg: #173a3c;
+  --tip-bg: #10282a;
+  --ink: #f6efe4;
+  --muted: #dbe6e8;
+  --faint: #c9d8db;
+
+  --drop: 0 14px 30px rgba(0, 0, 0, 0.45);
+  --press: 0 2px 6px rgba(0, 0, 0, 0.45);
+  --lift: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --inset: inset 0 2px 5px rgba(0, 0, 0, 0.3);
+  --float: 0 22px 54px rgba(0, 0, 0, 0.6);
+
+  /* Accent: window gold */
+  --accent-a: #ffd27a;
+  --accent-b: #f2b65c;
+  --accent-edge: transparent;
+  --accent-shadow: rgba(242, 182, 92, 0.45);
+  --accent-ink: #2b1a05;
+  --link: #ffcf6b;
+  --badge-a: #9ad3ec;
+  --badge-b: #4f9cc2;
+  --hero-top: #bd4538;
+
+  /* Figures: coins gold, score coral, medals ice */
+  --coin: #ffcf6b;
+  --coin-shadow: transparent;
+  --score: #ffcabf;
+  --score-shadow: transparent;
+  --medal: #a8dcf0;
+  --medal-shadow: transparent;
+  --good: #9be8ac;
+  --bad: #ffc2bb;
+
+  --axis-line: rgba(205, 225, 230, 0.35);
+  --grid-line: rgba(205, 225, 230, 0.12);
+  --chart-rule: rgba(246, 239, 228, 0.5);
+  --chart-track: rgba(205, 225, 230, 0.1);
+  --chart-other: #b4c6ca;
+  --build-intl: #6fb6d6;
+  --build-jp: #e58aa0;
+  --build-none: #3a5f62;
+  --avatar-a: #3d6f73;
+  --avatar-b: #16302f;
+
+  /* Maxed Tsums: ice */
+  --maxed-a: #8fd0ea;
+  --maxed-b: #eaf7fd;
+  --maxed-glow: rgba(160, 225, 250, 0.45);
+  --maxed-ink: #14304a;
+  --fav: #ffcf4a;
+
+  /* This theme's own */
+  --w-cran: #bd4538;
+  --w-cran-b: #9a302b;
+  --w-frost: rgba(190, 225, 245, 0.3);
+}
+
+/* ---------- The night: pine-green sky with gold bokeh ---------- */
+:root body {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(circle, rgba(242, 182, 92, 0.5) 0 2px, transparent 3px),
+    radial-gradient(circle, rgba(242, 182, 92, 0.32) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle, rgba(243, 233, 218, 0.45) 0 1px, transparent 2px),
+    radial-gradient(circle, rgba(210, 122, 85, 0.4) 0 2.5px, transparent 3.5px),
+    radial-gradient(120% 70% at 50% 0%, var(--bg-top) 0%, var(--bg-mid) 45%, var(--bg) 100%);
+  background-size: 230px 190px, 140px 260px, 90px 110px, 410px 330px, 100% 100%;
+  background-position: 20px 30px, 70px 120px, 10px 60px, 200px 90px, 0 0;
+  background-blend-mode: normal;
+  background-attachment: fixed;
+}
+
+/* ---------- Snowflakes at three depths (fixed, behind everything), and falling snow over it all ---------- */
+:root::before, :root body::before, :root body::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; background-repeat: no-repeat;
+}
+/* far: big, soft */
+:root::before {
+  z-index: -3; filter: blur(2.5px); opacity: 0.28;
+  background-image: url(winter/snowflake-2.webp), url(winter/snowflake-4.webp), url(winter/snowflake-1.webp), url(winter/snowflake-3.webp), url(winter/snowflake-2.webp);
+  background-size: 96px, 120px, 110px, 100px, 140px;
+  background-position: right 3vw top 9vh, left 0.5vw top 33vh, right 2vw top 53vh, left 4vw top 76vh, right 7vw bottom 3vh;
+  animation: w-drift 26s ease-in-out infinite alternate;
+}
+/* mid: medium, slightly soft */
+:root body::before {
+  z-index: -2; filter: blur(0.6px); opacity: 0.5;
+  background-image: url(winter/snowflake-3.webp), url(winter/snowflake-1.webp), url(winter/snowflake-4.webp), url(winter/snowflake-2.webp), url(winter/snowflake-3.webp);
+  background-size: 64px, 52px, 58px, 70px, 66px;
+  background-position: left 2vw top 6vh, right 1vw top 24vh, left 4vw top 47vh, right 5vw top 68vh, left 2vw top 90vh;
+  animation: w-drift 19s ease-in-out -6s infinite alternate-reverse;
+}
+/* near: small, sharp */
+:root body::after {
+  z-index: -1; opacity: 0.85; filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.35));
+  background-image: url(winter/snowflake-4.webp), url(winter/snowflake-1.webp), url(winter/snowflake-2.webp), url(winter/snowflake-3.webp);
+  background-size: 38px, 34px, 44px, 40px;
+  background-position: left 10vw top 20vh, right 7vw top 38vh, left 1vw top 62vh, right 1vw top 82vh;
+  animation: w-drift 14s ease-in-out -3s infinite alternate;
+}
+@keyframes w-drift { from { transform: translateY(-6px); } to { transform: translateY(8px); } }
+/* falling snow, faint, over the page */
+:root::after {
+  content: ''; position: fixed; inset: -10% 0 0; z-index: 70; pointer-events: none; opacity: 0.5;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.85) 0 1.5px, transparent 2px), radial-gradient(circle, rgba(255, 255, 255, 0.6) 0 1px, transparent 1.5px);
+  background-size: 170px 170px, 110px 130px; background-position: 30px 0, 80px 40px;
+  animation: w-fall 18s linear infinite;
+}
+@keyframes w-fall { to { background-position: 60px 170px, 40px 300px; } }
+@media (max-width: 719px) {
+  :root::before { background-size: 58px, 72px, 66px, 60px, 84px; }
+  :root body::before { background-size: 38px, 31px, 35px, 42px, 40px; opacity: 0.4; }
+  :root body::after { background-size: 23px, 20px, 26px, 24px; opacity: 0.55; }
+}
+
+/* ---------- Type ---------- */
+:root body { font-weight: 600; }
+:root h1, :root h2, :root h3 { font-weight: 900; letter-spacing: 0; }
+:root :focus-visible { outline: 2px solid var(--accent-a); outline-offset: 2px; }
+:root a { text-decoration-color: rgba(255, 207, 107, 0.55); }
+:root code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.88em; background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--panel-edge); border-radius: 6px; padding: 0 5px; }
+
+/* ---------- Top bar ---------- */
+:root .topbar { border-bottom-color: var(--hairline); }
+:root .brand { background: linear-gradient(180deg, #295c60, #1b4346); border: 1px solid var(--panel-edge); box-shadow: var(--drop); }
+:root .brand-badge { border: 0; font-size: 0; color: transparent; background: url(winter/snowflake-1.webp) center / 100% no-repeat;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45)); }
+:root .brand h1 { font-weight: 900; }
+
+/* ---------- Toggles, buttons, pills ---------- */
+:root .seg { background: rgba(0, 0, 0, 0.22); border: 1px solid var(--panel-edge); border-radius: 999px; padding: 4px; gap: 3px; }
+:root .seg button { border-radius: 999px; border-color: transparent; background: transparent; color: var(--muted); font-weight: 800; }
+:root .seg button:hover { color: var(--ink); background: rgba(255, 255, 255, 0.08); }
+:root .seg button[aria-pressed="true"] { background: linear-gradient(180deg, var(--accent-a), var(--accent-b)); color: var(--accent-ink);
+  box-shadow: 0 0 12px var(--accent-shadow); }
+:root .btn { border-radius: 999px; font-weight: 800; background: linear-gradient(180deg, #34696d, #24504f); border: 1px solid rgba(246, 239, 228, 0.35);
+  color: var(--ink); box-shadow: var(--press); }
+:root .btn:hover { filter: none; border-color: var(--accent-a); }
+:root .btn.primary { background: linear-gradient(180deg, #d4564a, #b8443b); border-color: rgba(255, 220, 210, 0.5); color: #fffaf2;
+  box-shadow: 0 6px 14px rgba(184, 68, 59, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+:root .btn.primary:hover { filter: brightness(1.07); border-color: #ffe3da; }
+:root .pill, :root .chip, :root .tag { background: rgba(0, 0, 0, 0.22); border: 1px solid var(--panel-edge); border-radius: 999px; }
+:root .chip:hover { border-color: var(--accent-a); }
+:root .pill.online .dot { background: var(--good); box-shadow: 0 0 6px var(--good); }
+:root .theme-pick select, :root .pager select { border-radius: 10px; border: 1px solid var(--panel-edge); background: #10282a; }
+
+/* ---------- Inputs ---------- */
+:root .field input, :root .field select, :root .search, :root .cat-device select { border: 1px solid var(--panel-edge); border-radius: 10px; background: #10282a; }
+:root .field input:focus, :root .field select:focus, :root .search:focus { border-color: var(--accent-a); outline: none; box-shadow: 0 0 10px var(--accent-shadow); }
+:root .cat-device { border: 1px dashed var(--panel-edge); }
+
+/* ---------- Panels: teal frosting from the bottom up, a clay snow cap, window frost in the lower corners ---------- */
+:root .panel {
+  isolation: isolate; border: 1px solid var(--panel-edge);
+  background: linear-gradient(0deg, var(--panel-bottom) 0%, var(--panel-hi) 30%, var(--panel-top) 75%);
+  box-shadow: var(--drop), var(--lift), inset 0 -30px 40px -32px var(--w-frost), inset 0 0 0 1px rgba(190, 225, 245, 0.05);
+}
+/* the snow cap (replaces the stitched seam) */
+:root .panel::before {
+  content: ''; inset: auto; left: -3px; right: -3px; top: -6px; height: 24px; z-index: 1; border: 0; border-radius: 16px 16px 0 0;
+  background: url(winter/snowledge.svg) var(--cap-x, 0px) 0 / auto 100% repeat-x; filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.35));
+}
+:root .panel:not(.rail-panel):not(.focus-bar):not(.card):not(.expanded) { padding-top: 26px; }
+:root .kpis .kpi:nth-child(4n+2), :root .panel:nth-of-type(3n+2) { --cap-x: -140px; }
+:root .kpis .kpi:nth-child(4n+3), :root .panel:nth-of-type(3n+3) { --cap-x: -310px; }
+:root .kpis .kpi:nth-child(4n+4) { --cap-x: -77px; }
+/* small bars and pop-out views go without a cap */
+:root .panel.rail-panel::before, :root .panel.focus-bar::before, :root .panel.expanded::before, :root dialog .panel::before,
+:root .toast .panel::before, :root .panel.card::before { content: none; }
+/* the frost */
+:root .panel::after {
+  content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; opacity: 0.17;
+  background: url(winter/frost-bl.svg) left bottom / 250px auto no-repeat, url(winter/frost-br.svg) right bottom / 170px auto no-repeat;
+}
+:root .panel.rail-panel::after, :root .panel.focus-bar::after, :root .toast .panel::after { content: none; }
+:root .panel.expanded, :root dialog .panel { background: linear-gradient(0deg, #2a5a5e, #1b4346 40%); }
+:root .rail.open .rail-body { background: #173a3c; border: 1px solid var(--panel-edge); }
+@media (max-width: 719px) {
+  :root .panel::before { height: 18px; top: -5px; }
+  :root .panel:not(.rail-panel):not(.focus-bar):not(.card):not(.expanded) { padding-top: 22px; }
+  :root .panel::after { background-size: 180px auto, 120px auto; }
+}
+
+/* Section titles: a short cranberry underline */
+:root .panel-head h2, :root .panel > h2 { font-weight: 900; }
+:root .panel-head h2::after, :root .panel > h2::after {
+  content: ''; display: block; width: 40px; height: 3px; margin-top: 6px; border-radius: 3px; background: #ff8f7a;
+}
+
+/* ---------- KPI tiles: cranberry (the hero), gold (coins), icy blue (medals), pine teal (score) ---------- */
+:root .kpi { overflow: hidden; }
+:root .kpi.coin, :root .kpi.medal, :root .kpi.score, :root .kpi.hero { border: 0; }
+:root .kpi.coin { background: linear-gradient(160deg, #f8cf6a, #eeab45); --ink: #3b2504; --muted: #4a3008; --faint: #533710; }
+:root .kpi.medal { background: linear-gradient(160deg, #9ad3ec, #68afd2); --ink: #0f2e47; --muted: #153a57; --faint: #1b4462; }
+:root .kpi.score { background: linear-gradient(160deg, #24806c, #1b5f51); --ink: #fffaf2; --muted: #e9f6f1; --faint: #dcefe8; }
+:root .kpi.hero { background: linear-gradient(160deg, var(--w-cran), var(--w-cran-b)); --ink: #fffaf2; --muted: #fbe9e4; --faint: #f6ddd6; }
+:root .kpi.coin, :root .kpi.medal, :root .kpi.score, :root .kpi.hero { color: var(--ink); }
+:root .kpi.coin .value, :root .kpi.medal .value, :root .kpi.score .value, :root .kpi.hero .value { color: var(--ink); text-shadow: none; }
+:root .kpi .label { font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; font-size: 12.5px; color: var(--muted); }
+:root .kpi .note { color: var(--faint); }
+:root .kpi .value { font-weight: 900; }
+:root .kpi.coin::after, :root .kpi.medal::after, :root .kpi.score::after, :root .kpi.hero::after { background: url(winter/frost-br.svg) right bottom / 150px auto no-repeat; opacity: 0.22; }
+:root .kpi.coin::after, :root .kpi.medal::after { opacity: 0.45; filter: brightness(1.15); }
+
+/* ---------- Tables ---------- */
+:root th { font-weight: 800; color: var(--faint); }
+:root td { background: var(--cell); }
+:root .dt .pager { background: #173a3c; border: 1px solid var(--panel-edge); border-radius: 999px; }
+:root .tsum-list th { border-bottom-color: var(--hairline); }
+:root .tsum-list td { border-bottom-color: rgba(190, 225, 245, 0.1); }
+:root .panel.expanded th { background: #1b4346; }
+:root .table-wrap, :root .list-wrap, :root .panel.expanded { scrollbar-width: thin; scrollbar-color: #4f8a8f transparent; }
+
+/* ---------- Tooltips, bars ---------- */
+:root .tip { border: 1px solid var(--panel-edge); border-radius: 12px; box-shadow: var(--float); }
+:root .progress, :root .meter .bar { background: var(--well); box-shadow: var(--inset); }
+:root .progress > div { background: linear-gradient(180deg, var(--accent-a), var(--accent-b)); box-shadow: 0 0 10px var(--accent-shadow); }
+:root .sort-btn, :root .sort-chip { border-radius: 999px; }
+
+/* ---------- Rail ---------- */
+:root .jump button { border-radius: 999px; font-weight: 800; }
+:root .jump button[aria-current="true"] { background: linear-gradient(180deg, var(--accent-a), var(--accent-b)); color: var(--accent-ink); }
+
+/* ---------- Help: each step's number sits on a clay snowflake ---------- */
+:root .steps li { padding-left: 50px; min-height: 36px; }
+:root .steps li::before {
+  left: 0; top: -6px; width: 38px; height: 38px; border: 0; border-radius: 0; display: grid; place-items: center;
+  --flake: url(winter/snowflake-1.webp);
+  background: radial-gradient(circle, #f6fbff 0 10px, rgba(246, 251, 255, 0) 11px) center / 100% no-repeat, var(--flake) center / contain no-repeat;
+  color: #0f2e47; font-weight: 900; font-size: 14px; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+}
+:root .steps li:nth-child(4n+2)::before { --flake: url(winter/snowflake-2.webp); }
+:root .steps li:nth-child(4n+3)::before { --flake: url(winter/snowflake-3.webp); }
+:root .steps li:nth-child(4n+4)::before { --flake: url(winter/snowflake-4.webp); }
+:root .help .status-tile, :root .addr-box, :root .pull-box { border-radius: 12px; }
+:root .addr-box { border-color: var(--accent-b); background: rgba(242, 182, 92, 0.12); }
+:root .help pre { background: #10282a; border: 1px solid var(--panel-edge); border-radius: 12px; }
+:root .drop-hint { border: 3px dashed var(--accent-a); }
+
+/* ---------- Catalog cards: a little frost; a maxed Tsum is a block of ice that shimmers ---------- */
+:root .panel.card::after { background: url(winter/frost-bl.svg) left bottom / 120px auto no-repeat; opacity: 0.14; }
+:root .card.maxed {
+  --ink: #14304a; --muted: #2c4a63; --faint: #3a5a72; --well: rgba(20, 48, 74, 0.15); --score: #c97a08; --coin: #c8463d; --link: #8a3a12;
+  color: var(--ink); border: 1px solid rgba(240, 252, 255, 0.9); border-top: 4px solid var(--maxed-a);
+  background:
+    linear-gradient(120deg, rgba(160, 235, 255, 0) 0%, rgba(160, 235, 255, 0.35) 18%, rgba(215, 190, 255, 0.28) 34%, rgba(170, 255, 225, 0.3) 50%, rgba(160, 235, 255, 0) 68%, rgba(215, 190, 255, 0.25) 84%, rgba(160, 235, 255, 0) 100%) 0 0 / 300% 300%,
+    linear-gradient(165deg, #eaf7fd 0%, #c4e6f4 38%, #a9d7ec 70%, #c9eaf6 100%);
+  animation: w-refract 9s ease-in-out infinite alternate;
+  box-shadow: 0 0 0 1px rgba(150, 215, 240, 0.6), 0 0 22px var(--maxed-glow), var(--drop),
+    inset 0 0 0 3px rgba(255, 255, 255, 0.45), inset 6px 6px 0 -1px rgba(255, 255, 255, 0.35), inset -6px -8px 14px rgba(90, 160, 200, 0.35);
+}
+@keyframes w-refract { from { background-position: 0% 0%, 0 0; } to { background-position: 100% 100%, 0 0; } }
+/* light streaks and fine cracks in the ice */
+:root .panel.card.maxed::before {
+  content: ''; position: absolute; inset: 0; left: 0; right: 0; top: 0; height: auto; z-index: -1; border-radius: inherit; filter: none;
+  background: linear-gradient(118deg, transparent 18%, rgba(255, 255, 255, 0.55) 22%, transparent 27%, transparent 60%, rgba(255, 255, 255, 0.35) 63%, transparent 66%),
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22180%22%20height%3D%22260%22%20viewBox%3D%220%200%20180%20260%22%20preserveAspectRatio%3D%22none%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23ffffff%22%20stroke-opacity%3D%22.55%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%22150%2C40%20155%2C59%20155%2C70%20170%2C89%20181%2C97%22/%3E%3Cpolyline%20points%3D%22150%2C40%20169%2C40%20192%2C38%20204%2C33%20220%2C34%20240%2C24%20255%2C4%22/%3E%3Cpolyline%20points%3D%22150%2C40%20161%2C49%20179%2C66%20197%2C79%22/%3E%3Cpolyline%20points%3D%22150%2C40%20138%2C39%20127%2C39%20113%2C40%2091%2C37%2077%2C28%2066%2C13%22/%3E%3Cpolyline%20points%3D%22150%2C40%20127%2C32%20105%2C20%2091%2C-1%2086%2C-13%2086%2C-38%2096%2C-55%22/%3E%3Cpolyline%20points%3D%2230%2C205%2028%2C179%2024%2C168%2017%2C149%2011%2C135%22/%3E%3Cpolyline%20points%3D%2230%2C205%2047%2C202%2058%2C199%2080%2C196%2099%2C191%22/%3E%3Cpolyline%20points%3D%2230%2C205%205%2C197%20-6%2C196%20-16%2C193%20-32%2C196%20-45%2C196%22/%3E%3Cpolyline%20points%3D%2230%2C205%2055%2C206%2069%2C214%2086%2C222%20101%2C234%20116%2C247%22/%3E%3Cpolyline%20points%3D%2230%2C205%2049%2C196%2060%2C185%2078%2C182%2088%2C180%20107%2C176%22/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat;
+}
+/* frost in two corners, tinted to show on the pale ice */
+:root .panel.card.maxed::after {
+  background: url(winter/frost-bl.svg) left bottom / 150px auto no-repeat, url(winter/frost-tr.svg) right top / 120px auto no-repeat;
+  filter: invert(1) hue-rotate(180deg) saturate(2); opacity: 0.22;
+}
+/* the sweep: a soft band of light through the ice */
+:root .card.maxed .maxed-shine {
+  inset: -2px; z-index: 3; animation: w-sweep 5.5s cubic-bezier(0.45, 0.05, 0.35, 1) infinite;
+  background: linear-gradient(110deg, transparent 38%, rgba(255, 255, 255, 0.18) 43%, rgba(255, 255, 255, 0.34) 47.5%, rgba(255, 255, 255, 0.58) 49%, rgba(215, 248, 255, 0.34) 50.5%, rgba(255, 255, 255, 0.15) 55%, transparent 60%) 0 0 / 280% 100% no-repeat;
+}
+@keyframes w-sweep { 0% { background-position: 160% 0; } 55%, 100% { background-position: -70% 0; } }
+/* glints that twinkle at different spots and times */
+:root .card.maxed .name::after, :root .card.maxed .meta::after {
+  content: ''; position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 5px rgba(120, 210, 255, 1)) drop-shadow(0 0 9px rgba(120, 210, 255, 0.8));
+}
+:root .card.maxed .name::after { background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M8%200L9.2%206.8%2016%208%209.2%209.2%208%2016%206.8%209.2%200%208%206.8%206.8Z%22%20fill%3D%22%23fff%22/%3E%3C/svg%3E") 16% 18% / 16px no-repeat, url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M8%200L9.2%206.8%2016%208%209.2%209.2%208%2016%206.8%209.2%200%208%206.8%206.8Z%22%20fill%3D%22%23fff%22/%3E%3C/svg%3E") 84% 52% / 11px no-repeat; animation: w-glint 3.4s ease-in-out infinite; }
+:root .card.maxed .meta::after { background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M8%200L9.2%206.8%2016%208%209.2%209.2%208%2016%206.8%209.2%200%208%206.8%206.8Z%22%20fill%3D%22%23fff%22/%3E%3C/svg%3E") 70% 9% / 14px no-repeat, url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M8%200L9.2%206.8%2016%208%209.2%209.2%208%2016%206.8%209.2%200%208%206.8%206.8Z%22%20fill%3D%22%23fff%22/%3E%3C/svg%3E") 24% 63% / 10px no-repeat, url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M8%200L9.2%206.8%2016%208%209.2%209.2%208%2016%206.8%209.2%200%208%206.8%206.8Z%22%20fill%3D%22%23fff%22/%3E%3C/svg%3E") 58% 94% / 9px no-repeat; animation: w-glint 4.1s ease-in-out 1.6s infinite; }
+@keyframes w-glint { 0%, 62%, 100% { opacity: 0; transform: scale(0.6); } 72% { opacity: 1; transform: scale(1); } 82% { opacity: 0.2; transform: scale(0.85); } }
+:root .card.maxed .avatar.lg { border-color: rgba(255, 255, 255, 0.9); background: radial-gradient(circle at 40% 35%, #f4fbff, #b5dcee);
+  box-shadow: inset 0 0 12px rgba(120, 190, 225, 0.6); }
+:root .card.maxed .avatar img { filter: saturate(0.85) brightness(1.04) drop-shadow(0 0 3px rgba(255, 255, 255, 0.7)); }
+/* the badge: a clay snowflake, in a card and in the list */
+:root .maxed-badge { background: url(winter/snowflake-2.webp) center / contain no-repeat; border-radius: 0; box-shadow: none;
+  filter: drop-shadow(0 1px 2px rgba(20, 48, 74, 0.5)); }
+:root .maxed-badge::before { content: none; }
+:root .card > .maxed-badge { width: 24px; height: 24px; z-index: 2; }
+:root .tsum-list tr.maxed td { background: color-mix(in srgb, var(--maxed-a) 16%, transparent); }
+
+/* ---------- Reduced motion: the page stops element animations; these are on pseudo-elements ---------- */
+@media (prefers-reduced-motion: reduce) {
+  :root::before, :root::after, :root body::before, :root body::after,
+  :root .card.maxed .name::after, :root .card.maxed .meta::after { animation: none; }
+}

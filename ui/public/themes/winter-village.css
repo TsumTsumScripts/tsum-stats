@@ -1,0 +1,36 @@
+/* @name Winter Village
+   A clay winter village on a snow ledge under the top bar, over the shared winter look
+   (_winter.css: pine-green night, snowflakes, teal frosted panels with snow caps, coloured
+   KPI tiles, ice-block maxed cards). The village was made in Midjourney from prompts inspired
+   by ../design/winter, repaired, upscaled, cut out and colour-graded (winter/village.webp,
+   2800px wide for sharp screens); the ledge is the drawn winter/snowledge.svg, repeated edge
+   to edge. The scene scrolls with the page, under the sticky top bar. */
+@import url('_winter.css');
+
+/* The scene: as wide as the screen up to 1400px (wider than a phone, so its middle keeps its
+   detail), as tall as the art at that width. The top bar's margin makes room for it. */
+:root { --w-scene-w: min(1400px, 104vw); --w-scene-h: calc(var(--w-scene-w) * 682 / 2800); }
+:root .page { position: relative; }
+/* the scene is wider than a phone: clip it at the window's edges (clip, unlike hidden, keeps
+   the sticky top bar and rail working) */
+:root body { overflow-x: clip; }
+:root .topbar { margin-bottom: calc(var(--w-scene-h) + 52px); }
+:root .page::before, :root .page::after {
+  content: ''; position: absolute; left: 50%; transform: translateX(-50%); pointer-events: none;
+}
+:root .page::before {
+  top: calc(var(--topbar-h, 70px) + 6px); width: var(--w-scene-w); height: var(--w-scene-h); z-index: 1;
+  background: url(winter/village.webp) center bottom / 100% auto no-repeat;
+  filter: drop-shadow(0 -2px 18px rgba(242, 182, 92, 0.1));
+}
+/* the snow ledge the village stands on, edge to edge; its rim hangs over the gap below */
+:root .page::after {
+  top: calc(var(--topbar-h, 70px) + 6px + var(--w-scene-h) - 32px); width: 100vw; height: 76px; z-index: 2;
+  background: url(winter/snowledge.svg) 0 0 / auto 100% repeat-x;
+  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.45));
+}
+@media (max-width: 719px) {
+  :root { --w-scene-w: 150vw; }
+  :root .topbar { margin-bottom: calc(var(--w-scene-h) + 34px); }
+  :root .page::after { top: calc(var(--topbar-h, 70px) + 6px + var(--w-scene-h) - 22px); height: 54px; }
+}

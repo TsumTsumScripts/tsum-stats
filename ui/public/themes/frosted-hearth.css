@@ -1,0 +1,6 @@
+/* @name Frosted Hearth
+   Winter Village without the village: the shared winter look alone (_winter.css: pine-green
+   night, clay snowflakes at three depths, teal frosted panels with snow caps and window frost,
+   coloured KPI tiles, Nunito, ice-block maxed cards that shimmer). Lighter to load, and the
+   page starts right under the top bar. */
+@import url('_winter.css');

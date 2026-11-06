@@ -689,9 +689,10 @@ tokens on `:root`, and nothing else.** The Theme picker in the top bar's **⋯**
 The choice is saved in the browser (`localStorage`, `tsum-stats.theme`) and
 applied in `index.html` before the page draws.
 
-- **Built in:** `ui/public/themes/`, listed Halloween, Midnight Felt, Daylight Felt, Ember (`themeOrder` in
-  `internal/stats/site.go`), then a player's own by name. *Halloween* is the
-  default (`DEFAULT_THEME` in `ui/src/lib/ui.svelte.js`, and `ui/index.html`).
+- **Built in:** `ui/public/themes/`, listed Winter Village, Frosted Hearth, Halloween, Midnight Felt, Daylight Felt, Ember (`themeOrder` in
+  `internal/stats/site.go`), then a player's own by name. *Winter Village* is the
+  default (`DEFAULT_THEME` in `ui/src/lib/ui.svelte.js`, and `ui/index.html`); the
+  global site starts in *Midnight Felt*.
   The tokens in `ui/src/styles.css` sit under every theme and show only if its
   file fails to load. *Midnight Felt* is the Tsum
   Tsum website's dark look: indigo felt, dashed stitching and a marigold accent.
@@ -715,8 +716,30 @@ applied in `index.html` before the page draws.
   Cinzel and Alegreya Sans come from Google Fonts. Motion stops for people who
   prefer reduced motion. A maxed Tsum's portrait in the Catalog pulses
   green to violet.
+- **Winter Village** and **Frosted Hearth:** two themes over one shared look,
+  `themes/_winter.css`, which both `@import` (its `_` keeps it out of the
+  picker). A pine-green night with gold bokeh, falling snow and four clay
+  snowflakes drifting at three depths; teal panels (hue 185) that frost from
+  the bottom up, each with a clay snow cap and window frost growing in from its
+  lower corners; KPI tiles coloured by kind (the hero cranberry, coins gold,
+  medals icy blue, score pine teal); Nunito throughout; a maxed Tsum's card is
+  a block of ice with cracks and frost that shimmers (a sweep of light,
+  twinkling glints, drifting colour). *Winter Village* adds a clay winter
+  village standing on a snow ledge under the top bar, which scrolls with the
+  page; *Frosted Hearth* is the same without it. Unlike *Halloween*, the art is
+  not embedded: it sits beside the CSS in `themes/winter/` (the village and
+  snowflakes, made in Midjourney and cut out, as WebP; the snow ledge and frost
+  as drawn SVG), about 470 KB, and loads without holding up the first paint.
+  Text is 4.5:1 or better on the lightest part of every panel and tile. Motion
+  stops for people who prefer reduced motion.
 - **A player's own:** `--web-dir DIR`, then `DIR/themes/mine.css` . `/api/stats/themes` lists both; a file
-  with a built-in one's name replaces it. A file starting with `_` is left out.
+  with a built-in one's name replaces it. A file starting with `_` is left out
+  of the list but still served, so themes can `@import` a shared part. A built-in
+  theme's art can sit in a folder under `themes/` (as `themes/winter/`), referred
+  to relative to the CSS; only `themes/*.css` are listed. A player's own art in
+  `DIR` is served only while `override.json` allows the overrides (themes'
+  `.css` files are served either way), so a theme meant to outlast an update
+  embeds its art as `data:` URIs, as `halloween.css` does.
 - **Name:** `/* @name My theme */` near the top, else the file name.
 - **Start from:** `themes/daylight-felt.css`, which sets every token. A theme
   may set only what it changes.

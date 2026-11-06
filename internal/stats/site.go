@@ -167,7 +167,7 @@ var themeName = regexp.MustCompile(`@name[ \t]+([^\r\n*]+)`)
 
 // themeOrder puts the built-in themes first, in this order; the first is the
 // page's default (DEFAULT_THEME in ui/src/lib/ui.svelte.js).
-var themeOrder = []string{"halloween.css", "midnight-felt.css", "daylight-felt.css", "ember.css"}
+var themeOrder = []string{"winter-village.css", "frosted-hearth.css", "halloween.css", "midnight-felt.css", "daylight-felt.css", "ember.css"}
 
 // Themes lists themes/*.css across fsyses: those in themeOrder first, in that
 // order, then the rest sorted by name. A later fs's file

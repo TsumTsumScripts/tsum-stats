@@ -40,7 +40,7 @@ export const expand = $state({open: null});
 // index.html applies the saved one (else the default) before the page draws, so it never flashes.
 // The global site defaults to the Tsum Tsum website's own look.
 const THEME_KEY = 'tsum-stats.theme';
-export const DEFAULT_THEME = isGlobal() ? 'midnight-felt.css' : 'halloween.css';
+export const DEFAULT_THEME = isGlobal() ? 'midnight-felt.css' : 'winter-village.css';
 export const theme = $state({list: [], current: loadPref(THEME_KEY, '') || DEFAULT_THEME, version: 0});
 
 const themeLink = () => document.getElementById('theme-css');

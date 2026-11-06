@@ -24,6 +24,7 @@ const DAY = 86400;
 
 // The built-in themes, in site.go: themeOrder order.
 const THEMES = [
+  {file: 'winter-village.css', name: 'Winter Village'}, {file: 'frosted-hearth.css', name: 'Frosted Hearth'},
   {file: 'halloween.css', name: 'Halloween'}, {file: 'midnight-felt.css', name: 'Midnight Felt'},
   {file: 'daylight-felt.css', name: 'Daylight Felt'}, {file: 'ember.css', name: 'Ember'},
 ];

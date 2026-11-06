@@ -86,14 +86,18 @@ func TestExportSiteKeepsEdits(t *testing.T) {
 
 func TestThemesBuiltInOrderFirst(t *testing.T) {
 	fsys := fstest.MapFS{
-		"themes/aurora.css":        {Data: []byte(":root {}")},
-		"themes/ember.css":         {Data: []byte("/* @name Ember */")},
-		"themes/daylight-felt.css": {Data: []byte("/* @name Daylight Felt */")},
-		"themes/halloween.css":     {Data: []byte("/* @name Halloween */")},
-		"themes/midnight-felt.css": {Data: []byte("/* @name Midnight Felt */")},
+		"themes/aurora.css":         {Data: []byte(":root {}")},
+		"themes/ember.css":          {Data: []byte("/* @name Ember */")},
+		"themes/daylight-felt.css":  {Data: []byte("/* @name Daylight Felt */")},
+		"themes/halloween.css":      {Data: []byte("/* @name Halloween */")},
+		"themes/midnight-felt.css":  {Data: []byte("/* @name Midnight Felt */")},
+		"themes/frosted-hearth.css": {Data: []byte("/* @name Frosted Hearth */")},
+		"themes/winter-village.css": {Data: []byte("/* @name Winter Village */")},
+		"themes/_winter.css":        {Data: []byte(":root {}")},
 	}
 	got := Themes(fsys)
-	want := []Theme{{"halloween.css", "Halloween"}, {"midnight-felt.css", "Midnight Felt"},
+	want := []Theme{{"winter-village.css", "Winter Village"}, {"frosted-hearth.css", "Frosted Hearth"},
+		{"halloween.css", "Halloween"}, {"midnight-felt.css", "Midnight Felt"},
 		{"daylight-felt.css", "Daylight Felt"}, {"ember.css", "Ember"}, {"aurora.css", "Aurora"}}
 	if !slices.Equal(got, want) {
 		t.Errorf("Themes() = %v, want %v", got, want)
