@@ -659,7 +659,7 @@ test('the other routes', async () => {
     first: manifest.first, last: manifest.last, minContributors: 3, skills: manifest.skills,
   });
   assert.deepEqual(await engine.call('tsums'), manifest.tsums);
-  assert.deepEqual((await engine.call('themes')).map(t => t.file), ['halloween.css', 'midnight-felt.css', 'daylight-felt.css', 'ember.css']);
+  assert.deepEqual((await engine.call('themes')).map(t => t.file), ['winter-village.css', 'frosted-hearth.css', 'halloween.css', 'midnight-felt.css', 'daylight-felt.css', 'ember.css']);
   for (const route of ['devices', 'round-devices', 'owned-sources']) assert.deepEqual(await engine.call(route), []);
   assert.deepEqual(await engine.call('owned', {build: 'jp'}), {list: null});
   for (const route of ['rounds', 'publish']) {

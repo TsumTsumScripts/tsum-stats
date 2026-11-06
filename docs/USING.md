@@ -585,7 +585,7 @@ test copy with its own `--dir` too. `""` turns contributing off.
 ### The global page
 
 The global site is this program's Stats page and Catalog, read-only, over
-everyone's rounds, and in the *Midnight Felt* theme until you pick another:
+everyone's rounds, and in the *Winter Village* theme until you pick another:
 
 - **Days are UTC days, and a round counts on the day it started.** Here a
   round counts on the day it ended, in your time zone, so day totals and date
@@ -691,8 +691,8 @@ applied in `index.html` before the page draws.
 
 - **Built in:** `ui/public/themes/`, listed Winter Village, Frosted Hearth, Halloween, Midnight Felt, Daylight Felt, Ember (`themeOrder` in
   `internal/stats/site.go`), then a player's own by name. *Winter Village* is the
-  default (`DEFAULT_THEME` in `ui/src/lib/ui.svelte.js`, and `ui/index.html`); the
-  global site starts in *Midnight Felt*.
+  default (`DEFAULT_THEME` in `ui/src/lib/ui.svelte.js`, and `ui/index.html`), on the
+  global site too.
   The tokens in `ui/src/styles.css` sit under every theme and show only if its
   file fails to load. *Midnight Felt* is the Tsum
   Tsum website's dark look: indigo felt, dashed stitching and a marigold accent.
