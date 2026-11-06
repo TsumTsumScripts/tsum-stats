@@ -12,6 +12,13 @@
   {
     const fallback = 'winter-village.css';
     try {
+      // Once per browser, a new default replaces the theme picked before it came out;
+      // after that their pick sticks. Change the value to do it again for another theme.
+      const reset = 'winter-village-2026';
+      if (localStorage.getItem('tsum-stats.theme-reset') !== reset) {
+        localStorage.setItem('tsum-stats.theme', JSON.stringify(fallback));
+        localStorage.setItem('tsum-stats.theme-reset', reset);
+      }
       const t = JSON.parse(localStorage.getItem('tsum-stats.theme') || 'null') || fallback;
       document.getElementById('theme-css').href = 'themes/' + String(t).replace(/[\\/]/g, '');
     } catch {

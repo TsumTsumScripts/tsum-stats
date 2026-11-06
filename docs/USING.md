@@ -693,6 +693,9 @@ applied in `index.html` before the page draws.
   `internal/stats/site.go`), then a player's own by name. *Winter Village* is the
   default (`DEFAULT_THEME` in `ui/src/lib/ui.svelte.js`, and `ui/index.html`), on the
   global site too.
+  The first visit after Winter Village came out switches a browser to it once,
+  whatever it had picked before (`tsum-stats.theme-reset` in `ui/index.html`;
+  change its value to do that again for a later default).
   The tokens in `ui/src/styles.css` sit under every theme and show only if its
   file fails to load. *Midnight Felt* is the Tsum
   Tsum website's dark look: indigo felt, dashed stitching and a marigold accent.
