@@ -375,6 +375,38 @@ func registerGlobalRoutes(g *router.RouterGroup[*core.RequestEvent], contributor
 		}
 		return e.JSON(http.StatusOK, contributor.State())
 	}).BindFunc(sameOrigin)
+
+	// The preset gallery (presets.go): the site takes these only with the key kept here.
+	g.GET("/global/presets", func(e *core.RequestEvent) error {
+		list, err := contributor.MyPresets()
+		if err != nil {
+			return e.JSON(galleryError(err))
+		}
+		return e.JSON(http.StatusOK, map[string]any{"presets": list})
+	})
+	g.POST("/global/presets", func(e *core.RequestEvent) error {
+		var body PresetSubmit
+		if err := e.BindBody(&body); err != nil || body.Code == "" {
+			return e.JSON(http.StatusBadRequest, map[string]string{"code": "bad-code"})
+		}
+		id, err := contributor.SubmitPreset(body)
+		if err != nil {
+			return e.JSON(galleryError(err))
+		}
+		return e.JSON(http.StatusOK, map[string]int64{"id": id})
+	}).BindFunc(sameOrigin)
+	g.POST("/global/presets/delete", func(e *core.RequestEvent) error {
+		var body struct {
+			ID int64 `json:"id"`
+		}
+		if err := e.BindBody(&body); err != nil || body.ID <= 0 {
+			return e.JSON(http.StatusBadRequest, map[string]string{"code": "bad-request"})
+		}
+		if err := contributor.DeletePreset(body.ID); err != nil {
+			return e.JSON(galleryError(err))
+		}
+		return e.JSON(http.StatusOK, map[string]bool{"ok": true})
+	}).BindFunc(sameOrigin)
 }
 
 // sameOrigin refuses a write sent by another site's page in this browser.

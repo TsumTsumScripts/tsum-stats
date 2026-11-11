@@ -103,6 +103,7 @@ Cloudflare account only, never the GAP one (`global/README.md`,
 | `internal/stats/snapshot.go` | `ExportSnapshot`: the `snapshot` command's static site and monthly data files (`SnapshotFormat`) |
 | `internal/stats/github.go` | GitHub API calls for Share: who is signed in, the repo, one commit of the snapshot, Pages |
 | `internal/stats/publish.go` | `Publisher`: Share's saved token and choices, the background publish, topic `ts/publish` |
+| `internal/stats/presets.go` | The preset gallery from this computer (CONTRACT §2.7, §7.3): submit, mine and delete with the saved contributor key; `galleryError` (the site's code for the page) |
 | `internal/stats/global.go` | `Contributor`: the forwarder to the global site (CONTRACT §7) -- join, leave and unlink, the hourly passes, refusals and `Retry-After`, `GlobalRecord`, `RoundBatch`, topic `ts/global` |
 
 Tests: `stats_test.go` (CSV parsing, event + CSV merge, filters, summary, Tsum
@@ -112,7 +113,7 @@ through a fake adb; unzip refusing escapes), `legacy_test.go`, `site_test.go`
 `ui/tests/parity.mjs`), `publish_test.go` (a fake GitHub;
 `TestPageSubscribesToEveryTopic`), `art_test.go` (portraits through a fake
 origin), `global_test.go` (the forwarder against a
-fake Worker), `global_parity_test.go` (`TestGlobalParity`, which runs
+fake Worker), `presets_test.go` (the gallery calls, same fake), `global_parity_test.go` (`TestGlobalParity`, which runs
 `global/test/parity.test.ts`).
 
 ### `internal/starter/` -- the service starter's website

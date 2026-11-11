@@ -1162,6 +1162,12 @@ nothing. `lastError` is shown only for its own site (or when `url` is `""`).
   it calls `/api/v1/me/unlink` and forgets the key (the Worker's 401 there
   counts as unlinked already; an unreachable site, or any other refusal,
   keeps the key, so unlinking can be tried again).
+- The preset gallery (§2.7), with the saved key (`presets.go`):
+  `GET /api/stats/global/presets` → `{presets}` (the site's `mine`);
+  `POST /api/stats/global/presets` `{code, name?, description?, tsum?}` → `{id}`;
+  `POST /api/stats/global/presets/delete` `{id}`. A refusal is 400 `{code}`:
+  the site's error code, `unauthorized`, or `not-joined` (no key saved); an
+  unreachable site is 502 `{code: "unreachable", message}`.
 - Realtime topic `ts/global`: the `GET` state after every change.
 - Flag `--global-url` (default `https://tsum-stats.gapscripts.app`): `https`,
   or `http` to this computer (a local `wrangler dev`); empty turns contributing

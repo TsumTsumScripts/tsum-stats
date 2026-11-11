@@ -51,6 +51,9 @@ type fakeWorker struct {
 	// hold, when set, keeps each upload waiting until it closes; held hears of each one waiting.
 	hold, held chan struct{}
 	log        []string // "rounds" and "unlink", as each was answered
+	// presets is the gallery (presets_test.go): id -> what was submitted, by contributor.
+	presets  map[int64]PresetSubmit
+	presetBy map[int64]int64
 }
 
 func newFakeWorker(t *testing.T) *fakeWorker {
@@ -154,6 +157,8 @@ func (f *fakeWorker) api(w http.ResponseWriter, r *http.Request) {
 		f.unlinked = append(f.unlinked, key)
 		f.log = append(f.log, "unlink")
 		f.reply(w, http.StatusOK, map[string]any{"ok": true})
+	case strings.HasPrefix(r.URL.Path, "/api/v1/presets"):
+		f.gallery(w, r, id)
 	default:
 		f.t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		f.reply(w, http.StatusNotFound, map[string]any{"ok": false, "error": "not-found"})
