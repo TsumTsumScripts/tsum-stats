@@ -20,6 +20,7 @@
   import {api, fmt, isOnline, loadCatalog} from './lib/util.js';
   import Catalog from './sections/Catalog.svelte';
   import Help from './sections/Help.svelte';
+  import Presets from './sections/Presets.svelte';
   import Stats from './sections/Stats.svelte';
   import Tsum from './sections/Tsum.svelte';
 
@@ -30,8 +31,8 @@
   const readOnly = snapshot || globalSite;
   // Marks what the global build must not contain at all (see vite.config.js).
   const local = __LOCAL_ONLY__;
-  const ROUTES = [['stats', 'Stats'], ['tsum', 'Tsum'], ['catalog', 'Catalog'], ['help', 'Help']]
-    .filter(([r]) => !(readOnly && r === 'help'));
+  const ROUTES = [['stats', 'Stats'], ['tsum', 'Tsum'], ['catalog', 'Catalog'], ['presets', 'Presets'], ['help', 'Help']]
+    .filter(([r]) => !(readOnly && r === 'help') && !(snapshot && r === 'presets'));
   // The commit the site was built from (vite.config.js: siteBuild), for the footer.
   const build = __SITE_BUILD__;
   const buildText = `Site ${build.date} UTC${build.commit ? ` · ${build.commit}` : ''}${build.changed ? ' · with local changes' : ''}`;
@@ -55,9 +56,9 @@
   // Served beside the service starter (--starter): link back to it.
   let starter = $state(false);
   const initial = $state({});
-  let stats = $state(), tsum = $state(), catalog = $state(), help = $state();
+  let stats = $state(), tsum = $state(), catalog = $state(), presets = $state(), help = $state();
   let dataDialog = $state(), publishDialog = $state(), contributeDialog = $state(), moreMenu = $state();
-  const sectionOf = r => ({stats, tsum, catalog, help})[r];
+  const sectionOf = r => ({stats, tsum, catalog, presets, help})[r];
 
   // Each section's latest link, so the top buttons return to it rather than to defaults.
   const lastHash = {};
@@ -207,6 +208,9 @@
     {/if}
     {#if initial.catalog}
       <Catalog bind:this={catalog} hidden={route !== 'catalog'} initial={initial.catalog} onStateChange={s => writeHash('catalog', s)} />
+    {/if}
+    {#if initial.presets}
+      <Presets bind:this={presets} hidden={route !== 'presets'} initial={initial.presets} />
     {/if}
     {#if local && initial.help}
       <Help bind:this={help} hidden={route !== 'help'} initial={initial.help} />

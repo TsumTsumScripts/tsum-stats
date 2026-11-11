@@ -10,72 +10,86 @@
    {
     "key": "useFan",
     "kind": "bool",
-    "default": false
+    "default": false,
+    "label": "Use Fan?"
    },
    {
     "key": "maxChainsPerScan",
     "kind": "int",
-    "default": 3
+    "default": 3,
+    "label": "Chains per board scan"
    },
    {
     "key": "maxChain",
     "kind": "int",
-    "default": 5
+    "default": 5,
+    "label": "Maximum Chain Number"
    },
    {
     "key": "prioritizeMyTsum",
     "kind": "bool",
-    "default": true
+    "default": true,
+    "label": "Link MyTsum first"
    },
    {
     "key": "bonusScore",
     "kind": "bool",
-    "default": false
+    "default": false,
+    "label": "+Score"
    },
    {
     "key": "bonusCoin",
     "kind": "bool",
-    "default": false
+    "default": false,
+    "label": "+Coin"
    },
    {
     "key": "bonusExp",
     "kind": "bool",
-    "default": false
+    "default": false,
+    "label": "+Exp"
    },
    {
     "key": "bonusTime",
     "kind": "bool",
-    "default": false
+    "default": false,
+    "label": "+Time"
    },
    {
     "key": "bonusBubble",
     "kind": "bool",
-    "default": false
+    "default": false,
+    "label": "+Bubble"
    },
    {
     "key": "bonus5to4",
     "kind": "bool",
-    "default": false
+    "default": false,
+    "label": "5>4"
    },
    {
     "key": "bonusCombo",
     "kind": "bool",
-    "default": false
+    "default": false,
+    "label": "+Combo"
    },
    {
     "key": "skillWaitingTime",
     "kind": "int",
-    "default": 0
+    "default": 0,
+    "label": "Skill Waiting time (sec)"
    },
    {
     "key": "skillLevel",
     "kind": "int",
-    "default": 6
+    "default": 6,
+    "label": "Skill Level"
    },
    {
     "key": "skillType",
     "kind": "enum",
     "default": "burst",
+    "label": "Skill Type",
     "ids": {
      "burst": "b",
      "cabbage_mickey": "g",
@@ -102,59 +116,104 @@
      "rapunzelplus": "R",
      "minnie12thplus": "t",
      "nokill": "n"
+    },
+    "options": {
+     "burst": "Burst",
+     "cabbage_mickey": "Cabbage Mickey",
+     "colorful_mickey_set": "Colorful Mickey (Set)",
+     "buzzl": "Cpt. Lightyear",
+     "buzzl_120": "Cpt. Lightyear 120",
+     "donald": "Donald",
+     "donaldx": "Holiday Donald",
+     "lukej": "Jedi Luke",
+     "mcqueenplus": "Lightning McQueen+",
+     "magic_wand_change": "Magic Wand Change",
+     "nbc_set": "Nightmare Before Christmas (Set)",
+     "villains_set": "Disney Villains (Set)",
+     "pair_tsum": "Pair Tsum",
+     "woody2": "Sheriff Woody",
+     "burst_bubbles": "Burst + clear bubbles",
+     "cinderella": "Cinderella",
+     "snowwhite": "Snow White",
+     "elsa_coronation": "Coronation Day Elsa",
+     "beastda": "Formal Beast",
+     "gaston": "Gaston",
+     "cloud": "KH2 Cloud",
+     "auroraink": "Lorcana Aurora",
+     "rapunzelplus": "Rapunzel+",
+     "minnie12thplus": "Tiara Minnie+",
+     "nokill": "No Skill"
     }
    },
    {
     "key": "noSkillLastFeverSec",
     "kind": "int",
-    "default": 0
+    "default": 0,
+    "label": "No skill last fever seconds"
    },
    {
     "key": "skillAutoTap",
     "kind": "bool",
-    "default": true
+    "default": true,
+    "label": "Auto Tap Skill"
    },
    {
     "key": "linkReachPercent",
     "kind": "int",
-    "default": 190
+    "default": 190,
+    "label": "Link reach (% of a tsum)"
    },
    {
     "key": "lorcanaCard",
     "kind": "bool",
-    "default": false
+    "default": false,
+    "label": "Lorcana Card"
    },
    {
     "key": "bubbleStrategy",
     "kind": "enum",
     "default": "one_mid_chain",
+    "label": "Bubble Strategy",
     "ids": {
      "one_mid_chain": "1",
      "all_mid_chain": "a",
      "save_one_mid_chain": "S",
      "save_one": "s",
      "all_asap": "A"
+    },
+    "options": {
+     "one_mid_chain": "One Bubble Mid Chain",
+     "all_mid_chain": "All Bubbles Mid Chain",
+     "save_one_mid_chain": "Save One Mid Chain",
+     "save_one": "Save One",
+     "all_asap": "All Bubbles ASAP"
     }
    },
    {
     "key": "holdBubblesLastFeverSec",
     "kind": "int",
-    "default": 0
+    "default": 0,
+    "label": "Hold bubbles last fever seconds"
    },
    {
     "key": "skillSettleMs",
     "kind": "int",
-    "default": 0
+    "default": 0,
+    "label": "Wait for Settle (s)",
+    "scale": 1000
    },
    {
     "key": "skillReactivationTenths",
     "kind": "int",
-    "default": 0
+    "default": 0,
+    "label": "Delay Skill ReActivation (sec)",
+    "scale": 10
    },
    {
     "key": "autoSkillLevel",
     "kind": "bool",
-    "default": true
+    "default": true,
+    "label": "Auto Set Skill Level"
    }
   ]
  },

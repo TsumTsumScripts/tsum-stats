@@ -957,6 +957,11 @@ can touch, several for one part included, and adds them up.
 | `tsum` | The server's `TsumDetail` shape (`tsum.go`) as the cells can answer it, see §6.3 |
 | `rounds`, anything else | throws "not available on the global site" |
 
+The **Presets** section (`#/presets`) reads `presets.json` (§4.3) itself, not
+through the engine, and decodes each code in the browser. `#/presets?p=<base64url
+gap-presets JSON>` (what GAP Companion's "Share to Tsum Tsum Stats" opens) shows
+those presets as share codes.
+
 ### 6.2 Filters and figures
 
 Parameters as `queries.go: ParseFilter`, plus two:

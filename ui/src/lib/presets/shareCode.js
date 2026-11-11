@@ -110,6 +110,20 @@ export function read(text) {
   return { presets, bad: found.length - presets.length, otherFormat: !presets.length && !!o && !o[0].startsWith(TABLE.prefix) };
 }
 
+/** What a preset changes, in slot order, as English [label, value] pairs (the script's own words). */
+export function describe(values) {
+  const out = [];
+  for (const s of slots()) {
+    if (!(s.key in values) || values[s.key] === s.default) continue;
+    const v = values[s.key];
+    const text = s.kind === "bool" ? (v ? "On" : "Off")
+      : s.kind === "enum" ? (s.options?.[v] ?? String(v))
+      : s.kind === "int" && s.scale ? String(v / s.scale) : String(v);
+    out.push([s.label ?? s.key, text]);
+  }
+  return out;
+}
+
 /** Presets as `Name: code` lines, what the script's share box takes. */
 export const exportText = (presets) => presets.map((p) => `${p.name}: ${encode(p.values)}`).join("\n");
 
