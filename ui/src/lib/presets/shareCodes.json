@@ -1,0 +1,388 @@
+{
+ "script": "6.0b26",
+ "table": {
+  "prefix": "TSUM4-",
+  "otherPrefix": "TSUM[0-9]+-",
+  "suffix": "~",
+  "version": 6,
+  "slots": [
+   null,
+   {
+    "key": "useFan",
+    "kind": "bool",
+    "default": false
+   },
+   {
+    "key": "maxChainsPerScan",
+    "kind": "int",
+    "default": 3
+   },
+   {
+    "key": "maxChain",
+    "kind": "int",
+    "default": 5
+   },
+   {
+    "key": "prioritizeMyTsum",
+    "kind": "bool",
+    "default": true
+   },
+   {
+    "key": "bonusScore",
+    "kind": "bool",
+    "default": false
+   },
+   {
+    "key": "bonusCoin",
+    "kind": "bool",
+    "default": false
+   },
+   {
+    "key": "bonusExp",
+    "kind": "bool",
+    "default": false
+   },
+   {
+    "key": "bonusTime",
+    "kind": "bool",
+    "default": false
+   },
+   {
+    "key": "bonusBubble",
+    "kind": "bool",
+    "default": false
+   },
+   {
+    "key": "bonus5to4",
+    "kind": "bool",
+    "default": false
+   },
+   {
+    "key": "bonusCombo",
+    "kind": "bool",
+    "default": false
+   },
+   {
+    "key": "skillWaitingTime",
+    "kind": "int",
+    "default": 0
+   },
+   {
+    "key": "skillLevel",
+    "kind": "int",
+    "default": 6
+   },
+   {
+    "key": "skillType",
+    "kind": "enum",
+    "default": "burst",
+    "ids": {
+     "burst": "b",
+     "cabbage_mickey": "g",
+     "colorful_mickey_set": "M",
+     "buzzl": "l",
+     "buzzl_120": "L",
+     "donald": "d",
+     "donaldx": "D",
+     "lukej": "j",
+     "mcqueenplus": "q",
+     "magic_wand_change": "W",
+     "nbc_set": "N",
+     "villains_set": "v",
+     "pair_tsum": "p",
+     "woody2": "w",
+     "burst_bubbles": "B",
+     "cinderella": "c",
+     "snowwhite": "s",
+     "elsa_coronation": "e",
+     "beastda": "f",
+     "gaston": "G",
+     "cloud": "C",
+     "auroraink": "a",
+     "rapunzelplus": "R",
+     "minnie12thplus": "t",
+     "nokill": "n"
+    }
+   },
+   {
+    "key": "noSkillLastFeverSec",
+    "kind": "int",
+    "default": 0
+   },
+   {
+    "key": "skillAutoTap",
+    "kind": "bool",
+    "default": true
+   },
+   {
+    "key": "linkReachPercent",
+    "kind": "int",
+    "default": 190
+   },
+   {
+    "key": "lorcanaCard",
+    "kind": "bool",
+    "default": false
+   },
+   {
+    "key": "bubbleStrategy",
+    "kind": "enum",
+    "default": "one_mid_chain",
+    "ids": {
+     "one_mid_chain": "1",
+     "all_mid_chain": "a",
+     "save_one_mid_chain": "S",
+     "save_one": "s",
+     "all_asap": "A"
+    }
+   },
+   {
+    "key": "holdBubblesLastFeverSec",
+    "kind": "int",
+    "default": 0
+   },
+   {
+    "key": "skillSettleMs",
+    "kind": "int",
+    "default": 0
+   },
+   {
+    "key": "skillReactivationTenths",
+    "kind": "int",
+    "default": 0
+   },
+   {
+    "key": "autoSkillLevel",
+    "kind": "bool",
+    "default": true
+   }
+  ]
+ },
+ "cases": [
+  {
+   "name": "defaults",
+   "values": {},
+   "code": "TSUM4-16.QAQg~",
+   "decoded": {
+    "useFan": false,
+    "prioritizeMyTsum": true,
+    "bonusScore": false,
+    "bonusCoin": false,
+    "bonusExp": false,
+    "bonusTime": false,
+    "bonusBubble": false,
+    "bonus5to4": false,
+    "bonusCombo": false,
+    "skillAutoTap": true,
+    "lorcanaCard": false,
+    "autoSkillLevel": true
+   }
+  },
+  {
+   "name": "every bool flipped",
+   "values": {
+    "useFan": true,
+    "prioritizeMyTsum": false,
+    "bonusScore": true,
+    "bonusCoin": true,
+    "bonusExp": true,
+    "bonusTime": true,
+    "bonusBubble": true,
+    "bonus5to4": true,
+    "bonusCombo": true,
+    "skillAutoTap": false,
+    "lorcanaCard": true,
+    "autoSkillLevel": false
+   },
+   "code": "TSUM4-L6.i_AB~",
+   "decoded": {
+    "useFan": true,
+    "prioritizeMyTsum": false,
+    "bonusScore": true,
+    "bonusCoin": true,
+    "bonusExp": true,
+    "bonusTime": true,
+    "bonusBubble": true,
+    "bonus5to4": true,
+    "bonusCombo": true,
+    "skillAutoTap": false,
+    "lorcanaCard": true,
+    "autoSkillLevel": false
+   }
+  },
+  {
+   "name": "numbers",
+   "values": {
+    "maxChainsPerScan": 4,
+    "maxChain": 7,
+    "skillWaitingTime": 3,
+    "skillLevel": 10,
+    "noSkillLastFeverSec": 5,
+    "linkReachPercent": 196,
+    "holdBubblesLastFeverSec": 7,
+    "skillSettleMs": 8,
+    "skillReactivationTenths": 9
+   },
+   "code": "TSUM4-H6.QAQg.C4.D7.M3.Na.P5.R5g.U7.V8.W9~",
+   "decoded": {
+    "useFan": false,
+    "prioritizeMyTsum": true,
+    "bonusScore": false,
+    "bonusCoin": false,
+    "bonusExp": false,
+    "bonusTime": false,
+    "bonusBubble": false,
+    "bonus5to4": false,
+    "bonusCombo": false,
+    "skillAutoTap": true,
+    "lorcanaCard": false,
+    "autoSkillLevel": true,
+    "maxChainsPerScan": 4,
+    "maxChain": 7,
+    "skillWaitingTime": 3,
+    "skillLevel": 10,
+    "noSkillLastFeverSec": 5,
+    "linkReachPercent": 196,
+    "holdBubblesLastFeverSec": 7,
+    "skillSettleMs": 8,
+    "skillReactivationTenths": 9
+   }
+  },
+  {
+   "name": "enums with ids",
+   "values": {
+    "skillType": "cabbage_mickey",
+    "bubbleStrategy": "all_mid_chain"
+   },
+   "code": "TSUM4-d6.QAQg.Og.Ta~",
+   "decoded": {
+    "useFan": false,
+    "prioritizeMyTsum": true,
+    "bonusScore": false,
+    "bonusCoin": false,
+    "bonusExp": false,
+    "bonusTime": false,
+    "bonusBubble": false,
+    "bonus5to4": false,
+    "bonusCombo": false,
+    "skillAutoTap": true,
+    "lorcanaCard": false,
+    "autoSkillLevel": true,
+    "skillType": "cabbage_mickey",
+    "bubbleStrategy": "all_mid_chain"
+   }
+  },
+  {
+   "name": "raw enum value",
+   "values": {
+    "skillType": "new skill.(x)~ é"
+   },
+   "code": "TSUM4-X6.QAQg.O_new%20skill%2E%28x%29%7E%20%C3%A9~",
+   "decoded": {
+    "useFan": false,
+    "prioritizeMyTsum": true,
+    "bonusScore": false,
+    "bonusCoin": false,
+    "bonusExp": false,
+    "bonusTime": false,
+    "bonusBubble": false,
+    "bonus5to4": false,
+    "bonusCombo": false,
+    "skillAutoTap": true,
+    "lorcanaCard": false,
+    "autoSkillLevel": true,
+    "skillType": "new skill.(x)~ é"
+   }
+  },
+  {
+   "name": "mixed",
+   "values": {
+    "useFan": true,
+    "prioritizeMyTsum": false,
+    "bonusExp": true,
+    "bonus5to4": true,
+    "skillLevel": 13,
+    "skillAutoTap": false,
+    "bubbleStrategy": "all_mid_chain",
+    "skillReactivationTenths": 7
+   },
+   "code": "TSUM4-D6.CSAg.Nd.Ta.W7~",
+   "decoded": {
+    "useFan": true,
+    "prioritizeMyTsum": false,
+    "bonusScore": false,
+    "bonusCoin": false,
+    "bonusExp": true,
+    "bonusTime": false,
+    "bonusBubble": false,
+    "bonus5to4": true,
+    "bonusCombo": false,
+    "skillAutoTap": false,
+    "lorcanaCard": false,
+    "autoSkillLevel": true,
+    "skillLevel": 13,
+    "bubbleStrategy": "all_mid_chain",
+    "skillReactivationTenths": 7
+   }
+  }
+ ],
+ "exportText": "Coins: TSUM4-16.QAQg~\nBurst: fast: TSUM4-d6.QAQg.Og.Ta~",
+ "fromText": [
+  {
+   "name": "Coins",
+   "values": {
+    "useFan": false,
+    "maxChainsPerScan": 3,
+    "maxChain": 5,
+    "prioritizeMyTsum": true,
+    "bonusScore": false,
+    "bonusCoin": false,
+    "bonusExp": false,
+    "bonusTime": false,
+    "bonusBubble": false,
+    "bonus5to4": false,
+    "bonusCombo": false,
+    "skillWaitingTime": 0,
+    "skillLevel": 6,
+    "skillType": "burst",
+    "noSkillLastFeverSec": 0,
+    "skillAutoTap": true,
+    "linkReachPercent": 190,
+    "lorcanaCard": false,
+    "bubbleStrategy": "one_mid_chain",
+    "holdBubblesLastFeverSec": 0,
+    "skillSettleMs": 0,
+    "skillReactivationTenths": 0,
+    "autoSkillLevel": true
+   }
+  },
+  {
+   "name": "Burst: fast",
+   "values": {
+    "useFan": false,
+    "maxChainsPerScan": 3,
+    "maxChain": 5,
+    "prioritizeMyTsum": true,
+    "bonusScore": false,
+    "bonusCoin": false,
+    "bonusExp": false,
+    "bonusTime": false,
+    "bonusBubble": false,
+    "bonus5to4": false,
+    "bonusCombo": false,
+    "skillWaitingTime": 0,
+    "skillLevel": 6,
+    "skillType": "cabbage_mickey",
+    "noSkillLastFeverSec": 0,
+    "skillAutoTap": true,
+    "linkReachPercent": 190,
+    "lorcanaCard": false,
+    "bubbleStrategy": "all_mid_chain",
+    "holdBubblesLastFeverSec": 0,
+    "skillSettleMs": 0,
+    "skillReactivationTenths": 0,
+    "autoSkillLevel": true
+   }
+  }
+ ]
+}

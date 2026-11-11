@@ -32,7 +32,8 @@ tsum-stats/
 ├── global/            the global site's Cloudflare Worker (D1 + R2, hourly
 │                      rollup); CONTRACT.md is the spec all three sides share
 ├── docs/              USING.md (the manual), INTERNALS.md (how it is built)
-├── tools/             build.sh (binaries, pin, release), codemap-check.js
+├── tools/             build.sh (binaries, pin, release), codemap-check.js,
+│                      sync-share-codes.js (the script's share-code table)
 ├── web/               build output of ui/, embedded by main.go; git-ignored
 └── build/             tools/build.sh output, build/<version>/; git-ignored
 ```
@@ -175,7 +176,10 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `snapshot/client.js`, `snapshot/worker.js` | Is this a snapshot; run the engine in a Web Worker and keep loaded months |
 | `ui/src/lib/global/engine.js` | The same answers from the global site's part files (cells, not rounds; quartiles, P90 and the outlier ranges from each cell's bins), the Tsum page's included. Reuses the snapshot engine's helpers |
 | `global/client.js`, `global/worker.js` | Is this the global site (`isGlobal`); run the engine in a Web Worker, keep parts, refetch a replaced part |
+| `ui/src/lib/presets/shareCode.js` | **Tsum share codes** (`Name: TSUM4-…~`) read and written as the script's settings page does, over the script's own table `shareCodes.json` (synced by `tools/sync-share-codes.js`, never edited). The page and the Worker (submit check) both use it |
+| `presets/links.js` | Presets to and from GAP Companion: a `gap-presets` document in a link's fragment (`companionLink`, `unpackPresets`) |
 | `ui/tests/parity.mjs` | The snapshot engine against the server's answers, run by `TestSnapshotParity` |
+| `ui/tests/share-codes.test.mjs` | The codec against the script's golden codes, and the companion links (`npm run test:codes`) |
 | `ui/tests/global-engine.test.mjs` | The global engine against the snapshot engine over the same rounds (`npm run test:global`) |
 
 ## Source map -- the Worker, `global/`
