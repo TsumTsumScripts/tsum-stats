@@ -186,7 +186,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 
 `global/README.md` § Layout is the file table, one row per `global/src/` file;
 this is its index. `migrations/0001_init.sql` is the D1 schema (CONTRACT §3.1),
-`migrations/0002_cell_bins.sql` its bins per cell,
+`migrations/0002_cell_bins.sql` its bins per cell, `migrations/0005_presets.sql` the preset gallery,
 `wrangler.jsonc` the bindings, route, cron and tunables, `deploy.sh` the
 by-hand deploy when the Devkit is not available.
 
@@ -196,6 +196,7 @@ by-hand deploy when the Devkit is not available.
 | `global/src/env.ts`, `global/src/http.ts`, `global/src/crypto.ts`, `global/src/days.ts` | Bindings and tunables; replies and bodies; hashes, HMAC and keys; UTC days, keys, bins |
 | `global/src/catalog.ts` | Tsum ids and medal Tsums, bundled from `ui/public/data/catalog.json` |
 | `global/src/records.ts`, `global/src/ingest.ts` | An upload's records → rounds (read as `csv.go` reads them); `POST /api/v1/rounds` in one D1 batch, sums to `pending`; a keyless upload (the Tsum script) joins first and gets its key back (CONTRACT §2.2.1) |
+| `global/src/presets.ts` | The preset gallery (CONTRACT §2.7): submit (codes read with `ui/src/lib/presets/shareCode.js`, refused when not read whole), mine, delete, takedown; publishing `presets.json` |
 | `global/src/contributors.ts`, `global/src/admin.ts` | Join (`makeContributor`, shared with keyless uploads), bearer check, `/me`, unlink; the admin routes |
 | `global/src/budget.ts`, `global/src/run.ts` | The day's write and read budget (§2.6); one invocation's D1/R2 share |
 | `global/src/job.ts` | The hourly job: claims dirty days, runs each step on its own |
@@ -205,7 +206,7 @@ by-hand deploy when the Devkit is not available.
 Tests (vitest in workerd; `vitest.config.ts` binds `test/tunables.json`, the
 Free numbers, in place of `wrangler.jsonc`'s): `admin.test.ts`,
 `archive.test.ts`, `data.test.ts`, `deploy.test.ts` (the token reaches wrangler
-only), `ingest.test.ts`, `records.test.ts`, `rollup.test.ts`,
+only), `ingest.test.ts`, `presets.test.ts` (the gallery), `records.test.ts`, `rollup.test.ts`,
 `unlink.test.ts`, `tunables.test.ts`, `volume.test.ts` (a day of 80,000
 rounds), `parity.test.ts` (driven by Go's `TestGlobalParity`; skipped by `npm
 test` alone). Support: `setup.ts` (migrates D1), `helpers.ts` (the Worker at a

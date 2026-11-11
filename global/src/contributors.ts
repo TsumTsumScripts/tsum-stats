@@ -5,6 +5,7 @@ import { hmacHex, hmacKey, newKey, sha256Hex } from "./crypto";
 import { dayOf } from "./days";
 import { limits, type Env } from "./env";
 import { HttpError, bearer, isoTime, ok, readObject } from "./http";
+import { markDirty } from "./presets";
 
 /** The contributor a request's key belongs to. */
 export interface Contributor {
@@ -169,6 +170,9 @@ export async function unlink(env: Env, c: Contributor, nowMs: number): Promise<R
     // The manifest's counts of people move with it.
     db.prepare("DELETE FROM recent WHERE contributor = ?1").bind(c.id),
     db.prepare("DELETE FROM state WHERE key = 'people'"),
+    // Its gallery presets go with it.
+    db.prepare("DELETE FROM presets WHERE contributor = ?1").bind(c.id),
+    markDirty(db),
   ]);
   return ok();
 }

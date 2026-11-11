@@ -44,6 +44,7 @@ cite it by section (`CONTRACT §3.2`).
 | `src/ingest.ts` | `POST /api/v1/rounds`: the one D1 batch with its checks, and the new rounds' sums for `pending` |
 | `src/contributors.ts` | Join (and its per-address limit), the Bearer check, `/me`, `/me/unlink` |
 | `src/admin.ts` | The admin routes |
+| `src/presets.ts` | The preset gallery (§2.7): submit, the contributor's own, delete, takedown; the job's `presets.json` |
 | `src/run.ts` | `Run`: one invocation's D1 queries, R2 operations, bytes, and rows read and written |
 | `src/job.ts` | The hourly job: claims dirty days, runs each step on its own, and lists the `state` keys it keeps |
 | `src/rollup.ts` | Step 1: the `pending` sums folded into `cells`, `cell_bins` and `contrib_cells`, and full recomputes |
@@ -51,7 +52,7 @@ cite it by section (`CONTRACT §3.2`).
 | `src/unlink.ts` | Step 3: finishing an unlink, day by day |
 | `src/archive.ts` | Steps 4 and 4b and restore: final days staged and written to `archive/`, dropped from D1 lazily, and back |
 | `src/data.ts` | `GET /data/global/*` from R2, through the edge cache |
-| `migrations/0001_init.sql` | The D1 schema (§3.1) |
+| `migrations/0001_init.sql` | The D1 schema (§3.1); `0005_presets.sql` the gallery's table |
 | `migrations/0002_cell_bins.sql` | Bins per cell with their figures (`cell_bins`), and every day marked to be recomputed into them |
 | `migrations/0003_skill_type.sql` | Each round's skill type kept, and `cells2` / `cell_bins2` keyed by it, copied from `cells` / `cell_bins` |
 | `migrations/0004_jackpot.sql` | `cells3` / `cell_bins3` keyed by coin-bonus jackpots too, copied from `cells2` / `cell_bins2`; `pending.format`, so sums of the old layout are recomputed, not folded |

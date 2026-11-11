@@ -25,6 +25,7 @@
 //   merged:<id>       the contributor an id was merged into, for restores
 //   gone:<id>         "banned": a banned contributor that unlinked; its archive files are never restored
 //   nocompact:<month> a month too big for one part
+//   presets_dirty     presets changed since presets.json was published (presets.ts)
 // and, written by the admin route only, resend (the full re-upload number, CONTRACT §2.2).
 import { archiveStarved, archiveStep, dropRestored, dropStep } from "./archive";
 import { RECORD } from "./budget";
@@ -33,6 +34,7 @@ import { addDays, dayOf } from "./days";
 import { limits, type Env, type Limits } from "./env";
 import { compactStep, finish, renderStep } from "./parts";
 import { DAY_QUERIES, foldStep, recomputeStep, type Pending } from "./rollup";
+import { DIRTY as PRESETS_DIRTY, publishPresets } from "./presets";
 import { Run } from "./run";
 import { unlinkStep } from "./unlink";
 
@@ -87,6 +89,8 @@ export interface Job {
   hasPeople: boolean;
   /** A step changed `recent`, so the counts of people may have moved. */
   recentChanged: boolean;
+  /** The presets_dirty mark to publish for, or null when presets.json is current. */
+  presetsDirty: string | null;
   /** Some step left work for the next run. */
   more: boolean;
   report: Report;
@@ -138,7 +142,7 @@ export async function runJob(env: Env, nowMs: number): Promise<Report> {
   const steps: Step[] = [
     ["fold", foldStep], ["recompute", recomputeStep], ...(starved ? archive : []),
     ["render", renderStep], ["unlink", unlinkStep], ["restored", dropRestored],
-    ...(starved ? [] : archive), ["drop", dropStep], ["compact", compactStep],
+    ...(starved ? [] : archive), ["drop", dropStep], ["compact", compactStep], ["presets", publishPresets],
   ];
   for (const [name, step] of steps) {
     try {
@@ -190,7 +194,7 @@ async function open(run: Run, lim: Limits): Promise<Job> {
       UNION ALL SELECT key, CASE WHEN key >= 'part:' AND key < 'part;'
           THEN json_object('from', value ->> 'from', 'to', value ->> 'to', 'rounds', value ->> 'rounds', 'bytes', value ->> 'bytes', 'files', value -> 'files')
         WHEN key = 'totals' THEN '1' WHEN key = 'people' THEN coalesce(value ->> 'catalog', '') ELSE value END
-      FROM state WHERE key IN ('trash', 'archived_through', 'dropped_through', 'archive', 'held', 'restored', 'render', 'parts_at', 'totals', 'people')
+      FROM state WHERE key IN ('trash', 'archived_through', 'dropped_through', 'archive', 'held', 'restored', 'render', 'parts_at', 'totals', 'people', 'presets_dirty')
         OR (key >= 'part:' AND key < 'part;') OR (key >= 'nocompact:' AND key < 'nocompact;')`),
     run.stmt("SELECT rows, reads FROM budget WHERE day = ?1", today),
     // Uploads to add in, and whether each one's rounds are public and named now.
@@ -229,6 +233,7 @@ async function open(run: Run, lim: Limits): Promise<Job> {
     hasTotals: false,
     hasPeople: false,
     recentChanged: false,
+    presetsDirty: null,
     more: false,
     report: {
       folded: 0, recomputed: [], rendered: [], unlinked: [], archived: [], dropped: [], compacted: [], manifest: false, more: false,
@@ -252,6 +257,7 @@ async function open(run: Run, lim: Limits): Promise<Job> {
     // Counts made under another catalog are made again: a Tsum it lacked now counts.
     else if (key === "people") job.hasPeople = value === catalogId();
     else if (key === "dirty") job.more = value !== "0";
+    else if (key === PRESETS_DIRTY) job.presetsDirty = value;
   }
   return job;
 }

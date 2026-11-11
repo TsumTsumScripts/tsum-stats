@@ -139,8 +139,11 @@ otherwise join, or spend its visitors' joins. A request body may be gzipped
 | `POST /api/v1/rounds` | contributor, or none to join first (§2.2.1) | Takes a `gap.round-stats/1` batch |
 | `GET /api/v1/me` | contributor | The contributor's own record |
 | `POST /api/v1/me/unlink` | contributor | Unlinks the contributor |
+| `POST /api/v1/presets` | contributor | Submits a preset to the gallery (§2.7) |
+| `GET /api/v1/presets/mine` | contributor | The contributor's own presets |
+| `POST /api/v1/presets/delete` | contributor | Deletes one of them |
 | `GET /api/v1/admin/contributors` | admin | Every contributor's record |
-| `POST /api/v1/admin/{ban,unban,merge,rebuild,restore,rollup}` | admin | See §2.5 |
+| `POST /api/v1/admin/{ban,unban,merge,rebuild,restore,rollup,takedown}` | admin | See §2.5, §2.7 |
 | `GET /data/global/*` | none | The published files (§4), from R2 |
 | anything else | none | The page (static assets) |
 
@@ -418,9 +421,37 @@ uploads, joins, unlinks, the admin routes, restores and the hourly job.
 
 Budget rows older than 7 days are deleted at the first run after 00:00 UTC.
 
+### 2.7 The preset gallery
+
+Contributors share presets as **Tsum share codes** (`TSUM4-…~`, the script's
+settings page format). The Worker and the page read them with one codec,
+`ui/src/lib/presets/shareCode.js`, over the script's own table
+(`shareCodes.json`, synced by `tools/sync-share-codes.js` from the script's
+`build/shareCodes.json`; sync and deploy before each script alpha that adds a
+share slot or a skill). Only the code is stored; the page decodes it.
+
+- `POST /api/v1/presets` `{code, name?, description?, tsum?}` → **201** `{id}`.
+  `code` holds exactly one code, bare or as a `Name: code` line (the script's
+  Export presets); `name` wins over the line's. Refusals (400): `bad-code`
+  (none, several, or damaged), `old-code` (another format version), `newer-code`
+  (a field the synced table can't read, e.g. a skill added since the sync:
+  never stored with it dropped), `bad-name` (empty once cleaned as the script
+  does: whitespace collapsed, trimmed, at most 40), `bad-description` (over
+  280), `bad-tsum` (not a catalog id). 429 `preset-limit`: 50 presets, or 20
+  new ones a UTC day, per contributor. Counted in the budget like an upload.
+- `GET /api/v1/presets/mine` → `{presets: [{id, name, description, tsum, skill,
+  code, script, createdAt, hidden}]}`, newest first.
+- `POST /api/v1/presets/delete` `{id}`: the contributor's own only, else 404.
+- Admin `takedown {id, hidden?}` (default `true`; `false` shows it again) →
+  `{id, hidden}`; 404 for no such preset. Never refused for the budget.
+- A banned contributor's presets leave `presets.json`; unlinking deletes them;
+  a merge moves them.
+- Every change sets `state` `presets_dirty` to a fresh value; the job publishes
+  `presets.json` (§4.3) and clears that value only.
+
 ## 3. Storage
 
-### 3.1 D1 schema (`global/migrations/0001_init.sql`, `0002_cell_bins.sql`, `0003_skill_type.sql`)
+### 3.1 D1 schema (`global/migrations/0001_init.sql`, `0002_cell_bins.sql`, `0003_skill_type.sql`, `0005_presets.sql`: the gallery's `presets`, §2.7)
 
 ```sql
 CREATE TABLE contributors (
@@ -738,6 +769,7 @@ rounds]]`), `restore:<day>`, `settings_archived`, `span:<id>`,
 | `data/global/manifest.json` | yes | §4.1 |
 | `data/global/day-YYYY-MM-DD.<sha8>.json` | yes | One day's part, or one file of it (§4.2) |
 | `data/global/month-YYYY-MM.<sha8>.json` | yes | One compacted month's part |
+| `data/global/presets.json` | yes | The preset gallery (§4.3) |
 | `archive/YYYY-MM/YYYY-MM-DD/c<id>.json` | no | One contributor's rounds for one day, and `c<id>.<k>.json` (k ≥ 1) when they are too big for one file |
 | `archive/YYYY-MM/YYYY-MM-DD/u<hex>.json` | no | Unlinked rounds for one day, files sized by bytes |
 | `archive/YYYY-MM/YYYY-MM-DD/b<hex>.json` | no | A banned contributor's files once it unlinked: kept for good, never restored |
@@ -861,6 +893,21 @@ rows and, apart from those, a share of its `cell_bins3` rows, about half the lim
 each. The files together hold the part's rows, each row once, and the page
 adds up every file the manifest lists (§6). Their `rounds` add up to the
 part's.
+
+### 4.3 `presets.json`
+
+Written by the job's last step when `presets_dirty` is set; served with
+`max-age=300` like the manifest.
+
+```json
+{"kind": "tsum-presets", "format": 1, "generatedAt": "2026-10-14T19:05:12Z", "script": "6.0b26",
+ "presets": [{"id": 7, "name": "Fast Cabbage", "description": "", "tsum": null, "skill": "cabbage_mickey",
+              "code": "TSUM4-d6.QAQg.Og.Ta~", "script": "6.0b26", "createdAt": "2026-10-14T18:00:00Z"}]}
+```
+
+The newest 2,000 visible presets (not taken down, contributor active), newest
+first. `script`: the version of the table that read them (the file's, and each
+preset's at submit). `skill`: the code's skill type, or its default.
 
 ## 5. Bins
 

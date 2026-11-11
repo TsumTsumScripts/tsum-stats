@@ -1,8 +1,9 @@
 // GET /data/global/<name>: the published files (CONTRACT §3.3), from R2. Only
-// the manifest and part names are answered, so nothing else in the bucket
+// the manifest, part names and presets.json are answered, so nothing else in the bucket
 // (archive/ above all) can be reached through here.
 import type { Env } from "./env";
 import { DATA } from "./parts";
+import { FILE } from "./presets";
 
 const PART = /^(day-\d{4}-\d{2}-\d{2}|month-\d{4}-\d{2})\.[0-9a-f]{8}\.json$/;
 
@@ -14,7 +15,7 @@ export async function serveData(req: Request, env: Env, ctx: ExecutionContext, n
     return Response.json({ ok: false, error: "method" }, { status: 405, headers: { Allow: "GET, HEAD" } });
   }
   const part = PART.test(name);
-  if (!part && name !== "manifest.json") return notFound();
+  if (!part && name !== "manifest.json" && name !== FILE) return notFound();
 
   // A part never changes under its name, so the edge may keep it.
   const cache = caches.default;

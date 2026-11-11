@@ -9,6 +9,7 @@ import { addDays, dayOf, isDay, keyDay } from "./days";
 import { limits, type Env } from "./env";
 import { HttpError, isoTime, ok, readObject } from "./http";
 import { runJob } from "./job";
+import { markDirty, takedown } from "./presets";
 
 /** A rebuild marks at most this many days. */
 const MAX_REBUILD_DAYS = 400;
@@ -77,6 +78,8 @@ export async function adminPost(action: string, req: Request, env: Env, nowMs: n
         db.prepare(DIRTY_DAYS_OF).bind(id),
         // The manifest's counts of people are made again.
         db.prepare("DELETE FROM state WHERE key = 'people'"),
+        // A banned contributor's presets leave presets.json.
+        markDirty(db),
       ]);
       return ok({ id, status, days: dirty.meta.changes });
     }
@@ -131,6 +134,8 @@ export async function adminPost(action: string, req: Request, env: Env, nowMs: n
         db.prepare(`INSERT INTO recent (contributor, tsum, day) SELECT ?2, tsum, day FROM recent WHERE contributor = ?1
           ON CONFLICT (contributor, tsum) DO UPDATE SET day = excluded.day WHERE excluded.day > day`).bind(from, into),
         db.prepare("DELETE FROM recent WHERE contributor = ?1").bind(from),
+        db.prepare("UPDATE presets SET contributor = ?2 WHERE contributor = ?1").bind(from, into),
+        markDirty(db),
         db.prepare("DELETE FROM contributors WHERE id = ?1").bind(from),
         db.prepare("DELETE FROM state WHERE key = 'people'"),
       ]);
@@ -166,6 +171,9 @@ export async function adminPost(action: string, req: Request, env: Env, nowMs: n
 
     case "rollup":
       return ok({ ...(await runJob(env, nowMs)) });
+
+    case "takedown":
+      return takedown(body, env, nowMs);
 
     case "resend": {
       // Every contributor's next pass sends every round it has once more
