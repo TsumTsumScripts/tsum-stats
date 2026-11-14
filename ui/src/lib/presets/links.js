@@ -2,7 +2,7 @@
 // "Preset file") carried in a link's fragment, so nothing is fetched and nothing reaches a server.
 //
 //   Add to GAP Companion:  https://companion.gapapp.app/presets/import#p=<base64url JSON>
-//   From GAP Companion:    <this site>/#/presets/convert?p=<base64url JSON>   (`presetShare` in the script)
+//   From GAP Companion:    <this site>/#/presets?p=<base64url JSON>   (`presetShare` in the script)
 
 export const SCRIPT_ID = "app.gap.Tsum";
 export const COMPANION_IMPORT = "https://companion.gapapp.app/presets/import";

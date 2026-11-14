@@ -1,5 +1,5 @@
 {
- "script": "6.0b26",
+ "script": "6.0b27",
  "table": {
   "prefix": "TSUM4-",
   "otherPrefix": "TSUM[0-9]+-",
@@ -17,13 +17,18 @@
     "key": "maxChainsPerScan",
     "kind": "int",
     "default": 3,
-    "label": "Chains per board scan"
+    "label": "Chains per board scan",
+    "min": 1,
+    "max": 12
    },
    {
     "key": "maxChain",
     "kind": "int",
     "default": 5,
-    "label": "Maximum Chain Number"
+    "label": "Maximum Chain Number",
+    "min": 3,
+    "max": 15,
+    "allowZero": true
    },
    {
     "key": "prioritizeMyTsum",
@@ -77,13 +82,17 @@
     "key": "skillWaitingTime",
     "kind": "int",
     "default": 0,
-    "label": "Skill Waiting time (sec)"
+    "label": "Skill Waiting time (sec)",
+    "min": 0,
+    "max": 15
    },
    {
     "key": "skillLevel",
     "kind": "int",
     "default": 6,
-    "label": "Skill Level"
+    "label": "Skill Level",
+    "min": 1,
+    "max": 6
    },
    {
     "key": "skillType",
@@ -149,7 +158,9 @@
     "key": "noSkillLastFeverSec",
     "kind": "int",
     "default": 0,
-    "label": "No skill last fever seconds"
+    "label": "No skill last fever seconds",
+    "min": 0,
+    "max": 10
    },
    {
     "key": "skillAutoTap",
@@ -161,7 +172,9 @@
     "key": "linkReachPercent",
     "kind": "int",
     "default": 190,
-    "label": "Link reach (% of a tsum)"
+    "label": "Link reach (% of a tsum)",
+    "min": 150,
+    "max": 350
    },
    {
     "key": "lorcanaCard",
@@ -193,21 +206,27 @@
     "key": "holdBubblesLastFeverSec",
     "kind": "int",
     "default": 0,
-    "label": "Hold bubbles last fever seconds"
+    "label": "Hold bubbles last fever seconds",
+    "min": 0,
+    "max": 10
    },
    {
     "key": "skillSettleMs",
     "kind": "int",
     "default": 0,
     "label": "Wait for Settle (s)",
-    "scale": 1000
+    "scale": 1000,
+    "min": 0,
+    "max": 3000
    },
    {
     "key": "skillReactivationTenths",
     "kind": "int",
     "default": 0,
     "label": "Delay Skill ReActivation (sec)",
-    "scale": 10
+    "scale": 10,
+    "min": 0,
+    "max": 300
    },
    {
     "key": "autoSkillLevel",

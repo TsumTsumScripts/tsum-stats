@@ -8,7 +8,8 @@
   import TsumChip from '../components/TsumChip.svelte';
   import {isGlobal} from '../lib/global/client.js';
   import {companionLink, unpackPresets} from '../lib/presets/links.js';
-  import {TABLE, describe, encode, exportText, read} from '../lib/presets/shareCode.js';
+  import {TABLE, clean, describe, encode, exportText, read} from '../lib/presets/shareCode.js';
+  import {cleanName} from '../lib/presets/text.js';
   import {shared, toast} from '../lib/ui.svelte.js';
   import {api, tsumColor, tsumName} from '../lib/util.js';
 
@@ -46,8 +47,10 @@
 
   // ---- Convert ----
   let text = $state('');
-  // Presets GAP Companion sent in the link, shown as codes.
+  // Presets GAP Companion sent in the link, shown as codes, and how many of their settings
+  // were left out (a value the script would not apply as is: a link made by hand, or a newer app).
   let fromCompanion = $state.raw(null);
+  let companionDropped = $state(0);
   const pasted = $derived(text.trim() ? read(text) : null);
   const pastedNote = $derived.by(() => {
     if (!pasted) return '';
@@ -60,13 +63,20 @@
     if (newer) parts.push(`${newer} came from a newer script and may miss a setting until this site updates`);
     return parts.join('; ');
   });
-  // A pasted code without a name gets one, so it can go to GAP Companion.
-  const named = list => list.map((p, i) => ({...p, name: p.name || `Shared preset${list.length > 1 ? ' ' + (i + 1) : ''}`}));
+  // Names cleaned as the gallery's are; a preset without one gets one, so it can go to GAP Companion.
+  const named = list => list.map((p, i) => ({...p, name: cleanName(p.name ?? '') || `Shared preset${list.length > 1 ? ' ' + (i + 1) : ''}`}));
 
   // App calls this when the section is shown again with new params.
   export function shown(params) {
     const p = params?.p ? unpackPresets(params.p) : null;
-    fromCompanion = p && p.length ? p : null;
+    let dropped = 0;
+    const kept = (p ?? []).map(x => {
+      const c = clean(x.values);
+      dropped += c.dropped;
+      return {name: x.name, values: c.values};
+    });
+    fromCompanion = kept.length ? named(kept) : null;
+    companionDropped = dropped;
   }
 
   async function copy(t, what) {
@@ -86,7 +96,7 @@
   let busy = $state(false);
   const ERRORS = {
     'bad-code': 'That is not one whole share code.', 'old-code': 'That code is from an older version of the script.',
-    'newer-code': 'That code is from a newer script than this site knows. Try again after the site updates.',
+    'newer-code': 'That code has a skill or setting this site does not know: from a newer script (try again after the site updates), or one the script removed.',
     'bad-name': 'Give it a name.', 'bad-description': 'The description is too long (280 characters at most).',
     'bad-tsum': 'Pick a Tsum from the list, or none.', 'preset-limit': 'You have shared as many presets as you can for now.',
     'not-joined': 'Join the global stats first (Contribute): only contributors can share presets.',
@@ -165,7 +175,7 @@
     </div>
     {#if p.description}<p class="preset-desc">{p.description}</p>{/if}
     <dl class="preset-settings">
-      {#each changes as [label, value] (label)}<div><dt>{label}</dt><dd>{value}</dd></div>{/each}
+      {#each changes as [label, value], i (i)}<div><dt>{label}</dt><dd>{value}</dd></div>{/each}
       {#if !changes.length}<div><dt>Every setting</dt><dd>Default</dd></div>{/if}
     </dl>
     <div class="preset-actions">{@render actions(p)}</div>
@@ -184,6 +194,7 @@
     <div class="panel">
       <div class="panel-head"><div><h2>From GAP Companion</h2><span class="sub">{fromCompanion.length} preset{fromCompanion.length === 1 ? '' : 's'} as share codes</span></div></div>
       <textarea class="codes" readonly rows={Math.min(8, fromCompanion.length + 1)} aria-label="Share codes">{exportText(fromCompanion)}</textarea>
+      {#if companionDropped}<p class="sub">{companionDropped} setting{companionDropped === 1 ? ' was' : 's were'} left out: the script would not take {companionDropped === 1 ? 'its value' : 'their values'}.</p>{/if}
       <div class="preset-actions">
         <button type="button" class="btn" onclick={() => copy(exportText(fromCompanion), 'the share codes')}>Copy codes</button>
       </div>

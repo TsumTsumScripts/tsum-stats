@@ -52,7 +52,7 @@ cite it by section (`CONTRACT §3.2`).
 | `src/unlink.ts` | Step 3: finishing an unlink, day by day |
 | `src/archive.ts` | Steps 4 and 4b and restore: final days staged and written to `archive/`, dropped from D1 lazily, and back |
 | `src/data.ts` | `GET /data/global/*` from R2, through the edge cache |
-| `migrations/0001_init.sql` | The D1 schema (§3.1); `0005_presets.sql` the gallery's table |
+| `migrations/0001_init.sql` | The D1 schema (§3.1); `0005_presets.sql` the gallery's table, `0006_preset_limits.sql` its limits |
 | `migrations/0002_cell_bins.sql` | Bins per cell with their figures (`cell_bins`), and every day marked to be recomputed into them |
 | `migrations/0003_skill_type.sql` | Each round's skill type kept, and `cells2` / `cell_bins2` keyed by it, copied from `cells` / `cell_bins` |
 | `migrations/0004_jackpot.sql` | `cells3` / `cell_bins3` keyed by coin-bonus jackpots too, copied from `cells2` / `cell_bins2`; `pending.format`, so sums of the old layout are recomputed, not folded |

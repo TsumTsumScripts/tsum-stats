@@ -428,21 +428,33 @@ settings page format). The Worker and the page read them with one codec,
 `ui/src/lib/presets/shareCode.js`, over the script's own table
 (`shareCodes.json`, synced by `tools/sync-share-codes.js` from the script's
 `build/shareCodes.json`; sync and deploy before each script alpha that adds a
-share slot or a skill). Only the code is stored; the page decodes it.
+share slot or a skill). Only the code is stored, written again by the table
+(same values, no padding or stray fields); the page decodes it.
 
 - `POST /api/v1/presets` `{code, name?, description?, tsum?}` → **201** `{id}`.
   `code` holds exactly one code, bare or as a `Name: code` line (the script's
   Export presets); `name` wins over the line's. Refusals (400): `bad-code`
   (none, several, or damaged), `old-code` (another format version), `newer-code`
-  (a field the synced table can't read, e.g. a skill added since the sync:
-  never stored with it dropped), `bad-name` (empty once cleaned as the script
-  does: whitespace collapsed, trimmed, at most 40), `bad-description` (over
-  280), `bad-tsum` (not a catalog id). 429 `preset-limit`: 50 presets, or 20
-  new ones a UTC day, per contributor. Counted in the budget like an upload.
+  (a field the synced table can't read, or a dropdown value it doesn't list,
+  e.g. a skill added since the sync or one the script removed: never stored
+  with it dropped). A value the script would not apply as is (a number that
+  isn't whole or is outside its row's `min`..`max`, 0 allowed on `allowZero`
+  rows; a bool that isn't one) is `bad-code`. `bad-name` (not a string, or
+  empty once cleaned: whitespace collapsed, control and format characters
+  dropped, trimmed, at most 40 without splitting a character),
+  `bad-description` (not a string, or over 280 once cleaned the same way,
+  line breaks kept, one blank line at most), `bad-tsum` (not a string or not a
+  catalog id); `ui/src/lib/presets/text.js` cleans both. 429 `preset-limit`: 50
+  presets, or 20 submitted a UTC day (deleting doesn't give them back), per
+  contributor, checked in the insert's own batch (`refusals.preset_limit`,
+  `contributors.preset_day`/`preset_day_n`), so submits at once can't pass
+  together. Counted in the budget like an upload.
 - `GET /api/v1/presets/mine` → `{presets: [{id, name, description, tsum, skill,
   code, script, createdAt, hidden}]}`, newest first.
-- `POST /api/v1/presets/delete` `{id}`: the contributor's own only, else 404.
-- Admin `takedown {id, hidden?}` (default `true`; `false` shows it again) →
+- `POST /api/v1/presets/delete` `{id}`: the contributor's own only, else 404,
+  which writes nothing. Counted in the budget like an upload.
+- Admin `takedown {id, hidden?}` (a boolean, default `true`; `false` shows it
+  again, anything else 400) →
   `{id, hidden}`; 404 for no such preset. Never refused for the budget.
 - A banned contributor's presets leave `presets.json`; unlinking deletes them;
   a merge moves them.
@@ -451,7 +463,7 @@ share slot or a skill). Only the code is stored; the page decodes it.
 
 ## 3. Storage
 
-### 3.1 D1 schema (`global/migrations/0001_init.sql`, `0002_cell_bins.sql`, `0003_skill_type.sql`, `0005_presets.sql`: the gallery's `presets`, §2.7)
+### 3.1 D1 schema (`global/migrations/0001_init.sql`, `0002_cell_bins.sql`, `0003_skill_type.sql`, `0005_presets.sql`: the gallery's `presets`, `0006_preset_limits.sql`: its limits, §2.7)
 
 ```sql
 CREATE TABLE contributors (

@@ -35,14 +35,14 @@ export function encode(values) {
     if (!s || v === undefined || v === null || s.kind === "bool") return;
     let text;
     if (s.kind === "int") {
-      if (typeof v !== "number") return;
+      if (!Number.isFinite(v)) return;
       const r = Math.round(v);
       if (r === s.default) return;
       text = r.toString(36);
     } else {
       const str = String(v);
       if (str === s.default) return;
-      text = s.kind === "enum" ? (s.ids?.[str] ?? RAW + escape(str)) : escape(str);
+      text = s.kind === "enum" ? (own(s.ids, str) ? s.ids[str] : RAW + escape(str)) : escape(str);
     }
     fields.push(ALPHABET.charAt(i) + text);
   });
@@ -110,6 +110,39 @@ export function read(text) {
   return { presets, bad: found.length - presets.length, otherFormat: !presets.length && !!o && !o[0].startsWith(TABLE.prefix) };
 }
 
+/**
+ * values with only what the script would apply as is: known keys, booleans, whole numbers in
+ * the row's range (0 too on an allowZero row), options the dropdown has.
+ * Returns {values, dropped, unknown} (unknown: dropped dropdown values the table doesn't list).
+ */
+export function clean(values) {
+  const out = {};
+  let dropped = 0, unknown = 0;
+  for (const [k, v] of Object.entries(values ?? {})) {
+    const s = BY_KEY.get(k);
+    if (s && valid(s, v)) out[k] = v;
+    else {
+      dropped++;
+      // An option the table lacks: a skill newer than the sync, or one the script removed.
+      if (s?.kind === "enum" && typeof v === "string") unknown++;
+    }
+  }
+  return { values: out, dropped, unknown };
+}
+
+function valid(s, v) {
+  switch (s.kind) {
+    case "bool":
+      return typeof v === "boolean";
+    case "int":
+      return Number.isInteger(v) && ((v >= (s.min ?? -Infinity) && v <= (s.max ?? Infinity)) || (s.allowZero && v === 0));
+    case "enum":
+      return typeof v === "string" && own(s.options, v);
+    default:
+      return typeof v === "string";
+  }
+}
+
 /** What a preset changes, in slot order, as English [label, value] pairs (the script's own words). */
 export function describe(values) {
   const out = [];
@@ -117,7 +150,7 @@ export function describe(values) {
     if (!(s.key in values) || values[s.key] === s.default) continue;
     const v = values[s.key];
     const text = s.kind === "bool" ? (v ? "On" : "Off")
-      : s.kind === "enum" ? (s.options?.[v] ?? String(v))
+      : s.kind === "enum" ? (own(s.options, v) ? s.options[v] : String(v))
       : s.kind === "int" && s.scale ? String(v / s.scale) : String(v);
     out.push([s.label ?? s.key, text]);
   }
@@ -134,6 +167,7 @@ function value(s, text) {
       return isNaN(n) ? undefined : n;
     }
     case "enum":
+      // As the page reads it: a raw value is kept even when the dropdown lacks it (clean drops it).
       if (text.charAt(0) === RAW) return decodeURIComponent(text.substring(1));
       return Object.entries(s.ids ?? {}).find(([, id]) => id === text)?.[0];
     case "string":
@@ -167,6 +201,8 @@ function unpack(packed) {
   }
   return bits;
 }
+
+const own = (o, k) => typeof k === "string" && !!o && Object.hasOwn(o, k);
 
 // encodeURIComponent, then also . ! ~ * ' ( ): two of them delimit a code.
 const escape = (text) => encodeURIComponent(text).replace(/[.!~*'()]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());

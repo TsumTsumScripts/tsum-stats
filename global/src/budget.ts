@@ -8,11 +8,11 @@
 // once cannot both pass it.
 import { HttpError, untilMidnight } from "./http";
 
-type Refusal = "quota" | "budget" | "join_limit" | "unlinked";
+type Refusal = "quota" | "budget" | "join_limit" | "unlinked" | "preset_limit";
 
 /** Which refusals statement stopped a batch: its constraint's name, as D1 reports it. */
 export function refusedBy(e: unknown): Refusal | null {
-  const m = /CHECK constraint failed: (quota|budget|join_limit|unlinked)\b/.exec(String(e instanceof Error ? e.message : e));
+  const m = /CHECK constraint failed: (quota|budget|join_limit|unlinked|preset_limit)\b/.exec(String(e instanceof Error ? e.message : e));
   return m ? (m[1] as Refusal) : null;
 }
 
@@ -64,6 +64,7 @@ export async function spend(db: D1Database, nowMs: number, s: Spend, stmts: D1Pr
     if (by === "join_limit") throw new HttpError(429, "join-limit", untilMidnight(nowMs));
     if (by === "budget") throw new HttpError(503, "budget", untilMidnight(nowMs));
     if (by === "unlinked") throw new HttpError(401, "unauthorized");
+    if (by === "preset_limit") throw new HttpError(429, "preset-limit");
     throw e;
   }
   const written = res.reduce((n, r) => n + (r.meta.rows_written ?? 0), 0);

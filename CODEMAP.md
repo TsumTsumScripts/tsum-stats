@@ -178,8 +178,9 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `snapshot/client.js`, `snapshot/worker.js` | Is this a snapshot; run the engine in a Web Worker and keep loaded months |
 | `ui/src/lib/global/engine.js` | The same answers from the global site's part files (cells, not rounds; quartiles, P90 and the outlier ranges from each cell's bins), the Tsum page's included. Reuses the snapshot engine's helpers |
 | `global/client.js`, `global/worker.js` | Is this the global site (`isGlobal`); run the engine in a Web Worker, keep parts, refetch a replaced part |
-| `ui/src/lib/presets/shareCode.js` | **Tsum share codes** (`Name: TSUM4-…~`) read and written as the script's settings page does, over the script's own table `shareCodes.json` (synced by `tools/sync-share-codes.js`, never edited). The page and the Worker (submit check) both use it |
+| `ui/src/lib/presets/shareCode.js` | **Tsum share codes** (`Name: TSUM4-…~`) read and written as the script's settings page does, over the script's own table `shareCodes.json` (synced by `tools/sync-share-codes.js`, never edited). The page and the Worker (submit check) both use it; `clean` keeps only values the script applies as is (ranges from the table) |
 | `presets/links.js` | Presets to and from GAP Companion: a `gap-presets` document in a link's fragment (`companionLink`, `unpackPresets`) |
+| `presets/text.js` | Cleaning a preset's name and description (control and format characters dropped), for the Worker's submit and presets GAP Companion sent |
 | `ui/tests/parity.mjs` | The snapshot engine against the server's answers, run by `TestSnapshotParity` |
 | `ui/tests/share-codes.test.mjs` | The codec against the script's golden codes, and the companion links (`npm run test:codes`) |
 | `ui/tests/global-engine.test.mjs` | The global engine against the snapshot engine over the same rounds (`npm run test:global`) |
@@ -188,7 +189,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 
 `global/README.md` § Layout is the file table, one row per `global/src/` file;
 this is its index. `migrations/0001_init.sql` is the D1 schema (CONTRACT §3.1),
-`migrations/0002_cell_bins.sql` its bins per cell, `migrations/0005_presets.sql` the preset gallery,
+`migrations/0002_cell_bins.sql` its bins per cell, `migrations/0005_presets.sql` the preset gallery (`0006_preset_limits.sql` its limits),
 `wrangler.jsonc` the bindings, route, cron and tunables, `deploy.sh` the
 by-hand deploy when the Devkit is not available.
 
