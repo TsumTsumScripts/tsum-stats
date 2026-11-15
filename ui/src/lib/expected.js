@@ -35,3 +35,44 @@ export function sumExp(rows) {
   }
   return out;
 }
+
+/**
+ * The relative standard error of a group's expected figures: how far its
+ * average (and, about, its rate) could be from the Tsum's true one by the luck
+ * of which rounds were played, as a share of it. The rate's own error is
+ * usually smaller, as longer rounds earn more, so this errs on the safe side.
+ * Null with under 2 rounds, or when the sum of squares is unknown (a global
+ * cell cut by an outlier range).
+ */
+export function expErr(g) {
+  const n = g?.expRounds ?? 0;
+  if (n < 2 || g.expSq === null || g.expSq === undefined || !g.expCoins) return null;
+  const mean = g.expCoins / n;
+  const variance = Math.max(0, g.expSq / n - mean * mean) * (n / (n - 1));
+  return Math.sqrt(variance / n) / Math.abs(mean);
+}
+
+/** A share an error must stay under for its group's figure to be trusted (TRUST_ERR): ± 5 %. */
+export const TRUST_ERR = 0.05;
+/** Whether a group's expected figures are known well enough to rank or mark it: an error within TRUST_ERR. */
+export const trusted = g => {
+  const e = expErr(g);
+  return e !== null && e <= TRUST_ERR;
+};
+
+/**
+ * Whether two groups' expected rates differ by more than luck explains: by over
+ * two standard errors of the difference (about 95 % sure). False when either
+ * error is unknown.
+ */
+export function differs(a, b) {
+  const ra = expRate(a), rb = expRate(b), ea = expErr(a), eb = expErr(b);
+  if (ra === null || rb === null || ea === null || eb === null) return false;
+  return Math.abs(ra - rb) > 2 * Math.hypot(ra * ea, rb * eb);
+}
+
+/** "± 3.1%" for a group's error, or '' when unknown. */
+export const errText = g => {
+  const e = expErr(g);
+  return e === null ? '' : `± ${pct(e)}`;
+};

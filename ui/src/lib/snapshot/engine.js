@@ -276,6 +276,7 @@ export function createEngine(loader) {
   }
 
   const each = (sel, fn) => { for (const {sh, idx} of sel) for (const i of idx) fn(sh, i); };
+  const count = sel => sel.reduce((n, {idx}) => n + idx.length, 0);
 
   // ---- Aggregates (SQL's AVG, SUM, MIN, MAX skip nulls and are null over none) ----
 
@@ -507,6 +508,8 @@ export function createEngine(loader) {
       histogram: histogram(sel, c, main.totals),
       bonus: await coinBonus(sel, dayOf),
       medals,
+      // The rounds the rest of the filter keeps that an unread figure left out (summary.go: Summary.Incomplete).
+      incompleteRounds: f.complete ? count(await select({...f, complete: false})) - count(sel) : 0,
     };
   }
 

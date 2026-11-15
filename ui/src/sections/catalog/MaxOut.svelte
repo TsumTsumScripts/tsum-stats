@@ -1,6 +1,7 @@
 <!-- What maxing every shown Tsum still costs, and when the player's pace gets
-     there. The pace is the coins (after the coin bonus) and medals this build's
-     rounds earned a day over the chosen window. -->
+     there. The pace is the coins (after the coin bonus, less what the items
+     cost) and medals this build's rounds earned a calendar day over the chosen
+     window, so the time between rounds and away from the game counts. -->
 <script>
   import Chart from '../../components/Chart.svelte';
   import Legend from '../../components/Legend.svelte';
@@ -30,7 +31,7 @@
     // A snapshot's "now" is when it was made, so its pace is not diluted by the days since.
     const end = isSnapshot() ? new Date((await api('status')).generatedAt) : new Date();
     const from = days === 'all' ? null : new Date(end - days * DAY_MS);
-    const s = await api('summary', {build: b, coins: 'final', from: from?.toISOString()});
+    const s = await api('summary', {build: b, coins: 'final', net: '1', from: from?.toISOString()});
     if (!s.totals.rounds || !s.totals.first) return null;
     const start = Math.max(from ?? 0, parseUTC(s.totals.first));
     const span = Math.max(1, (end - start) / DAY_MS);
@@ -71,7 +72,7 @@
         <div class="value">{pace === undefined ? '…' : !totals[u].cost ? 'Done' : daysText(days(u))}</div>
         <div class="note">
           {#if pace === null}No {build === 'jp' ? 'JP' : 'INTL'} rounds in this window
-          {:else if pace}{fmt(pace[u])} {u} a day{#if days(u) !== null && left(u)}{` · ${finish(days(u))}`}{/if}{/if}
+          {:else if pace}{fmt(pace[u])} {u === 'coins' ? 'coins (less item costs)' : u} a day{#if days(u) !== null && left(u)}{` · ${finish(days(u))}`}{/if}{/if}
         </div>
         <label class="field have">On hand <input type="number" min="0" step="1000" value={prefs.have[u] || ''} placeholder="0"
           oninput={e => setPrefs({have: {...prefs.have, [u]: Math.max(0, +e.target.value || 0)}})}></label>

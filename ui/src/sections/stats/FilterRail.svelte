@@ -7,7 +7,7 @@
   import TsumChip from '../../components/TsumChip.svelte';
   import TsumCombo from '../../components/TsumCombo.svelte';
   import {isGlobal} from '../../lib/global/client.js';
-  import {PLAY, byPlayValue, debounce, fmt, itemsLabel, playValue, playValueName, skillTypeName, skillTypeValue} from '../../lib/util.js';
+  import {MIN_ROUNDS, PLAY, byPlayValue, debounce, fmt, itemsLabel, playValue, playValueName, skillTypeName, skillTypeValue} from '../../lib/util.js';
 
   // skillTypes: the script's skill types with rounds, [{skillType, rounds}]; pickedTypes: the filter's, '-' for none.
   // playChoices: each play setting's values with rounds, {scan: [{value, rounds}], ...}; pickedPlay: the filter's, '-' for not recorded.
@@ -197,8 +197,8 @@
         <!-- On the global site a round counts on the UTC day it began, however long it lasted. -->
         <label class="field" title={globalSite ? 'A round counts on the UTC day it began' : undefined}>From{globalSite ? ' (UTC)' : ''} <input type="date" value={range.from} onchange={e => dates(e.target.value, range.to)}></label>
         <label class="field" title={globalSite ? 'A round counts on the UTC day it began' : undefined}>To{globalSite ? ' (UTC)' : ''} <input type="date" value={range.to} onchange={e => dates(range.from, e.target.value)}></label>
-        <label class="field" title="Leave Tsums with fewer rounds in the filter out of the Tsum table and the efficiency chart. Every total still counts their rounds.">Min rounds per Tsum
-          <input type="number" min="0" step="10" inputmode="numeric" placeholder="Any" value={filter.minRounds} oninput={e => setBound('minRounds')(e.target.value)}></label>
+        <label class="field" title="Leave Tsums with fewer rounds in the filter out of the Tsum table and the efficiency chart ({MIN_ROUNDS} unless set; 0 for any). Every total still counts their rounds.">Min rounds per Tsum
+          <input type="number" min="0" step="10" inputmode="numeric" placeholder={String(MIN_ROUNDS)} value={filter.minRounds} oninput={e => setBound('minRounds')(e.target.value)}></label>
         <!-- Global rounds are kept as their sums per day and 2 % bins: a range keeps or leaves out whole bins. -->
         <div class="field outliers" title="Leave out rounds whose {globalSite ? '' : 'score, '}coins or medals fall outside these ranges">Outliers
           <details class="devices">

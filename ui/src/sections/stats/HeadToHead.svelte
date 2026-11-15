@@ -3,7 +3,7 @@
 <script>
   import Avatar from '../../components/Avatar.svelte';
   import {cap, fmt, fmtDuration, fmtRate, pct} from '../../lib/util.js';
-  import {expHour} from '../../lib/expected.js';
+  import {differs, expErr, expHour} from '../../lib/expected.js';
 
   // rows: the Tsum table's rows (each with .m, its medal figures). approx marks
   // the median and 90th percentile as estimates (the global site's).
@@ -11,48 +11,54 @@
 
   const perHour = r => (r?.coinsPerSec == null ? null : r.coinsPerSec * 3600);
 
+  /** Half the middle half's width over the median: how far half the rounds land from it (Insights' consistency). */
+  const steadiness = r => (r?.q1Coins != null && r.q3Coins != null && r.medianCoins ? (r.q3Coins - r.q1Coins) / 2 / Math.abs(r.medianCoins) : null);
+
   const card = $derived.by(() => {
     const byId = new Map(rows.map(r => [r.tsum, r]));
     const u = coins === 'medals' ? 'medals' : 'coins', U = cap(u);
-    // [label, value(row), format, which end wins: 'high', 'low' or none, class]
+    // One row per idea. [label, value(row), format, which end wins: 'high', 'low' or none, class, sure(winner, runner-up)].
+    // Only the rows with a winner count towards "best in"; expected coins only when the gap is more than luck explains.
     const figures = [
       ['Rounds', r => r.rounds, fmt],
-      ['Expected coins per hour', expHour, fmt, 'high', 'coin'],
-      [`${U} per second`, r => r.coinsPerSec, fmtRate, 'high'],
-      [`${U} per hour`, perHour, fmt, 'high'],
-      [`Average ${u}`, r => r.avgCoins, fmt, 'high'],
-      [`${approx ? '≈ ' : ''}Median ${u}`, r => r.medianCoins, fmt, 'high'],
-      [`Lowest ${u}`, r => r.minCoins, fmt, 'high'],
-      [`Highest ${u}`, r => r.maxCoins, fmt, 'high'],
-      [`${approx ? '≈ ' : ''}One in ten over`, r => r.p90Coins, fmt, 'high'],
-      ['Spread (lower is steadier)', r => r.stdCoins, fmt, 'low'],
-      [`Total ${u}`, r => r.coins, fmt],
-      ['Average round', r => r.avgSeconds, fmtDuration, 'low'],
-      ['Average score', r => r.avgScore, fmt, 'high'],
+      ['Expected coins per hour', expHour, v => fmt(v), 'high', 'coin', differs],
+      ['± (luck of the rounds played)', r => expErr(r), v => (v === null ? '' : `± ${pct(v)}`)],
+      [`${U} per second`, r => r.coinsPerSec, fmtRate],
+      [`Average ${u}`, r => r.avgCoins, fmt],
+      [`${approx ? '≈ ' : ''}Median ${u}`, r => r.medianCoins, fmt],
+      ['Consistency (lower is steadier)', steadiness, v => `± ${pct(v)}`, 'low'],
+      ['Average round', r => r.avgSeconds, fmtDuration],
+      ['Average score', r => r.avgScore, fmt],
       ...(coins !== 'medals' ? [
         ['Medals per hour', r => perHour(r.m), fmt, 'high', 'medal'],
-        ['Average medals', r => r.m?.avgCoins, fmt, 'high', 'medal'],
-        ['Rounds that earn medals', r => (r.m?.rounds ? r.m.earnedRounds / r.m.rounds : null), pct, 'high', 'medal'],
+        ['Rounds that earn medals', r => (r.m?.rounds ? r.m.earnedRounds / r.m.rounds : null), pct, '', 'medal'],
       ] : []),
     ];
     const wins = new Map(picked.map(id => [id, 0]));
+    let contests = 0;
     const body = [];
-    for (const [label, get, format, better, cls] of figures) {
+    for (const [label, get, format, better, cls, sure] of figures) {
       const vals = picked.map(id => (byId.has(id) ? get(byId.get(id)) ?? null : null));
       const nums = vals.filter(v => v !== null);
       if (!nums.length) continue;
       const max = Math.max(0, ...nums);
-      const best = better && nums.length > 1 ? (better === 'high' ? Math.max(...nums) : Math.min(...nums)) : null;
+      let best = null;
+      if (better && nums.length > 1) {
+        const order = picked.map((id, i) => ({row: byId.get(id), v: vals[i]})).filter(x => x.v !== null)
+          .sort((a, b) => (better === 'high' ? b.v - a.v : a.v - b.v));
+        if (!sure || sure(order[0].row, order[1].row)) best = order[0].v;
+        contests++;
+      }
       body.push({label, cells: vals.map((v, i) => {
         const top = best !== null && v === best;
         if (top) wins.set(picked[i], wins.get(picked[i]) + 1);
         return {text: format(v), cls: ['num', cls || '', top ? 'best' : ''].join(' ').trim(),
-          bar: v !== null && max > 0 ? (v / max) * 100 : null};
+          bar: v !== null && max > 0 && better ? (v / max) * 100 : null};
       })});
     }
     const most = Math.max(...wins.values());
     const heads = picked.map(id => ({id, leader: wins.get(id) === most && most > 0,
-      note: byId.has(id) ? `best in ${wins.get(id)}` : 'no rounds in the filter'}));
+      note: byId.has(id) ? `best in ${wins.get(id)} of ${contests}` : 'no rounds in the filter'}));
     return {heads, body};
   });
 </script>

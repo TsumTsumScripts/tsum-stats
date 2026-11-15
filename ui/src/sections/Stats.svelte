@@ -22,14 +22,14 @@
   import {expand, shared, toast} from '../lib/ui.svelte.js';
   import {
     api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsCost, itemsLabel, loadPref, pct, savePref,
-    PLAY, playValueName, skillTypeName, tsumColor, tsumName,
+    MIN_ROUNDS, PLAY, playValueName, skillTypeName, tsumColor, tsumName,
   } from '../lib/util.js';
   import ChainBest from './stats/ChainBest.svelte';
   import FilterRail from './stats/FilterRail.svelte';
   import FocusBar from './stats/FocusBar.svelte';
   import HeadToHead from './stats/HeadToHead.svelte';
   import Kpis from './stats/Kpis.svelte';
-  import {EXP_WHAT, expHour} from '../lib/expected.js';
+  import {EXP_WHAT, expErr, expHour} from '../lib/expected.js';
 
   // initial: the link's params; onStateChange(filter, {push}) writes the link.
   let {hidden, initial, onStateChange} = $props();
@@ -46,7 +46,7 @@
   // min/max Score, Coins and Medals are the outlier ranges (OUTLIERS); incomplete '1' keeps rounds with an unread figure.
   // On the global site, skill and items are comma lists of skill levels and item masks (-1: not recorded).
   // minRounds leaves Tsums with fewer rounds in the filter out of the rankings (the Tsum table and efficiency chart);
-  // it is the page's alone, never sent, so every total still counts their rounds.
+  // it is the page's alone, never sent, so every total still counts their rounds. '' is MIN_ROUNDS, '0' any.
   const blank = () => ({tsum: '', device: '', skillType: '', ...Object.fromEntries(PLAY.map(p => [p.param, ''])), days: '7', from: '', to: '', ...Object.fromEntries(OUTLIER_KEYS.map(k => [k, ''])),
     incomplete: '', build: '', coins: '', net: '', minRounds: '', sort: '-playedAt', page: 1, perPage: 50, ...(globalSite ? {skill: '', items: ''} : {})});
   /** The outlier ranges: a stat, its link keys and the input step. */
@@ -221,7 +221,7 @@
       out.push({label: `${label} ${rangeName[stat]}`, clear: () => set({[lo]: '', [hi]: ''})});
     }
     if (filter.incomplete) out.push({label: 'Incomplete rounds', clear: () => set({incomplete: ''})});
-    if (minRounds) out.push({label: `Tsums with ${fmt(minRounds)}+ rounds`, clear: () => set({minRounds: ''})});
+    if (minRounds) out.push({label: `Tsums with ${fmt(minRounds)}+ rounds`, clear: () => set({minRounds: '0'})});
     return out;
   });
 
@@ -338,8 +338,8 @@
 
   // ---- What the summary shows ----
 
-  /** The fewest rounds a Tsum needs in the filter to be ranked; 0 for any. */
-  const minRounds = $derived(Math.max(0, Math.floor(Number(filter.minRounds)) || 0));
+  /** The fewest rounds a Tsum needs in the filter to be ranked: MIN_ROUNDS unless set, 0 for any. */
+  const minRounds = $derived(filter.minRounds === '' ? MIN_ROUNDS : Math.max(0, Math.floor(Number(filter.minRounds)) || 0));
   const ranked = t => t.rounds >= minRounds;
   /** The Tsum table's rows: each with its name, share of the primary stat, and medal figures (m). */
   const tsumRows = $derived.by(() => {
@@ -361,7 +361,8 @@
     ? (new Set(summary.mix.map(m => m.build)).size > 1 ? 'inner: game · middle: Tsum · outer: items used' : 'inner: Tsum · outer: items used')
     : 'top 8 Tsums, the rest as Other'));
   const dailySub = $derived(summary && {
-    stack: `total ${basis}, top 7 Tsums`, rate: `${basis} per second of play`, avg: `average ${basis} per round, with the day's lowest–highest band`,
+    stack: `total ${basis}, top 7 Tsums`, rate: `${basis} per second of play`, avg: `average ${basis} per round`,
+    exp: `expected net coins an hour of play · band: where the day's true figure most likely is (two standard errors)`,
   }[views.daily] + (globalSite ? ' · by the UTC day each round began' : ''));
   const histSub = $derived(summary && (noSpreads ? `not available ${noSpreads}: ${noSpreadsWhy}`
     : `how many rounds ended with each amount of ${basis}, by Tsum${summary.global ? ' · ≈ from 2 % wide bins' : ''}`));
@@ -431,14 +432,15 @@
     num('players', 'Players', r => r.players, fmt, {meta: {show: () => globalSite, title: 'Contributors who sent rounds of this Tsum in the last 30 days'}}),
     num('share', () => `${U.slice(0, -1)} share`, r => r.share, pct, {meta: {title: "This Tsum's part of the primary stat in the filter"}}),
     num('expPerHour', 'Expected/h', r => expHour(r), fmt, {meta: {cls: 'coin', title: `Expected net coins an hour of play: ${EXP_WHAT}`}}),
+    num('expErr', '±', r => expErr(r), v => (v === null || v === undefined ? '' : `± ${pct(v)}`), {meta: {cls: 'dim', title: 'How far Expected/h could be off by the luck of which rounds were played (one standard error)'}}),
     num('coins', () => `Total ${unit}`, r => r.coins, fmt, {meta: {cls: unitCls}}),
     num('coinsPerSec', () => `${U}/s`, r => r.coinsPerSec, fmtRate, {meta: {cls: unitCls, title: 'Per second of play'}}),
     num('coinsPerHour', () => `${U}/h`, r => (r.coinsPerSec === null ? null : r.coinsPerSec * 3600)),
     num('avgCoins', 'Average', r => r.avgCoins),
     num('medianCoins', approxName('Median'), r => r.medianCoins, fmt, {meta: {title: approxTitle('')}}),
-    num('minCoins', 'Lowest', r => r.minCoins),
-    num('maxCoins', 'Highest', r => r.maxCoins),
-    num('stdCoins', 'Std dev', r => r.stdCoins, fmt, {meta: {title: 'How far rounds usually land from the average'}}),
+    num('minCoins', 'Lowest', r => r.minCoins, fmt, {meta: {hidden: true}}),
+    num('maxCoins', 'Highest', r => r.maxCoins, fmt, {meta: {hidden: true}}),
+    num('stdCoins', 'Std dev', r => r.stdCoins, fmt, {meta: {hidden: true, title: 'How far rounds usually land from the average'}}),
     num('q1Coins', approxName('Q1'), r => r.q1Coins, fmt, {meta: {hidden: true, title: approxTitle('A quarter of rounds made fewer coins')}}),
     num('q3Coins', approxName('Q3'), r => r.q3Coins, fmt, {meta: {hidden: true, title: approxTitle('A quarter of rounds made more coins')}}),
     num('p90Coins', approxName('P90'), r => r.p90Coins, fmt, {meta: {hidden: true, title: approxTitle('One round in ten made more coins')}}),
@@ -571,11 +573,11 @@
     {/if}
 
     <div id="s-overview" class="anchor">
-      {#if summary}<Kpis t={summary.totals} m={summary.medals.totals} coins={filter.coins} {basis} approx={Boolean(summary.global)}
+      {#if summary}<Kpis t={summary.totals} m={summary.medals.totals} coins={filter.coins} {basis} approx={Boolean(summary.global)} incomplete={summary.incompleteRounds ?? 0}
         totalFirst={Boolean(summary.global)} missing={noSpreads && `no median ${noSpreads}`} />{/if}
     </div>
 
-    <Panel id="s-compare" class="anchor" title="Head to head" sub="the Tsums in the filter side by side · the best in each row is marked"
+    <Panel id="s-compare" class="anchor" title="Head to head" sub="the Tsums in the filter side by side · the best is marked where there is one, expected coins only when the gap is more than luck explains"
       hidden={picked.length < 2}>
       {#if summary && picked.length > 1}
         <HeadToHead rows={tsumRows} {picked} coins={filter.coins} {nameOf} {colorOf} {focusOn} {dropTsum} approx={Boolean(summary.global)} />
@@ -601,7 +603,7 @@
     <div class="charts anchor" id="s-time">
       <Panel class="wide" title="{U} per day" sub={dailySub}>
         {#snippet tools()}
-          <Seg sm label="Chart" value={views.daily} onpick={v => setView('daily', v)} options={[['stack', 'By Tsum'], ['rate', `${U}/s`], ['avg', 'Average']]} />
+          <Seg sm label="Chart" value={views.daily} onpick={v => setView('daily', v)} options={[['stack', 'By Tsum'], ['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average']]} />
         {/snippet}
         <Chart draw={drawDaily} args={args?.daily} {unit} bind:legend={legends.daily} />
         <Legend items={legends.daily} />

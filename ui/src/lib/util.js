@@ -143,6 +143,13 @@ export const byPlayValue = (a, b) => (Number.isFinite(Number(a.value)) && Number
 const sig2 = new Intl.NumberFormat(undefined, {maximumSignificantDigits: 2});
 const fixed1 = new Intl.NumberFormat(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1});
 export const fmtRate = v => (v === null || v === undefined ? '—' : (Math.abs(v) < 1 ? sig2 : fixed1).format(v));
+/**
+ * The fewest rounds a Tsum needs in the filter to be ranked by default: the
+ * Stats page's Tsum table and efficiency chart, and the Tsum page's rank. Fewer
+ * rounds than this rarely pin its figures within a few percent.
+ */
+export const MIN_ROUNDS = 50;
+
 export const pct = v => (v === null || v === undefined ? '—' : `${nf1.format(v * 100)}%`);
 
 /** A localStorage JSON value; private mode or bad JSON gives fallback. */

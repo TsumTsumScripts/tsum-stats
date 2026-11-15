@@ -3,6 +3,7 @@
      with the share of rounds under a target the player sets. -->
 <script>
   import {toMax, toNext} from '../../lib/boxes.js';
+  import {differs, errText, expHour} from '../../lib/expected.js';
   import {debounce, fmt, fmtRate, pct} from '../../lib/util.js';
 
   // detail: the /tsum answer; own: the Tsum's Tsum list row (null when not owned,
@@ -15,14 +16,21 @@
 
   const t = $derived(detail.summary.totals);
 
+  // Recent form in expected coins an hour (lib/expected.js), or the medal rate in medals.
+  // A change is coloured only when it is more than luck explains (medals: past half a percent).
+  const medals = $derived(unit === 'medals');
   const form = $derived.by(() => {
+    const value = r => (r ? (medals ? r.coinsPerSec : expHour(r)) : null);
     const [recent, before] = ['recent', 'before'].map(k => detail.form.find(r => r.key === k) ?? null);
-    if (!recent || recent.coinsPerSec === null) return null;
-    const vs = (r, base) => (r?.coinsPerSec != null && base ? r.coinsPerSec / base - 1 : null);
-    return {recent, before, vsAll: vs(recent, t.coinsPerSec), vsBefore: vs(recent, before?.coinsPerSec)};
+    if (value(recent) === null) return null;
+    const vs = (r, base) => {
+      const v = value(r), b = value(base);
+      return v === null || !b ? null : {v: v / b - 1, real: medals ? Math.abs(v / b - 1) > 0.005 : differs(r, base)};
+    };
+    return {recent, before, value: value(recent), err: medals ? '' : errText(recent), vsAll: vs(recent, t), vsBefore: before && vs(recent, before)};
   });
-  const signed = v => (v === null ? '' : `${v > 0 ? '+' : ''}${pct(v)}`);
-  const trend = v => (v === null || Math.abs(v) < 0.005 ? '' : v > 0 ? 'up' : 'down');
+  const signed = c => (c === null ? '' : `${c.v > 0 ? '+' : ''}${pct(c.v)}`);
+  const trend = c => (!c?.real ? '' : c.v > 0 ? 'up' : 'down');
 
   /** Hours of play, as minutes, hours or days. */
   function playTime(sec) {
@@ -54,12 +62,16 @@
 
 <div class="kpis insights">
   {#if form}
-    <div class="panel kpi" title="The newest {fmt(form.recent.rounds)} rounds in the filter">
+    <div class="panel kpi" title="The newest {fmt(form.recent.rounds)} rounds in the filter. A change is coloured only when it is more than the luck of which rounds were played explains">
       <div class="label">Recent form · last {fmt(form.recent.rounds)} rounds</div>
-      <div class="value">{fmtRate(form.recent.coinsPerSec)} <span class="unit">{unit}/s</span></div>
+      {#if medals}
+        <div class="value">{fmtRate(form.value)} <span class="unit">medals/s</span></div>
+      {:else}
+        <div class="value">{fmt(form.value)} <span class="unit">expected coins/h</span></div>
+      {/if}
       <div class="note">
-        <span class={trend(form.vsAll)}>{signed(form.vsAll)}</span> against all {fmt(t.rounds)}
-        {#if form.before?.coinsPerSec != null} · <span class={trend(form.vsBefore)}>{signed(form.vsBefore)}</span> against the {fmt(form.before.rounds)} before{/if}
+        {#if form.err}{form.err} · {/if}<span class={trend(form.vsAll)}>{signed(form.vsAll)}</span> against all {fmt(t.rounds)}
+        {#if form.vsBefore} · <span class={trend(form.vsBefore)}>{signed(form.vsBefore)}</span> against the {fmt(form.before.rounds)} before{/if}
       </div>
     </div>
   {/if}

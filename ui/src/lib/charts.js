@@ -7,7 +7,7 @@
 import * as d3 from 'd3';
 import {IMAGE_URL, chainsLabel, css, fmt, fmtRate, initials, itemsLabel, otherColor, pct} from './util.js';
 import {b, dim, hideTip, showTip, sw} from './ui.svelte.js';
-import {expHour} from './expected.js';
+import {expErr, expHour} from './expected.js';
 
 const parseDay = d3.timeParse('%Y-%m-%d');
 const dayLabel = new Intl.DateTimeFormat(undefined, {weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'});
@@ -102,7 +102,7 @@ function dayHover(f, x, points, show) {
     .on('pointerleave', () => { rule.style('display', 'none'); hideTip(); });
 }
 
-/** A day line with a lowest–highest band, broken where days are missing. */
+/** A day line, with a band from get.lo to get.hi when given, broken where days are missing. */
 function bandLine(f, pts, x, y, color, get) {
   const {g} = f;
   const seg = pts.flatMap((p, i) => (i && d3.timeDay.count(pts[i - 1].date, p.date) > 1 ? [null, p] : [p]));
@@ -129,15 +129,17 @@ function dayScale(f, pts) {
 const stackLines = (top, p) => top.keys.filter(k => p[k]).sort((a, c) => p[c] - p[a])
   .map(k => [sw(top.color(k)), `${top.label(k)} `, b(fmt(p[k]))]);
 
-// ---- Coins per day: stacked by Tsum, the coin rate, or average with its range ----
+// ---- Coins per day: stacked by Tsum, expected coins an hour, the coin rate, or the average ----
+
+/** A day's expected coins an hour, two standard errors either side: where its true figure most likely is. */
+const expBand = {mid: p => expHour(p), lo: p => expHour(p) * (1 - 2 * (expErr(p) ?? 0)), hi: p => expHour(p) * (1 + 2 * (expErr(p) ?? 0))};
 
 export function drawDaily(container, daily, dailyTsums, ctx, mode) {
   const f = frame(container, {top: 12, right: 16, bottom: 26, left: 52});
   const {g, inner} = f;
-  if (mode === 'rate' || mode === 'avg') {
-    const get = mode === 'rate'
-      ? {mid: p => p.coinsPerSec}
-      : {mid: p => p.avgCoins, lo: p => p.minCoins, hi: p => p.maxCoins};
+  if (mode === 'rate' || mode === 'avg' || mode === 'exp') {
+    // The average has no band: a day's lowest and highest round widen with how much was played, not how steady it was.
+    const get = mode === 'rate' ? {mid: p => p.coinsPerSec} : mode === 'exp' ? expBand : {mid: p => p.avgCoins};
     const pts = daily.filter(d => get.mid(d) !== null).map(d => ({...d, date: parseDay(d.day)}));
     if (!pts.length) return empty(f);
     const x = dayScale(f, pts);
@@ -147,7 +149,9 @@ export function drawDaily(container, daily, dailyTsums, ctx, mode) {
     bandLine(f, pts, x, y, css('--coin'), get);
     dayHover(f, x, pts, (p, e) => showTip([[b(dayLabel.format(p.date))], [`${fmt(p.rounds)} rounds`], ...(mode === 'rate'
       ? [[b(fmtRate(p.coinsPerSec)), ` ${U} per second`]]
-      : [['Average ', b(fmt(p.avgCoins)), ` ${U}`], [`Lowest ${fmt(p.minCoins)} · Highest ${fmt(p.maxCoins)}`]])], e));
+      : mode === 'exp'
+        ? [[b(fmt(expHour(p))), ' expected coins/h'], ...(expErr(p) === null ? [] : [[dim(`± ${pct(expErr(p))} · band: two standard errors either side`)]])]
+        : [['Average ', b(fmt(p.avgCoins)), ` ${U}`], [`Lowest ${fmt(p.minCoins)} · Highest ${fmt(p.maxCoins)}`]])], e));
     return [];
   }
 

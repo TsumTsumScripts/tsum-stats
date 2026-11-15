@@ -28,6 +28,9 @@ type Summary struct {
 	// Medals are the same totals and per-Tsum figures for medals, over the
 	// rounds that earned any, so the page can show them beside coins.
 	Medals StatSet `json:"medals"`
+	// Incomplete is the rounds the rest of the filter keeps that were left out
+	// for an unread figure (completeSQL); 0 when the filter keeps them.
+	Incomplete int64 `json:"incompleteRounds"`
 }
 
 // StatSet is the KPI totals and the per-Tsum table for one stat.
@@ -342,6 +345,16 @@ func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
 				AVG(` + c + `) AS avg_coins, ` + rateExpr(c) + ` AS coins_per_sec, ` + expCols + ` FROM ts_rounds` + where + ` GROUP BY day, tsum ORDER BY day`).Bind(p).All(&s.DailyTsums)
 		},
 		func() (err error) { s.Mix, err = mixStats(db, f); return err },
+		func() error {
+			if !f.Complete {
+				return nil
+			}
+			// The same filter less the complete rounds: the rounds it leaves out for an unread figure.
+			all := f
+			all.Complete = false
+			w, ap := all.whereAnd("NOT (" + completeSQL + ")")
+			return db.NewQuery(`SELECT COUNT(*) FROM ts_rounds` + w).Bind(ap).Row(&s.Incomplete)
+		},
 		func() (err error) { s.Bonus, err = coinBonus(db, f, tzMinutes); return err },
 		func() error {
 			return db.NewQuery(`SELECT build, tsum, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` + playSettingSQL(PlaySettings[1]) + ` AS chain,

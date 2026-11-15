@@ -550,6 +550,8 @@ export function createGlobalEngine(loader) {
       // The cells keep no coin-bonus multipliers, only whether a round was a jackpot.
       bonus: {tsums: [], daily: [], all: []},
       medals: plain(medals),
+      // Only complete rounds are sent here: none is left out for an unread figure.
+      incompleteRounds: 0,
       // spreads: whether the primary stat's quartiles, P90 and histogram are there.
       // range: the outlier range applied ('base', 'final' or 'medals'), and ignored: those that were not.
       global: {approx: true, spreads: main.spreads, range: f.range?.kind ?? null, ignored: f.ignored},

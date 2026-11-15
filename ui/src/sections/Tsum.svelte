@@ -24,7 +24,7 @@
   import {names} from '../lib/names.svelte.js';
   import {shared} from '../lib/ui.svelte.js';
   import {
-    api, buildLabel, cap, chainsLabel, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref,
+    MIN_ROUNDS, api, buildLabel, cap, chainsLabel, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref,
     PLAY, playValueName, skillTypeName, skillTypeValue, tsumColor, tsumName,
   } from '../lib/util.js';
   import Kpis from './stats/Kpis.svelte';
@@ -46,7 +46,7 @@
   const filter = $state(blank());
 
   const VIEW_KEY = 'tsum-stats.tsum-views';
-  const views = $state({daily: 'rate', items: 'rate', best: 'coins', ...loadPref(VIEW_KEY, {})});
+  const views = $state({daily: 'exp', items: 'exp', best: 'coins', ...loadPref(VIEW_KEY, {})});
   function setView(key, v) {
     views[key] = v;
     savePref(VIEW_KEY, {...views});
@@ -210,7 +210,9 @@
     if (!detail) return null;
     const medals = filter.coins === 'medals';
     const rateOf = t => (medals ? t.coinsPerSec : expRate(t));
-    const rated = detail.field.filter(t => t.tsum && rateOf(t) !== null).sort((a, b) => rateOf(b) - rateOf(a));
+    // Ranked among the Tsums with MIN_ROUNDS rounds or more (this one whatever its rounds), as the Stats page ranks them.
+    const rated = detail.field.filter(t => t.tsum && rateOf(t) !== null && (t.rounds >= MIN_ROUNDS || t.tsum === filter.id))
+      .sort((a, b) => rateOf(b) - rateOf(a));
     const i = rated.findIndex(t => t.tsum === filter.id);
     const rounds = detail.field.reduce((n, t) => n + t.rounds, 0);
     const mine = detail.field.find(t => t.tsum === filter.id);
@@ -283,7 +285,8 @@
     hist: [s.histogram, s.totals, ctx],
     items: [s.mix, views.items],
   });
-  const dailySub = $derived({rate: `${basis} per second of play`, avg: `average ${basis} per round, with the day's lowest–highest band`, stack: `total ${basis} each day`}[views.daily]
+  const dailySub = $derived({rate: `${basis} per second of play`, avg: `average ${basis} per round`, stack: `total ${basis} each day`,
+    exp: 'expected net coins an hour of play · band: where the day\'s true figure most likely is (two standard errors)'}[views.daily]
     + (globalSite ? ' · by the UTC day each round began' : ''));
   const builds = $derived(new Set((s?.mix ?? []).map(m => m.build)).size > 1 || Boolean(filter.build));
 
@@ -335,7 +338,7 @@
         <div class="tsum-facts">
           {#if standing?.rank}
             <span class="fact" title="Among the Tsums with rounds in this filter, by {standing.medals ? 'medals per second' : `expected net coins an hour: ${EXP_WHAT}`}">
-              <b>#{standing.rank}</b> of {fmt(standing.of)} Tsums by {standing.medals ? 'medals/s' : 'expected coins/h'}
+              <b>#{standing.rank}</b> of {fmt(standing.of)} Tsums with {fmt(MIN_ROUNDS)}+ rounds by {standing.medals ? 'medals/s' : 'expected coins/h'}
             </span>
           {/if}
           {#if standing?.vsAll !== null && standing?.vsAll !== undefined}
@@ -430,7 +433,7 @@
       </div>
     {:else if s}
       <div class="tsum-overview" bind:this={overview}>
-        <Kpis t={s.totals} m={s.medals.totals} coins={filter.coins} {basis} noMedals approx={globalSite} copyFrom={() => overview} />
+        <Kpis t={s.totals} m={s.medals.totals} coins={filter.coins} {basis} noMedals approx={globalSite} steady={false} incomplete={s.incompleteRounds ?? 0} copyFrom={() => overview} />
         <Insights {detail} own={owned?.own} {entry} {unit} {basis} {target} {setTarget} {whose} approx={globalSite} />
         {#if detail.jackpots?.rounds}
           <p class="jackpot-note sub" title="The +Coin item's rare 11×, 21× and 51× coin bonuses are luck, not the Tsum, and one of them can move a few hundred rounds' figures by a tenth">
@@ -454,7 +457,7 @@
 
       <Panel title="{U} per day" sub={dailySub}>
         {#snippet tools()}
-          <Seg sm label="Chart" value={views.daily} onpick={v => setView('daily', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['stack', 'Total']]} />
+          <Seg sm label="Chart" value={views.daily} onpick={v => setView('daily', v)} options={[['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average'], ['stack', 'Total']]} />
         {/snippet}
         <Chart draw={drawDaily} args={args?.daily} {unit} />
       </Panel>
@@ -466,7 +469,7 @@
       <div class="charts">
         <Panel class="wide" title="By items used" sub="every item set, best first">
           {#snippet tools()}
-            <Seg sm label="Measure" value={views.items} onpick={v => setView('items', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
+            <Seg sm label="Measure" value={views.items} onpick={v => setView('items', v)} options={[['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
           {/snippet}
           <Chart draw={drawItems} args={args?.items} {unit} size="square" />
         </Panel>
@@ -479,7 +482,7 @@
       {/if}
 
       {#if chainRows.length > 1}
-        <Panel title="By chain settings" sub="chains per scan and max chain length taken together, a row per pair · change is against the most played pair · the best pair with 20 rounds or more is marked" expandable={false}>
+        <Panel title="By chain settings" sub="chains per scan and max chain length taken together, a row per pair · change is against the most played pair · the best pair is marked when it clearly beats the next" expandable={false}>
           <Breakdown rows={chainRows} {unit} head="Pair" />
         </Panel>
       {/if}

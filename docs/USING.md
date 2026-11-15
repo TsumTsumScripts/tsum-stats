@@ -165,6 +165,23 @@ default sort, the first measure of the efficiency, items, chain and Head to
 head charts, and what the Tsum page ranks by. Rounds whose items were never
 recorded have none.
 
+**How sure a figure is.** Expected coins carry a **±**: one standard error,
+how far the figure could be from the Tsum's true one by the luck of which
+rounds were played (`expErr` in `ui/src/lib/expected.js`, from the rounds'
+sum of squares; it errs on the safe side for the rate). A change is coloured
+up or down, and a row marked best, only when the gap is more than two
+standard errors of the difference: more than luck explains, about 95 % sure.
+A row not yet known within ± 5 % says *uncertain*. Medals have no such error
+yet, so in Medals mode a change past half a percent is coloured and a row
+needs 20 rounds, as before.
+
+**The tiles.** Beside expected coins: the primary stat per second, the
+average and median, the **typical round** (the middle half of rounds, Q1 to
+Q3, with the best round as a note: the extremes are misreads and jackpots),
+**consistency** (half the rounds land within ± this of the median), the
+totals, and the rounds, with how many an unread figure left out
+(`incompleteRounds`).
+
 **Coin efficiency is coins per second of play:** total coins over total
 round time, counting only rounds that have both. The rail's **Primary stat**
 switch picks what every figure and chart count:
@@ -222,8 +239,9 @@ not a plain name). Each shows when the rounds have more than one value.
 **Min rounds per Tsum.** The rail's box (`minRounds` in the link) leaves
 Tsums with fewer rounds in the filter out of the Tsum table and the efficiency
 chart, so a Tsum played a handful of times does not top the rankings. It is
-the page's alone: every total, share and other chart still counts their
-rounds.
+50 unless set (`MIN_ROUNDS` in `ui/src/lib/util.js`); `0` shows every Tsum. It
+is the page's alone: every total, share and other chart still counts their
+rounds. The Tsum page ranks among the Tsums with 50 rounds or more too.
 
 With coins as the primary stat, the summary also carries `medals`: the same
 totals and per-Tsum figures for medals, over the same medal Tsums' rounds,
@@ -246,12 +264,13 @@ out:
 - × on a Tsum, which takes it out of a comparison.
 
 **Head to head** appears once two or more Tsums are picked:
-- A scorecard puts each figure in a row and each Tsum in a column. A bar under
-  each figure is scaled to the row's largest, and a ★ marks the best. Lower
-  wins for spread and round time; Rounds and Total are not scored. The header
-  counts each Tsum's wins.
-- A line per Tsum per day shows the primary stat per second, the average, the
-  total or the number of rounds.
+- A scorecard puts each figure in a row and each Tsum in a column, one row per
+  idea. Three rows are scored, a bar under each scaled to the row's largest
+  and a ★ on the best: expected coins an hour (only when the gap is more than
+  luck explains), consistency (lower wins) and medals an hour. The header
+  counts each Tsum's wins of those.
+- A line per Tsum per day shows expected coins an hour, the primary stat per
+  second, the average, the total or the number of rounds.
 
 To compare Tsums from the Tsum table, tick them and press *Compare ticked*. The
 summary's `dailyTsums` rows carry `avgCoins` and `coinsPerSec` for the chart.
@@ -276,7 +295,7 @@ a card shows initials in their place until it does.
 
 | Panel | Views |
 |:--|:--|
-| Head to head | Only with 2+ Tsums picked: a scorecard with the best in each row marked, and a per-day line per Tsum |
+| Head to head | Only with 2+ Tsums picked: a scorecard with expected coins, consistency and medals an hour scored, and a per-day line per Tsum |
 | Coin efficiency by Tsum | Ranked bars (coins/s, average, median or best); Spread, a box plot of the 12 most played; Bubbles, average coins × coins/s sized by rounds |
 | Coins per day | Stacked by Tsum (top 7 + Other); coins/s; average with the day's range |
 | Where the coins come from | Donut by Tsum (top 8 + Other), or a sunburst of game › Tsum › items used; by coins, rounds or time |
@@ -347,8 +366,9 @@ nothing is left out of them. Stats keeps every round.
 - **Header:** where the Tsum ranks by expected coins an hour (medals a second
   in Medals) among the Tsums in the same filter, that against all of them together, its share of your rounds, and, from the
   newest Tsum list for the build, its level, skill and boxes to max.
-- **Recent form:** the newest 50 rounds' rate against all the rounds in the
-  filter and against the 50 before them.
+- **Recent form:** the newest 50 rounds' expected coins an hour (medals a
+  second in Medals), with its ±, against all the rounds in the filter and
+  against the 50 before them, coloured only beyond luck.
 - **To the next skill:** boxes and their cost to the next skill level and to full
   skill, from the catalog's box counts and the Tsum list's progress, as play
   time at what all your Tsums earned a second in the filter: final coins (less
@@ -369,7 +389,7 @@ nothing is left out of them. Stats keeps every round.
   Hidden in Medals mode.
 - **By chain settings:** chains per scan and max chain length taken together,
   a row per pair the Tsum was played with, against the most played pair; the
-  best pair with 20 rounds or more is marked. The pairs answer which
+  best pair is marked when it clearly beats the next. The pairs answer which
   combination suits the Tsum, which the two settings' own tables below cannot.
 - **By script setting:** every other setting that took more than one value
   for this Tsum (the boost items have their own chart), against the most played
@@ -383,7 +403,9 @@ Every panel, and the overview tiles with the insights under them, can be copied
 as a picture as on Stats; on this page the card always shows the Tsum's
 portrait and name.
 
-A row with fewer than 20 rounds is dimmed and never marked best. Catalog cards
+Each breakdown ranks by expected coins an hour with its ±: a row not yet
+known within ± 5 % (in Medals, under 20 rounds) is dimmed and never marked
+best, and a change is coloured only when it is more than luck explains. Catalog cards
 of Tsums you have played link to their page. The page reads
 `/api/stats/tsum?id=…` with the Stats filter parameters (`tsum.go`).
 
@@ -419,8 +441,9 @@ Tsum.
 
 The **Cost to max** panel totals coins and medals over the Tsums shown (build,
 Owned filter and search), takes away what you type as on hand, and divides by
-your pace: this build's coins (after the coin bonus) and medals per day over
-the last 7 or 30 days or every round. Every device's rounds count, so devices
+your pace: this build's coins (after the coin bonus, less what the items
+cost) and medals per calendar day over the last 7 or 30 days or every round, so
+the time between rounds and away from the game is in it. Every device's rounds count, so devices
 playing other accounts make the pace look too fast. The chart draws each Tsum's
 share still to earn down to its finish date. Pace window and on-hand figures
 are saved in the browser.
