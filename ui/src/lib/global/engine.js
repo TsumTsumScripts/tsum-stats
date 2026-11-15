@@ -737,6 +737,8 @@ export function createGlobalEngine(loader) {
         case 'skill-types': return skillTypes();
         case 'play-settings': return playSettings();
         // The Stats rail takes the global site's skill levels from status.
+        // Only complete rounds are sent, with no script version or device: nothing to say.
+        case 'health': return {versions: [], devices: [], cells: []};
         case 'skill-levels': return (await getManifest()).skills.map(s => ({value: String(s), rounds: null}));
         case 'status': return status();
         case 'themes': return THEMES.map(t => ({...t}));

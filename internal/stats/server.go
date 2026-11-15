@@ -181,6 +181,14 @@ func registerRoutes(se *core.ServeEvent, events *Events, importer *Importer, pul
 		return e.JSON(http.StatusOK, d)
 	})
 
+	g.GET("/health", func(e *core.RequestEvent) error {
+		h, err := DescribeHealth(e.App.DB(), ParseFilter(e.Request.URL.Query()))
+		if err != nil {
+			return e.InternalServerError("", err)
+		}
+		return e.JSON(http.StatusOK, h)
+	})
+
 	g.GET("/tsums", func(e *core.RequestEvent) error {
 		t, err := PlayedTsums(e.App.DB())
 		if err != nil {

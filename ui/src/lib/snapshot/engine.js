@@ -687,6 +687,48 @@ export function createEngine(loader) {
     };
   }
 
+  /**
+   * /api/stats/health (health.go: DescribeHealth): each script version's and
+   * device's rounds and unread figures, every round the rest of the filter
+   * keeps; and each version's expected coins per Tsum × skill level × items,
+   * over the complete ones.
+   */
+  async function health(q) {
+    const f = parseFilter(q);
+    const medalSet = new Set((await getManifest()).medalTsums ?? []);
+    const reads = {versions: new Map(), devices: new Map()};
+    each(await select({...f, complete: false}), (sh, i) => {
+      const tsum = sh.dict.tsum[sh.tsum[i]], at = sh.at[i];
+      const miss = {noTsum: tsum === '', score: sh.score[i] === null, base: sh.baseCoins[i] === null, final: sh.finalCoins[i] === null,
+        secs: sh.duration[i] === null, medals: sh.medals[i] === null && medalSet.has(tsum)};
+      for (const [map, key] of [[reads.versions, sh.dict.scriptVersion[sh.scriptVersion[i]]], [reads.devices, sh.dict.device[sh.device[i]]]]) {
+        const r = map.get(key) ?? {key, rounds: 0, unread: 0, noTsum: 0, score: 0, base: 0, final: 0, secs: 0, medals: 0, first: at, last: at};
+        r.rounds++;
+        if (Object.values(miss).some(Boolean)) r.unread++;
+        for (const k of Object.keys(miss)) if (miss[k]) r[k]++;
+        r.first = Math.min(r.first, at);
+        r.last = Math.max(r.last, at);
+        map.set(key, r);
+      }
+    });
+    const out = map => [...map.values()].map(r => ({...r, first: sqlTime(r.first), last: sqlTime(r.last)}));
+    const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+    const cells = new Map();
+    each(await select(f), (sh, i) => {
+      const o = sh.settings[i] === null ? null : sh.dict.settings[sh.settings[i]];
+      const c = {version: sh.dict.scriptVersion[sh.scriptVersion[i]], tsum: sh.dict.tsum[sh.tsum[i]], skill: skillLevelOf(o), items: itemsOf(sh, i)};
+      const key = `${c.version}\u0000${c.tsum}\u0000${c.skill}\u0000${c.items}`;
+      if (!cells.has(key)) cells.set(key, {...c, a: acc()});
+      add(cells.get(key).a, sh, i, 'baseCoins');
+    });
+    return {
+      versions: out(reads.versions).sort((x, y) => cmp(x.first, y.first) || cmp(x.key, y.key)),
+      devices: out(reads.devices).sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),
+      cells: [...cells.values()].map(({a, ...c}) => ({...c, ...expectedOf(a)}))
+        .sort((x, y) => cmp(x.version, y.version) || cmp(x.tsum, y.tsum) || cmp(x.skill, y.skill) || x.items - y.items),
+    };
+  }
+
   // Sortable columns by the page's names (queries.go: sortColumns).
   const SORTS = {
     playedAt: (sh, i) => sh.at[i], tsum: (sh, i) => sh.dict.tsum[sh.tsum[i]], score: (sh, i) => sh.score[i],
@@ -790,6 +832,7 @@ export function createEngine(loader) {
         case 'skill-types': return skillTypes();
         case 'play-settings': return playSettings();
         case 'skill-levels': return skillLevels();
+        case 'health': return health(params);
         case 'owned': return owned(params);
         case 'owned-sources': return ownedSources();
         case 'status': return status();

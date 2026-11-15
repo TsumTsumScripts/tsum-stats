@@ -392,6 +392,22 @@ func TestSnapshotParity(t *testing.T) {
 	cases = append(cases, testCase{Name: "played play settings", Route: "play-settings", Params: map[string]any{}, Expected: roundtrip(play)})
 	levels, _ := PlayedSkillLevels(app.DB())
 	cases = append(cases, testCase{Name: "played skill levels", Route: "skill-levels", Params: map[string]any{}, Expected: roundtrip(levels)})
+	for name, q := range map[string]map[string]string{
+		"everything": {}, "one Tsum": {"tsum": "elsa"}, "a range": {"from": "2026-09-05 00:00:00", "to": "2026-09-20 00:00:00"},
+		"incomplete kept": {"incomplete": "1"}, "final net": {"coins": "final", "net": "1"},
+	} {
+		v := url.Values{}
+		params := map[string]any{}
+		for k, val := range q {
+			v.Set(k, val)
+			params[k] = val
+		}
+		h, err := DescribeHealth(app.DB(), ParseFilter(v))
+		if err != nil {
+			t.Fatal(err)
+		}
+		cases = append(cases, testCase{Name: "health " + name, Route: "health", Params: params, Expected: roundtrip(h)})
+	}
 	srcs, _ := TsumListSources(app.DB())
 	cases = append(cases, testCase{Name: "owned sources", Route: "owned-sources", Params: map[string]any{}, Expected: roundtrip(srcs)})
 	for _, src := range srcs {

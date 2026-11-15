@@ -96,6 +96,7 @@ Cloudflare account only, never the GAP one (`global/README.md`,
 | `internal/stats/adb_install.go` | Downloading platform-tools when no adb is found |
 | `internal/stats/queries.go` | `Filter` (`ParseFilter`, the WHERE), the play settings (`PlaySettings`, `playSettingSQL`), the rounds page and its sort columns, played Tsums, devices, skill types and play settings, the latest Tsum list |
 | `internal/stats/summary.go` | `Summarize`: everything above the tables (KPIs, per day / hour / Tsum / mix, spreads, the coin histogram); item sets and their cost (`itemBits`) |
+| `internal/stats/health.go` | `DescribeHealth`: the Script versions panel's answer (unread figures by version and device, expected coins per version × Tsum × skill × items) |
 | `internal/stats/tsum.go` | `DescribeTsum`: the Tsum page's answer (by setting, version, device; form, skill bins, rank) |
 | `internal/stats/art.go` | `Art`: Tsum portraits fetched for the page at `/api/stats/art/{id}` (their origin sends no CORS headers), kept in memory |
 | `internal/stats/server.go` | `Register`, `Config`, `StarterHook`: wiring into PocketBase, the `/api/stats` routes (`registerRoutes`, `registerGlobalRoutes`), the topics `ts/devices`, `ts/rounds`, `ts/imports` and their broadcaster, the loopback and same-origin guards |
@@ -157,7 +158,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `ui/src/main.js`, `ui/src/styles.css` | Mounting `App.svelte`; the page-wide styles |
 | `ui/src/App.svelte` | The shell: hash routing, the top bar, live updates, importing CSVs. Read-only in a snapshot and on the global site |
 | `ui/src/sections/Stats.svelte` | Filter rail, KPIs, charts, per-Tsum and rounds tables. Global: no rounds table or hours |
-| `sections/stats/` | `FilterRail.svelte` (filters, jump menu), `FocusBar.svelte` (picked Tsums), `HeadToHead.svelte`, `Kpis.svelte`, `ChainBest.svelte` (each Tsum's best chain pair) |
+| `sections/stats/` | `FilterRail.svelte` (filters, jump menu), `FocusBar.svelte` (picked Tsums), `HeadToHead.svelte`, `Kpis.svelte`, `ChainBest.svelte` (each Tsum's best chain pair), `Versions.svelte` (script versions and devices: unread figures, the regression check) |
 | `ui/src/sections/Tsum.svelte` | The Tsum page: one Tsum's figures, settings, rank, ownership, best rounds (on the global site: everyone's rounds of it, by skill level and items) |
 | `sections/tsum/` | `Breakdown.svelte` (by skill, setting, version, device), `Insights.svelte` (form, pace, steadiness), `ItemPayback.svelte` |
 | `ui/src/sections/Catalog.svelte` | Every Tsum against the latest Tsum list; the roster on the global site. `catalog/MaxOut.svelte`: cost and time to max |

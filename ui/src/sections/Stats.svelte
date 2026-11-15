@@ -29,6 +29,7 @@
   import FocusBar from './stats/FocusBar.svelte';
   import HeadToHead from './stats/HeadToHead.svelte';
   import Kpis from './stats/Kpis.svelte';
+  import Versions from './stats/Versions.svelte';
   import {EXP_WHAT, RUN_WHAT, expErr, expHour, oneLongRound, runHour} from '../lib/expected.js';
 
   // initial: the link's params; onStateChange(filter, {push}) writes the link.
@@ -111,6 +112,8 @@
   // The global site's item sets, for the items filter: [{items, rounds}] from the last summary without one.
   let itemSets = $state.raw([]);
   let summary = $state.raw(null);
+  /** The Script versions panel's answer (/health); the global site has none. */
+  let health = $state.raw(null);
   let summaryLoad = Promise.resolve();
   const seq = {summary: 0, rounds: 0};
   let loading = $state(false);
@@ -263,9 +266,11 @@
     loading = true;
     const params = filterParams();
     try {
-      const s = await api('summary', {...params, tz: -new Date().getTimezoneOffset()});
+      const [s, h] = await Promise.all([api('summary', {...params, tz: -new Date().getTimezoneOffset()}),
+        globalSite ? null : api('health', params).catch(() => null)]);
       if (mine !== seq.summary) return;
       summary = s;
+      health = h;
       // The items filter offers the item sets the rest of the filter has.
       if (globalSite && !params.items) itemSets = itemSetsOf(s.mix);
     } catch (e) {
@@ -696,6 +701,13 @@
         {#snippet empty()}No Tsums match these filters.{/snippet}
       </DataTable>
     </Panel>
+
+    {#if !globalSite && health}
+      <Panel id="s-versions" class="anchor" title="Script versions"
+        sub="how well each version or device reads a round · each version against the one before it on the same Tsums, skill levels and items, in expected coins an hour · marked only when more than luck explains">
+        <Versions {health} />
+      </Panel>
+    {/if}
 
     {#if !globalSite}
       <Panel id="s-rounds" class="anchor" title="Rounds" sub={roundsNote}>

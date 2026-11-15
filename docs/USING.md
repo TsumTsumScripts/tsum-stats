@@ -196,6 +196,17 @@ device is the one in the round's id, so rounds sent without a device name
 count too. Only the gap is judged, never a round's own length. The global site
 does not have it yet: its cells keep no round order.
 
+**Script versions** (local site and snapshots) checks the script itself.
+By script version, or by device: the share of rounds with a figure the
+script could not read (left out of every other figure; red over 2 %, the
+figures it missed in the tooltip). And each version against the latest
+earlier one, in expected coins an hour, compared only on the Tsums, skill
+levels and item sets both played, weighted by the smaller side (the latest
+earlier version sharing 20 such rounds or more): *Slower* or
+*Faster* when the change is more than two standard errors, else *within
+luck*. A version that costs coins shows here before it shows anywhere else.
+It reads `/api/stats/health` (`health.go`).
+
 **The tiles.** Beside expected coins of play and between rounds included: the primary stat per second, the
 average and median, the **typical round** (the middle half of rounds, Q1 to
 Q3, with the best round as a note: the extremes are misreads and jackpots),
