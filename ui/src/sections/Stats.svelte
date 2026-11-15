@@ -623,7 +623,7 @@
     </Panel>
 
     <div class="charts anchor" id="s-when">
-      <Panel class="wide" title="By items used" sub="every item set, best first">
+      <Panel class="wide" title="By items used" sub="every item set over every Tsum and skill level, best first · pick one Tsum, and see its page, to compare like with like">
         {#snippet tools()}
           <Seg sm label="Measure" value={views.items} onpick={v => setView('items', v)} options={[['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
         {/snippet}
@@ -632,7 +632,7 @@
     </div>
 
     <Panel id="s-chains" class="anchor" title="By chain settings"
-      sub={views.chainsView === 'best' ? `each Tsum's best chains-per-scan and max-chain pair of those with 20 rounds or more` : 'chains per scan and max chain length together, every pair, best first'}>
+      sub={views.chainsView === 'best' ? `each Tsum's best chains-per-scan and max-chain pair at its highest skill level with ${fmt(MIN_ROUNDS)} rounds, in expected coins an hour` : 'chains per scan and max chain length together, every pair over every Tsum and skill level, best first · pick one Tsum to compare like with like'}>
       {#snippet tools()}
         <Seg sm label="View" value={views.chainsView} onpick={v => setView('chainsView', v)} options={[['all', 'Every pair'], ['best', 'Best per Tsum']]} />
         {#if views.chainsView !== 'best'}
@@ -640,7 +640,7 @@
         {/if}
       {/snippet}
       {#if views.chainsView === 'best'}
-        <ChainBest chains={summary?.chains ?? []} tsums={[...tableRows].sort((a, c) => c.rounds - a.rounds).map(t => t.tsum)} {unit} {nameOf} {colorOf} {focusOn} />
+        <ChainBest chains={summary?.chains ?? []} tsums={[...tableRows].sort((a, c) => c.rounds - a.rounds).map(t => t.tsum)} {nameOf} {colorOf} {focusOn} />
       {:else}
         <Chart draw={drawChains} args={args?.chains} {unit} size="square" />
       {/if}

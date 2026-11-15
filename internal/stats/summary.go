@@ -120,11 +120,13 @@ type DayTsumStat struct {
 	Expected
 }
 
-// MixStat is one build × Tsum × boost-item combination. The page folds it
-// into the sunburst and the items chart.
+// MixStat is one build × Tsum × skill level × boost-item combination. The
+// page folds it into the sunburst and the items chart, and judges items within
+// a skill level. Skill is skillLevelSQL's text, "" when not recorded.
 type MixStat struct {
 	Build      string   `db:"build" json:"build"`
 	Tsum       string   `db:"tsum" json:"tsum"`
+	Skill      string   `db:"skill" json:"skill"`
 	Items      int      `db:"items" json:"items"`
 	Rounds     int64    `db:"rounds" json:"rounds"`
 	Coins      *int64   `db:"coins" json:"coins"`
@@ -134,12 +136,14 @@ type MixStat struct {
 	Expected
 }
 
-// ChainStat is one build × Tsum × chains-per-scan × max-chain pair: the two
-// chain settings taken together, as MixStat takes the items, since they are
-// tuned together. Scan and Chain are playSettingSQL's text, "" when not recorded.
+// ChainStat is one build × Tsum × skill level × chains-per-scan × max-chain
+// pair: the two chain settings taken together, as MixStat takes the items,
+// since they are tuned together. Skill, Scan and Chain are playSettingSQL's
+// text, "" when not recorded.
 type ChainStat struct {
 	Build      string   `db:"build" json:"build"`
 	Tsum       string   `db:"tsum" json:"tsum"`
+	Skill      string   `db:"skill" json:"skill"`
 	Scan       string   `db:"scan" json:"scan"`
 	Chain      string   `db:"chain" json:"chain"`
 	Rounds     int64    `db:"rounds" json:"rounds"`
@@ -357,9 +361,9 @@ func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
 		},
 		func() (err error) { s.Bonus, err = coinBonus(db, f, tzMinutes); return err },
 		func() error {
-			return db.NewQuery(`SELECT build, tsum, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` + playSettingSQL(PlaySettings[1]) + ` AS chain,
+			return db.NewQuery(`SELECT build, tsum, ` + skillLevelSQL + ` AS skill, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` + playSettingSQL(PlaySettings[1]) + ` AS chain,
 				COUNT(*) AS rounds, SUM(` + c + `) AS coins, COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs, ` + expCols + `
-				FROM ts_rounds` + where + ` GROUP BY build, tsum, scan, chain ORDER BY rounds DESC, build, tsum, scan, chain`).Bind(p).All(&s.Chains)
+				FROM ts_rounds` + where + ` GROUP BY build, tsum, skill, scan, chain ORDER BY rounds DESC, build, tsum, skill, scan, chain`).Bind(p).All(&s.Chains)
 		},
 	}
 	if err := runAll(steps); err != nil {
@@ -380,9 +384,9 @@ func mixStats(db dbx.Builder, f Filter) ([]MixStat, error) {
 	c := f.col()
 	where, p := f.where()
 	mix := []MixStat{}
-	err := db.NewQuery(`SELECT build, tsum, ` + itemsSQL + ` AS items, COUNT(*) AS rounds, SUM(` + c + `) AS coins,
+	err := db.NewQuery(`SELECT build, tsum, ` + skillLevelSQL + ` AS skill, ` + itemsSQL + ` AS items, COUNT(*) AS rounds, SUM(` + c + `) AS coins,
 		COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs, ` + expCols + `
-		FROM ts_rounds` + where + ` GROUP BY build, tsum, items ORDER BY rounds DESC`).Bind(p).All(&mix)
+		FROM ts_rounds` + where + ` GROUP BY build, tsum, skill, items ORDER BY rounds DESC`).Bind(p).All(&mix)
 	return mix, err
 }
 

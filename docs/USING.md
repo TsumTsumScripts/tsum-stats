@@ -299,8 +299,8 @@ a card shows initials in their place until it does.
 | Coin efficiency by Tsum | Ranked bars (coins/s, average, median or best); Spread, a box plot of the 12 most played; Bubbles, average coins × coins/s sized by rounds |
 | Coins per day | Stacked by Tsum (top 7 + Other); coins/s; average with the day's range |
 | Where the coins come from | Donut by Tsum (top 8 + Other), or a sunburst of game › Tsum › items used; by coins, rounds or time |
-| By items used | Radial rings for the six most played item sets |
-| By chain settings | Chains per scan and max chain length taken as one pair, the way an item set is: *Every pair*, a bar per pair over every Tsum in the filter (coins/s, average or rounds); *Best per Tsum*, each Tsum's best pair of those with 20 rounds or more, against its most played pair |
+| By items used | A bar per item set over every Tsum and skill level in the filter (expected coins an hour, coins/s, average or rounds); pick one Tsum, and see its page, to compare like with like |
+| By chain settings | Chains per scan and max chain length taken as one pair, the way an item set is: *Every pair*, a bar per pair over every Tsum and skill level in the filter (expected coins an hour, coins/s, average or rounds); *Best per Tsum*, each Tsum's best pair at its highest skill level with 50 rounds, in expected coins an hour, of the pairs known within ± 5 %, against its most played pair there; *not clear yet* when the next pair is within luck |
 | Coins per round | Histogram stacked by Tsum, with median, average and P90 lines |
 | Coin bonus | The rounds played with the +Coin item (a round's multiplier is its final over base coins, snapped to the nearest of 1.1× to 51×). Above the chart: what the bonus adds over base coins and a round on average, against the 500 coins +Coin costs, the base coins from which it pays for itself, and how often 11× or more comes. *Multipliers*: a column per multiplier for the filter, with all time behind it (every complete round) and a rule at the commonly cited odds (none is cited for 4×), by share of rounds or of the coins added. *Over time*: the bonus per day, with and without 11× and over. *Waterfall*: base coins, a step per multiplier, final coins. *By Tsum*: each Tsum with 50+ rounds with +Coin as a bar of its multipliers under the odds and all time; the multiplier is luck, so they should match. Not on the global site, whose cells keep no multipliers |
 | Tsums | Table: every statistic per Tsum; search, sort, choose columns, tick rows to compare |
@@ -363,6 +363,9 @@ charts and *Do the items pay?* (a jackpot is what +Coin pays out), the best roun
 second that box times are worked out from. Base coins and medals never take the bonus, so
 nothing is left out of them. Stats keeps every round.
 
+- **Skill level:** the header's picker (`skill` in the link and the API, a
+  skill level 1 to 10) keeps one level's rounds, so the breakdowns compare like
+  with like. With several levels mixed, each breakdown says so.
 - **Header:** where the Tsum ranks by expected coins an hour (medals a second
   in Medals) among the Tsums in the same filter, that against all of them together, its share of your rounds, and, from the
   newest Tsum list for the build, its level, skill and boxes to max.
@@ -381,12 +384,17 @@ nothing is left out of them. Stats keeps every round.
   against the level below. The level the Tsum list says it is at is marked
   *now*. Below it, each level with 20 rounds or more is a line of its share of
   rounds per coin bucket (the histogram's buckets).
-- **Do the items pay?** Each boost item against the same other items without
-  it: only item sets that differ by that item alone are compared, weighted by
-  the smaller side. *Gain a round* is the extra coins less the item's cost
-  (already taken off with *Less item costs*). Rounds without an item are often
-  older, at a lower skill level, so check the rounds with · without column.
-  Hidden in Medals mode.
+- **Do the items pay?** Each boost item in expected net coins an hour, against
+  the same other items without it at the same skill level: only item sets that
+  differ by that item alone are compared, level by level, weighted by the
+  smaller side. The item's cost is already taken off and the coin bonus is at
+  its average, so an item that makes rounds longer is charged for the time,
+  which a per-round figure misses. *Pays* or *Costs* needs the change to be
+  more than two standard errors (±); within that it says *Unclear*. +Exp and
+  +Score say *For exp* and *For score*: their coin figure is only their cost.
+  The note gives +Coin's break-even: it pays in any round over 500 / 0.39 ≈
+  1,282 base coins. The script version is not held equal, so rounds without an
+  item may still be from an older script. Hidden in Medals mode.
 - **By chain settings:** chains per scan and max chain length taken together,
   a row per pair the Tsum was played with, against the most played pair; the
   best pair is marked when it clearly beats the next. The pairs answer which

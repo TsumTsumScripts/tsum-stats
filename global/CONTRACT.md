@@ -1006,8 +1006,13 @@ cells' rounds.
 
 - **Exact**: every count, sum, average, min, max, `coinsPerSec`,
   `stdCoins` (population variance from `Σsq/n − (Σ/n)²`), `first`, `last`,
-  `daily`, `dailyTsums`, `mix`, `chains` (from the cells' `scan` and `chain`),
-  and the `medals` set's totals and Tsums.
+  `daily`, `dailyTsums`, `mix` and `chains` (each by the cells' `skill` as
+  text, `''` for -1; chains from the cells' `scan` and `chain`), and the
+  `medals` set's totals and Tsums. Every group's expected net coins
+  (`summary.go: Expected`): a cell's `expCoins` is `baseSum × (1 + 0.39 when
+  its items have +Coin) − cost × rounds`, `expSeconds` its `secs`,
+  `expRounds` its rounds, and `expSq` the square expanded from `baseSq` and
+  `baseSum`; a cell whose items are unknown has none.
 - **Approximate**: `q1Coins`, `medianCoins`, `q3Coins`, `p90Coins` from the
   bins of the group's cells. A bin's rounds of one item cost (net coins; 0
   otherwise) across the group stand at their average less that cost; in that
@@ -1036,6 +1041,8 @@ becomes the sums of its kept bins:
 - **Approximate**: the range's own figure's min and max (the cell's own where
   its lowest or highest bin is kept, else that bin's average) and its sum of
   squares (from the bins' averages), so its `stdCoins`.
+- **Unknown** (null): every other sum of squares, and so every group's `expSq`
+  that holds a cut cell.
 - **The cell's**: the other figures' min and max, the score's, `first` and
   `last`; these may be a left-out round's.
 - **Unknown**: the other figures' sums of squares, so their `stdCoins` is null.

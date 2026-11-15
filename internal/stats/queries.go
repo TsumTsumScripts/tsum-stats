@@ -21,8 +21,11 @@ type Filter struct {
 	SkillTypes []string
 	// Play is the values to keep of each play setting, by its parameter
 	// (PlaySettings); "" is the rounds where it is not recorded.
-	Play  map[string][]string
-	Build string
+	Play map[string][]string
+	// Skills are the skill levels to keep, as skillLevelSQL's text; "" is the
+	// rounds that recorded none. The global site's skill filter.
+	Skills []string
+	Build  string
 	From  string // sqlTime, inclusive, UTC
 	To    string // sqlTime, exclusive, UTC
 	// The outlier ranges, each bound inclusive. Coins are base or final coins
@@ -149,6 +152,15 @@ var PlaySettings = []PlaySetting{
 	{"scan", "maxChainsPerScan", true}, {"chain", "maxChain", true}, {"bubble", "bubbleStrategy", false},
 }
 
+// skillLevelSQL is a round's skill level as text, a whole number 1-10, or ''
+// when not recorded or anything else: the global site's skill level, read as
+// global/src/records.ts reads it (-1 there for '').
+var skillLevelSQL = func() string {
+	v := "json_extract(" + settingsSQL + ", '$.skillLevel')"
+	return "(CASE WHEN json_type(" + settingsSQL + ", '$.skillLevel') IN ('integer', 'real') AND " + v + " BETWEEN 1 AND 10 AND " +
+		v + " = CAST(" + v + " AS INTEGER) THEN CAST(CAST(" + v + " AS INTEGER) AS TEXT) ELSE '' END)"
+}()
+
 // playSettingSQL is a round's value of ps as text, as the engines' playValue
 // and the global site keep it: a Number setting's whole value 0-999, an id
 // setting's value of letters, digits, '_', '.' and '-', at most 64; anything
@@ -165,7 +177,7 @@ func playSettingSQL(ps PlaySetting) string {
 }
 
 // ParseFilter reads tsum, device and skillType (comma lists; NoSkillType is
-// the rounds without one), build, from, to, the outlier
+// the rounds without one), skill (skill levels, NoSkillType or -1 for none), build, from, to, the outlier
 // ranges (min/max Coins, Score, Medals), incomplete ("1" keeps rounds with an
 // unread figure), coins (the primary stat: "final", "medals", or base coins by
 // default) and net ("1" subtracts the items' cost from coins).
@@ -201,6 +213,13 @@ func ParseFilter(q url.Values) Filter {
 				f.Play = map[string][]string{}
 			}
 			f.Play[ps.Param] = append(f.Play[ps.Param], s)
+		}
+	}
+	for _, s := range strings.Split(q.Get("skill"), ",") {
+		if s = strings.TrimSpace(s); s == NoSkillType || s == "-1" {
+			f.Skills = append(f.Skills, "")
+		} else if s != "" {
+			f.Skills = append(f.Skills, s)
 		}
 	}
 	if b := q.Get("build"); b == "global" || b == "jp" {
@@ -277,6 +296,15 @@ func (f Filter) where() (string, dbx.Params) {
 			p[key] = v
 		}
 		parts = append(parts, playSettingSQL(ps)+" IN ("+strings.Join(names, ",")+")")
+	}
+	if len(f.Skills) > 0 {
+		names := make([]string, len(f.Skills))
+		for i, v := range f.Skills {
+			key := fmt.Sprintf("sk%d", i)
+			names[i] = "{:" + key + "}"
+			p[key] = v
+		}
+		parts = append(parts, skillLevelSQL+" IN ("+strings.Join(names, ",")+")")
 	}
 	if f.Build != "" {
 		parts = append(parts, "build = {:build}")

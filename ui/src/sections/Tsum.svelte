@@ -42,7 +42,8 @@
 
   // id is the Tsum. days, coins, net, device and build mean what they do on the Stats page;
   // skillType is one of the script's skill types ('-' for none), or '' for every one.
-  const blank = () => ({id: '', days: 'all', coins: '', net: '', device: '', skillType: '', build: ''});
+  // skill is one skill level ('5'), or '' for every one: the breakdowns then compare like with like.
+  const blank = () => ({id: '', days: 'all', coins: '', net: '', device: '', skillType: '', skill: '', build: ''});
   const filter = $state(blank());
 
   const VIEW_KEY = 'tsum-stats.tsum-views';
@@ -61,6 +62,8 @@
   let detail = $state.raw(null);
   /** The Tsum's skill types in the filter, without one picked: the select's choices. */
   let typeChoices = $state.raw([]);
+  /** The Tsum's skill levels (1–10) in the filter, without one picked: the select's choices. */
+  let skillChoices = $state.raw([]);
   let skillLegend = $state([]);
   let best = $state.raw([]);
   let played = $state.raw([]);
@@ -112,7 +115,7 @@
       d.setDate(d.getDate() - n + 1);
       from = new Date(`${isoDay(d)}T00:00:00`).toISOString();
     }
-    return {device: filter.device, skillType: filter.skillType, build: filter.build, coins: filter.coins, net: net ? '1' : '', from};
+    return {device: filter.device, skillType: filter.skillType, skill: filter.skill, build: filter.build, coins: filter.coins, net: net ? '1' : '', from};
   }
 
   function set(patch) {
@@ -144,6 +147,9 @@
         error = '';
         // The skill types to pick from are this Tsum's, kept while one is picked.
         if (!filter.skillType) typeChoices = d.skillTypes.map(r => r.key);
+        if (!filter.skill) {
+          skillChoices = d.settings.filter(r => r.setting === 'skillLevel' && /^([1-9]|10)$/.test(r.key)).map(r => r.key).sort((a, b) => a - b);
+        }
       }
     } catch (e) {
       if (mine === seq.detail) error = `Could not load: ${e.message}`;
@@ -259,6 +265,10 @@
   const deviceRows = $derived((detail?.devices ?? []).map(r => ({...r, label: r.key || 'No device'})));
   const typeRows = $derived((detail?.skillTypes ?? []).map(r => ({...r, label: skillTypeName(r.key)})));
   // A picked skill type the choices lack (a link's) is still offered, so it can be put back.
+  // A picked skill level the choices lack (a link's) is still offered, so it can be put back.
+  const skillOptions = $derived(filter.skill && !skillChoices.includes(filter.skill) ? [...skillChoices, filter.skill] : skillChoices);
+  // With several skill levels mixed, a breakdown's difference may be the level's: said under each.
+  const mixedNote = $derived(!filter.skill && skillOptions.length > 1 ? ' · skill levels mixed: pick one in the header to compare like with like' : '');
   const typeOptions = $derived(filter.skillType && !typeChoices.map(skillTypeValue).includes(filter.skillType)
     ? [...typeChoices, filter.skillType === '-' ? '' : filter.skillType] : typeChoices);
 
@@ -308,7 +318,7 @@
   let page = $state();
 
   const statsLink = $derived(`#/stats?${new URLSearchParams(Object.entries({tsum: filter.id, days: filter.days, coins: filter.coins, net: filter.net,
-    device: filter.device, skillType: filter.skillType, build: filter.build}).filter(([, v]) => v))}`);
+    device: filter.device, skillType: filter.skillType, build: filter.build, skill: filter.skill}).filter(([, v]) => v))}`);
 
   onMount(() => {
     Object.assign(filter, blank(), initial);
@@ -386,6 +396,12 @@
         {/if}
         {#if builds}
           <Seg sm label="Game" value={filter.build} onpick={v => set({build: v})} options={[['', 'Both'], ['global', 'INTL'], ['jp', 'JP']]} />
+        {/if}
+        {#if skillOptions.length > 1 || filter.skill}
+          <select class="search" aria-label="Skill level" title="Compare the breakdowns below at one skill level, so a level-up is not taken for a better setting" value={filter.skill} onchange={e => set({skill: e.target.value})}>
+            <option value="">All skill levels</option>
+            {#each skillOptions as k (k)}<option value={k}>Skill {k}</option>{/each}
+          </select>
         {/if}
         {#if typeOptions.length > 1}
           <select class="search" aria-label="Skill type" title="The script's skill type" value={filter.skillType} onchange={e => set({skillType: e.target.value})}>
@@ -476,19 +492,19 @@
       </div>
 
       {#if filter.coins !== 'medals'}
-        <Panel title="Do the items pay?" sub="each item against the same other items without it · gain is what it adds a round, less its cost" expandable={false}>
-          <ItemPayback mix={s.mix} {net} final={filter.coins === 'final'} />
+        <Panel title="Do the items pay?" sub="each item against the same other items without it, at the same skill level · in expected net coins an hour, its cost taken off" expandable={false}>
+          <ItemPayback mix={s.mix} />
         </Panel>
       {/if}
 
       {#if chainRows.length > 1}
-        <Panel title="By chain settings" sub="chains per scan and max chain length taken together, a row per pair · change is against the most played pair · the best pair is marked when it clearly beats the next" expandable={false}>
+        <Panel title="By chain settings" sub="chains per scan and max chain length taken together, a row per pair · change is against the most played pair · the best pair is marked when it clearly beats the next{mixedNote}" expandable={false}>
           <Breakdown rows={chainRows} {unit} head="Pair" />
         </Panel>
       {/if}
 
       {#if settings.length}
-        <Panel title="By script setting" sub="settings that changed while this Tsum played · change is against the most played value · settings often changed together, and with the skill level, so read these with care{globalSite ? ' · the global site breaks down by the chain and bubble settings only' : ''}" expandable={false}>
+        <Panel title="By script setting" sub="settings that changed while this Tsum played · change is against the most played value · settings often changed together, and with the skill level, so read these with care{globalSite ? ' · the global site breaks down by the chain and bubble settings only' : ''}{mixedNote}" expandable={false}>
           <div class="stack settings-list">
             {#each settings as g (g.key)}
               <Breakdown rows={g.rows} {unit} head={g.label} />
@@ -498,19 +514,19 @@
       {/if}
 
       {#if typeRows.length > 1}
-        <Panel title="By skill type" sub="how the script played the skill · change is against the most played type{globalSite ? ' · rounds sent before the site kept skill types are not recorded' : ''}" expandable={false}>
+        <Panel title="By skill type" sub="how the script played the skill · change is against the most played type{globalSite ? ' · rounds sent before the site kept skill types are not recorded' : ''}{mixedNote}" expandable={false}>
           <Breakdown rows={typeRows} {unit} head="Skill type" />
         </Panel>
       {/if}
 
       {#if versions.length > 1}
-        <Panel title="By script version" sub="newest first · change is against the most played version" expandable={false}>
+        <Panel title="By script version" sub="newest first · change is against the most played version{mixedNote}" expandable={false}>
           <Breakdown rows={versions} {unit} head="Version" />
         </Panel>
       {/if}
 
       {#if deviceRows.length > 1}
-        <Panel title="By device" sub="change is against the most played device" expandable={false}>
+        <Panel title="By device" sub="change is against the most played device{mixedNote}" expandable={false}>
           <Breakdown rows={deviceRows} {unit} head="Device" />
         </Panel>
       {/if}

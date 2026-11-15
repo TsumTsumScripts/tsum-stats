@@ -516,13 +516,13 @@ export function createGlobalEngine(loader) {
         if (!map.has(key)) map.set(key, {a: acc(), day, tsum});
         add(map.get(key).a, c, i, s);
       }
-      const build = c.build[i], items = c.items[i];
-      const mk = `${build}\u0000${tsum}\u0000${items}`;
-      if (!mix.has(mk)) mix.set(mk, {build, tsum, items, a: acc()});
+      const build = c.build[i], items = c.items[i], skill = playText(c.skill[i]);
+      const mk = `${build}\u0000${tsum}\u0000${skill}\u0000${items}`;
+      if (!mix.has(mk)) mix.set(mk, {build, tsum, skill, items, a: acc()});
       add(mix.get(mk).a, c, i, s);
       const scan = playText(c.scan[i]), chain = playText(c.chain[i]);
-      const ck = `${build}\u0000${tsum}\u0000${scan}\u0000${chain}`;
-      if (!chains.has(ck)) chains.set(ck, {build, tsum, scan, chain, a: acc()});
+      const ck = `${build}\u0000${tsum}\u0000${skill}\u0000${scan}\u0000${chain}`;
+      if (!chains.has(ck)) chains.set(ck, {build, tsum, skill, scan, chain, a: acc()});
       add(chains.get(ck).a, c, i, s);
     });
 
@@ -538,12 +538,12 @@ export function createGlobalEngine(loader) {
       dailyTsums: [...dailyTsums.values()].sort((a, b) => byKey(a, b, 'day')).map(({a, day, tsum}) => ({
         day, tsum, rounds: a.rounds, coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), coinsPerSec: rate(a), ...expectedOf(a),
       })),
-      mix: [...mix.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, items}) => ({
-        build, tsum, items, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
+      mix: [...mix.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, skill, items}) => ({
+        build, tsum, skill, items, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
         rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, ...expectedOf(a),
       })),
-      chains: [...chains.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, scan, chain}) => ({
-        build, tsum, scan, chain, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
+      chains: [...chains.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, skill, scan, chain}) => ({
+        build, tsum, skill, scan, chain, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
         rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, ...expectedOf(a),
       })),
       histogram: main.spreads ? histogram(sel, k, main) : {width: 0, cap: null, bins: []},

@@ -120,6 +120,13 @@ export const PLAY_SETTINGS = [
   {param: 'bubble', key: 'bubbleStrategy', number: false},
 ];
 const PLAY_ID = /^[A-Za-z0-9_.-]{1,64}$/;
+/** A round's skill level as text, a whole number 1–10, else '' (queries.go: skillLevelSQL; the global site's -1). */
+export const skillLevelOf = settings => {
+  const v = settings?.skillLevel;
+  return Number.isInteger(v) && v >= 1 && v <= 10 ? String(v) : '';
+};
+/** The skill level filter as select() takes a play setting's. */
+const SKILL_LEVEL = {param: 'skill', key: 'skillLevel'};
 
 /**
  * A play setting's value in a settings object, as text (queries.go:
@@ -160,6 +167,8 @@ export function parseFilter(q) {
   // Each play setting's values, NO_SKILL_TYPE ('-') for not recorded (queries.go: Filter.Play).
   f.play = Object.fromEntries(PLAY_SETTINGS.map(ps => [ps.param,
     String(q[ps.param] ?? '').split(',').map(s => s.trim()).filter(Boolean).map(s => (s === NO_SKILL_TYPE ? '' : s))]));
+  // Skill levels as text, '-' or -1 for the rounds that recorded none (queries.go: Filter.Skills).
+  f.skills = String(q.skill ?? '').split(',').map(s => s.trim()).filter(Boolean).map(s => (s === NO_SKILL_TYPE || s === '-1' ? '' : s));
   if (q.build === 'global' || q.build === 'jp') f.build = q.build;
   f.from = q.from ? parseTime(q.from) : null;
   f.to = q.to ? parseTime(q.to) : null;
@@ -238,7 +247,8 @@ export function createEngine(loader) {
     const tsumSet = f.tsums.length ? new Set(f.tsums) : null;
     const deviceSet = f.devices.length ? new Set(f.devices) : null;
     const skillTypeSet = f.skillTypes.length ? new Set(f.skillTypes) : null;
-    const playSets = PLAY_SETTINGS.filter(ps => f.play[ps.param]?.length).map(ps => [ps, new Set(f.play[ps.param])]);
+    const playSets = [...PLAY_SETTINGS, SKILL_LEVEL].filter(ps => (ps === SKILL_LEVEL ? f.skills : f.play[ps.param])?.length)
+      .map(ps => [ps, new Set(ps === SKILL_LEVEL ? f.skills : f.play[ps.param])]);
     const out = [];
     for (const sh of await monthsFor(f)) {
       const deviceOk = deviceSet ? sh.dict.device.map(d => deviceSet.has(d)) : null;
@@ -246,7 +256,7 @@ export function createEngine(loader) {
       const buildOk = f.build ? sh.dict.build.map(b => b === f.build) : null;
       const skillTypeOk = skillTypeSet ? sh.dict.skillType.map(s => skillTypeSet.has(s)) : null;
       // Each play setting picked: whether each of the month's settings objects (and none, '') has a value it keeps.
-      const playOk = playSets.map(([ps, set]) => [set.has(''), sh.dict.settings.map(o => set.has(playValue(o, ps)))]);
+      const playOk = playSets.map(([ps, set]) => [set.has(''), sh.dict.settings.map(o => set.has(ps === SKILL_LEVEL ? skillLevelOf(o) : playValue(o, ps)))]);
       const medalTsum = sh.dict.tsum.map(t => medalSet.has(t));
       const idx = [];
       const coins = sh[coinsCol];
@@ -476,13 +486,14 @@ export function createEngine(loader) {
       }
       const build = sh.dict.build[sh.build[i]];
       const items = itemsOf(sh, i);
-      const mk = `${build}\u0000${tsum}\u0000${items}`;
-      if (!mix.has(mk)) mix.set(mk, {build, tsum, items, a: acc()});
-      add(mix.get(mk).a, sh, i, c);
       const o = sh.settings[i] === null ? null : sh.dict.settings[sh.settings[i]];
+      const skill = skillLevelOf(o);
+      const mk = `${build}\u0000${tsum}\u0000${skill}\u0000${items}`;
+      if (!mix.has(mk)) mix.set(mk, {build, tsum, skill, items, a: acc()});
+      add(mix.get(mk).a, sh, i, c);
       const scan = playValue(o, SCAN), chain = playValue(o, CHAIN);
-      const ck = `${build}\u0000${tsum}\u0000${scan}\u0000${chain}`;
-      if (!chains.has(ck)) chains.set(ck, {build, tsum, scan, chain, a: acc()});
+      const ck = `${build}\u0000${tsum}\u0000${skill}\u0000${scan}\u0000${chain}`;
+      if (!chains.has(ck)) chains.set(ck, {build, tsum, skill, scan, chain, a: acc()});
       add(chains.get(ck).a, sh, i, c);
     });
 
@@ -497,12 +508,12 @@ export function createEngine(loader) {
       dailyTsums: [...dailyTsums.values()].sort((a, b) => byKey(a, b, 'day')).map(({a, day, tsum}) => ({
         day, tsum, rounds: a.rounds, coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), coinsPerSec: rate(a), ...expectedOf(a),
       })),
-      mix: [...mix.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, items}) => ({
-        build, tsum, items, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
+      mix: [...mix.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, skill, items}) => ({
+        build, tsum, skill, items, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
         rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, ...expectedOf(a),
       })),
-      chains: [...chains.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, scan, chain}) => ({
-        build, tsum, scan, chain, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
+      chains: [...chains.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, skill, scan, chain}) => ({
+        build, tsum, skill, scan, chain, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
         rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, ...expectedOf(a),
       })),
       histogram: histogram(sel, c, main.totals),

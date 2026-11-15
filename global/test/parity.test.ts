@@ -116,6 +116,8 @@ function compareSummary(c: Case, want: any, got: any): string[] {
   if (primary ? rounds(got.histogram) !== want.totals.coinRounds : got.histogram.bins.length > 0) {
     out.push(`.histogram: ${rounds(got.histogram)} rounds, the server counts ${want.totals.coinRounds}`);
   }
+  // A case over every Tsum may leave the item sets and chain pairs out of the fixture (global_parity_test.go): not compared.
+  for (const k of ["mix", "chains"]) if (!(k in want)) delete got[k];
   for (const v of [want, got]) {
     delete v.global;
     delete v.histogram;
@@ -124,9 +126,11 @@ function compareSummary(c: Case, want: any, got: any): string[] {
     v.tsums = sortTsums(v.tsums);
     v.medals.tsums = sortTsums(v.medals.tsums);
     v.dailyTsums = [...v.dailyTsums].sort(by("day", "tsum"));
-    v.mix = [...v.mix].sort(by("build", "tsum", "items"));
-    v.chains = [...v.chains].sort(by("build", "tsum", "scan", "chain"));
+    if (v.mix) v.mix = [...v.mix].sort(by("build", "tsum", "skill", "items"));
+    if (v.chains) v.chains = [...v.chains].sort(by("build", "tsum", "skill", "scan", "chain"));
     if (c.cut) dropAbout([v.totals, ...v.tsums, ...v.daily, v.medals.totals, ...v.medals.tsums]);
+    // Expected coins' sum of squares comes from base coins' (unknown in a cut cell), in every group.
+    if (c.cut) for (const r of [v.totals, ...v.tsums, ...v.daily, ...v.dailyTsums, ...(v.mix ?? []), ...(v.chains ?? []), v.medals.totals, ...v.medals.tsums]) delete r.expSq;
   }
   for (const [set, on] of [["", primary], [".medals", medals]] as const) {
     const w = set ? want.medals : want, g = set ? got.medals : got;

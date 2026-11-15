@@ -184,12 +184,17 @@ function loaderOf(files, log = []) {
 function snapshotOf(rounds) {
   const dict = {tsum: [], build: ['global', 'jp'], skillType: [''], scriptVersion: ['1'], device: ['d'], source: ['test'], settings: ['{}']};
   const tsumIndex = t => (dict.tsum.includes(t) ? dict.tsum.indexOf(t) : dict.tsum.push(t) - 1);
+  // A round's settings carry its skill level (none for -1), as the script's do.
+  const settingsIndex = r => {
+    const o = r.skill < 0 ? '{}' : JSON.stringify({skillLevel: r.skill});
+    return dict.settings.includes(o) ? dict.settings.indexOf(o) : dict.settings.push(o) - 1;
+  };
   const zeros = () => rounds.map(() => 0);
   const month = {
     format: 1, month: 'all', n: rounds.length, dict,
     at: rounds.map((r, i) => (i ? r.playedAt - rounds[i - 1].playedAt : r.playedAt)),
     tsum: rounds.map(r => tsumIndex(r.tsum)), build: rounds.map(r => r.build),
-    skillType: zeros(), scriptVersion: zeros(), device: zeros(), source: zeros(), settings: zeros(),
+    skillType: zeros(), scriptVersion: zeros(), device: zeros(), source: zeros(), settings: rounds.map(settingsIndex),
     duration: rounds.map(r => r.duration), score: rounds.map(r => r.score), baseCoins: rounds.map(r => r.base),
     finalCoins: rounds.map(r => r.final), medals: rounds.map(r => r.medals), items: rounds.map(r => (r.items < 0 ? null : r.items)),
   };
@@ -271,8 +276,8 @@ function normalize(v) {
     ...v,
     tsums: sortTsums(v.tsums), medals: {...v.medals, tsums: sortTsums(v.medals.tsums)},
     dailyTsums: [...v.dailyTsums].sort(by('day', 'tsum')),
-    mix: [...v.mix].sort(by('build', 'tsum', 'items')),
-    chains: [...v.chains].sort(by('build', 'tsum', 'scan', 'chain')),
+    mix: [...v.mix].sort(by('build', 'tsum', 'skill', 'items')),
+    chains: [...v.chains].sort(by('build', 'tsum', 'skill', 'scan', 'chain')),
   };
 }
 
@@ -283,7 +288,9 @@ function normalize(v) {
  */
 function diff(want, got, spreads, path = '') {
   if (typeof want === 'number' && typeof got === 'number') {
-    return Math.abs(want - got) <= 1e-9 * Math.max(1, Math.abs(want), Math.abs(got)) ? [] : [`${path}: want ${want}, got ${got}`];
+    // Expected coins' sum of squares is expanded from base coins' in a cell, which loses digits when a group's rounds are all alike.
+    const tol = path.endsWith('.expSq') ? 1e-6 : 1e-9;
+    return Math.abs(want - got) <= tol * Math.max(1, Math.abs(want), Math.abs(got)) ? [] : [`${path}: want ${want}, got ${got}`];
   }
   if (want === null || got === null || typeof want !== 'object' || typeof got !== 'object') {
     return want === got ? [] : [`${path}: want ${JSON.stringify(want)}, got ${JSON.stringify(got)}`];
