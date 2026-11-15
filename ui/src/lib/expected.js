@@ -76,3 +76,11 @@ export const errText = g => {
   const e = expErr(g);
   return e === null ? '' : `± ${pct(e)}`;
 };
+
+/**
+ * Whether one round holds so much of a group's play time that it sets much of
+ * its rate (summary.go: Robust's expTopShare): over 10 % of the seconds and
+ * over five average rounds' share. A group of a few rounds is "uncertain"
+ * already; this is for one hours-long round among many.
+ */
+export const oneLongRound = g => g?.expTopShare != null && g.expRounds > 0 && g.expTopShare > Math.max(0.1, 5 / g.expRounds);

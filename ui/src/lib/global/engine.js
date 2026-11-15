@@ -21,6 +21,8 @@
 import {EXPECTED_BONUS, PLAY_SETTINGS, bucketOf, expectedOf, histBounds, itemCost, parseFilter, parseTime, sqlTime} from '../snapshot/engine.js';
 
 const DAY = 86400;
+/** summary.go: Robust, which needs each round's figures: none here. */
+const NO_ROBUST = {expRateQ1: null, expRateMedian: null, expRateQ3: null, expTopShare: null};
 
 // The built-in themes, in site.go: themeOrder order.
 const THEMES = [
@@ -447,12 +449,14 @@ export function createGlobalEngine(loader) {
 
     const totals = totalsOf(total);
     totals.stdCoins = std(variance(total));
+    // The typical round's pace needs each round's (summary.go: Robust): cells keep sums only.
+    Object.assign(totals, NO_ROBUST);
     Object.assign(totals, all.get('') ?? noSpread());
 
     const tsums = [...byTsum].map(([t, a]) => {
       const row = tsumOf(t, a);
       row.stdCoins = std(variance(a));
-      return Object.assign(row, perTsum.get(t) ?? noSpread());
+      return Object.assign(row, perTsum.get(t) ?? noSpread(), NO_ROBUST);
     }).sort((a, b) => b.rounds - a.rounds);
     return {totals, tsums, byTsum, spreads};
   }

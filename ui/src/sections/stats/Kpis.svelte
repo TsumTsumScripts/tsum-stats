@@ -6,7 +6,7 @@
 <script>
   import CopyButton from '../../components/CopyButton.svelte';
   import {fit} from '../../lib/fit.js';
-  import {EXPECTED_BONUS, errText, expHour} from '../../lib/expected.js';
+  import {EXPECTED_BONUS, errText, expHour, oneLongRound} from '../../lib/expected.js';
   import {cap, fmt, fmtDuration, fmtRate, fmtShort, pct} from '../../lib/util.js';
 
   // t: the summary's totals; m: the same over medal Tsums' rounds, 0s included.
@@ -34,7 +34,8 @@
   // [label, value, class, note, short: the value's form for a tile it does not fit]
   // Expected net coins lead in coin modes: what an hour of play pays, without the coin bonus's luck.
   const expected = $derived(medals || expHour(t) === null ? null
-    : ['Expected coins an hour', fmt(expHour(t)), 'hero coin', `${errText(t) ? `${errText(t)} · ` : ''}+Coin's bonus at its ${pct(EXPECTED_BONUS)} average, less item costs`, fmtShort(expHour(t))]);
+    : ['Expected coins an hour', fmt(expHour(t)), 'hero coin', [errText(t), oneLongRound(t) ? `one round is ${pct(t.expTopShare)} of the play: the typical round makes ${fmt(t.expRateMedian * 3600)}` : '',
+      `+Coin's bonus at its ${pct(EXPECTED_BONUS)} average, less item costs`].filter(Boolean).join(' · '), fmtShort(expHour(t))]);
   const rate = $derived([`${cap(basis)} per second`, fmtRate(t.coinsPerSec), `${expected ? '' : 'hero '}${unitCls}`, t.coinsPerSec === null ? '' : `≈ ${fmt(perHour(t.coinsPerSec))} ${u} an hour of play`]);
   const total = $derived([totalFirst ? `Total ${basis}` : `Total ${u}`, fmt(t.totalCoins), `${totalFirst ? 'hero ' : ''}${unitCls}`,
     medals || bonus === null ? '' : `coin bonus added ${pct(bonus)}`, fmtShort(t.totalCoins)]);

@@ -175,6 +175,14 @@ A row not yet known within ± 5 % says *uncertain*. Medals have no such error
 yet, so in Medals mode a change past half a percent is coloured and a row
 needs 20 rounds, as before.
 
+**One long round.** Expected coins an hour is all the coins over all the
+time, so one hours-long round can own it (rounds are never capped or cut for
+their length). The Tsums table's **Typical/h** is the median round's own pace
+(`expRateMedian`, with `expRateQ1` and `expRateQ3`), and a Tsum is flagged
+*one long round* when its longest round holds over 10 % of its play time and
+over five average rounds' share (`expTopShare`); the expected tile says the
+same. Both need each round's figures, so the global site has neither.
+
 **The tiles.** Beside expected coins: the primary stat per second, the
 average and median, the **typical round** (the middle half of rounds, Q1 to
 Q3, with the best round as a note: the extremes are misreads and jackpots),

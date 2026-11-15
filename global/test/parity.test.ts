@@ -107,6 +107,8 @@ function takeSpreads(want: any, got: any, on: boolean, net: boolean, path: strin
   return out;
 }
 
+const ROBUST = ["expRateQ1", "expRateMedian", "expRateQ3", "expTopShare"];
+
 function compareSummary(c: Case, want: any, got: any): string[] {
   const out: string[] = [];
   const { primary, medals } = c.spreads!;
@@ -118,6 +120,8 @@ function compareSummary(c: Case, want: any, got: any): string[] {
   }
   // A case over every Tsum may leave the item sets and chain pairs out of the fixture (global_parity_test.go): not compared.
   for (const k of ["mix", "chains"]) if (!(k in want)) delete got[k];
+  // The typical round's pace needs each round's figures: the server's only (summary.go: Robust).
+  for (const v of [want, got]) for (const r of [v.totals, ...v.tsums, v.medals.totals, ...v.medals.tsums]) ROBUST.forEach(k => delete r[k]);
   for (const v of [want, got]) {
     delete v.global;
     delete v.histogram;

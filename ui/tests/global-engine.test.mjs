@@ -286,6 +286,7 @@ function normalize(v) {
  * are equal to 1e-9 relative, as sums are added in another order. A spread
  * figure is checked by spreadDiff; with spreads off it is null.
  */
+const ROBUST = new Set(['expRateQ1', 'expRateMedian', 'expRateQ3', 'expTopShare']);
 function diff(want, got, spreads, path = '') {
   if (typeof want === 'number' && typeof got === 'number') {
     // Expected coins' sum of squares is expanded from base coins' in a cell, which loses digits when a group's rounds are all alike.
@@ -300,6 +301,7 @@ function diff(want, got, spreads, path = '') {
   const out = [];
   for (const k of new Set([...Object.keys(want), ...Object.keys(got)])) {
     if (k === 'net' || k === 'binned') continue; // markBinned's notes
+    if (ROBUST.has(k)) continue; // the typical round's pace: the snapshot's only (summary.go: Robust)
     if (SPREADS.has(k) && typeof want[k] !== 'string') out.push(...spreadDiff(want[k], got[k], want, spreads, `${path}.${k}`));
     else out.push(...diff(want[k], got[k], spreads, `${path}.${k}`));
   }

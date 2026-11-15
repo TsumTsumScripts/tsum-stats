@@ -380,6 +380,31 @@ export function createEngine(loader) {
   }
 
   const noSpread = {stdCoins: null, q1Coins: null, medianCoins: null, q3Coins: null, p90Coins: null};
+  const noRobust = {expRateQ1: null, expRateMedian: null, expRateQ3: null, expTopShare: null};
+
+  /**
+   * The typical round's pace per group (summary.go: robustRates): the lower
+   * nearest-rank quartiles of each round's expected coins a second, and the
+   * longest round's share of the group's seconds.
+   */
+  function robustRates(sel, groupOf) {
+    const groups = new Map();
+    each(sel, (sh, i) => {
+      const d = sh.duration[i], e = expectedCoins(sh.baseCoins[i], d, sh.items[i]);
+      if (e === null) return;
+      const g = groupOf(sh, i);
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push([e / d, d]);
+    });
+    const out = new Map();
+    for (const [g, rs] of groups) {
+      rs.sort((a, b) => a[0] - b[0]);
+      const n = rs.length, at = (num, den) => rs[Math.floor(((n - 1) * num) / den)][0];
+      const secs = rs.reduce((t, [, d]) => t + d, 0), top = rs.reduce((m, [, d]) => Math.max(m, d), 0);
+      out.set(g, {expRateQ1: at(1, 4), expRateMedian: at(1, 2), expRateQ3: at(3, 4), expTopShare: top / secs});
+    }
+    return out;
+  }
 
   /** The KPI totals and per-Tsum figures, with spreads, of column c (summary.go: statSet). */
   function statSet(sel, c) {
@@ -393,15 +418,17 @@ export function createEngine(loader) {
     });
     const perTsum = spreads(sel, c, (sh, i) => sh.dict.tsum[sh.tsum[i]]);
     const all = spreads(sel, c, () => '');
+    const robustTsum = robustRates(sel, (sh, i) => sh.dict.tsum[sh.tsum[i]]);
+    const robustAll = robustRates(sel, () => '');
 
     const totals = totalsOf(total);
     totals.stdCoins = std(variance(total));
-    Object.assign(totals, all.get('') ?? {q1Coins: null, medianCoins: null, q3Coins: null, p90Coins: null});
+    Object.assign(totals, all.get('') ?? {q1Coins: null, medianCoins: null, q3Coins: null, p90Coins: null}, robustAll.get('') ?? noRobust);
 
     const tsums = [...byTsum].map(([t, a]) => {
       const row = tsumOf(t, a);
       row.stdCoins = std(variance(a));
-      return Object.assign(row, perTsum.get(t) ?? {q1Coins: null, medianCoins: null, q3Coins: null, p90Coins: null});
+      return Object.assign(row, perTsum.get(t) ?? {q1Coins: null, medianCoins: null, q3Coins: null, p90Coins: null}, robustTsum.get(t) ?? noRobust);
     }).sort((a, b) => b.rounds - a.rounds);
     return {totals, tsums};
   }

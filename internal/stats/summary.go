@@ -64,6 +64,20 @@ type Totals struct {
 	Last   *string `db:"last" json:"last"`
 	Spread
 	Expected
+	Robust
+}
+
+// Robust is the typical round's pace beside the pooled rate (expected coins
+// over all the seconds), which one hours-long round can own: the quartiles
+// of each round's own expected coins a second (expSQL over its time), each a
+// real round's, and the share of the seconds the longest round holds. Nil
+// with no expected coins, and always on the global site, whose cells keep
+// neither.
+type Robust struct {
+	RateQ1     *float64 `db:"-" json:"expRateQ1"`
+	RateMedian *float64 `db:"-" json:"expRateMedian"`
+	RateQ3     *float64 `db:"-" json:"expRateQ3"`
+	TopShare   *float64 `db:"-" json:"expTopShare"`
 }
 
 // Spread is where a set of rounds' coins fall; nil with no coin figures.
@@ -107,6 +121,7 @@ type TsumStat struct {
 	Earned      int64    `db:"earned" json:"earnedRounds"`
 	Spread
 	Expected
+	Robust
 }
 
 // DayTsumStat is one Tsum on one day, for the per-day charts split by Tsum.
@@ -463,7 +478,10 @@ func statSet(db dbx.Builder, f Filter) (StatSet, error) {
 	c := f.col()
 	where, p := f.where()
 	var spreads, all map[string]Spread
+	var robust, robustAll map[string]Robust
 	err := runAll([]func() error{
+		func() (err error) { robust, err = robustRates(db, f, "tsum"); return err },
+		func() (err error) { robustAll, err = robustRates(db, f, "''"); return err },
 		func() error {
 			return db.NewQuery(`SELECT COUNT(*) AS rounds, AVG(score) AS avg_score, MAX(score) AS max_score, ` + coinStats(c) + `,
 				COUNT(` + c + `) AS coin_rounds, SUM(` + c + `) AS total_coins, SUM(duration_seconds) AS total_secs,
@@ -482,7 +500,9 @@ func statSet(db dbx.Builder, f Filter) (StatSet, error) {
 		return set, err
 	}
 	set.Totals.StdCoins = stddev(set.Totals.VarCoins)
+	set.Totals.Robust = robustAll[""]
 	for i := range set.Tsums {
+		set.Tsums[i].Robust = robust[set.Tsums[i].Tsum]
 		set.Tsums[i].StdCoins = stddev(set.Tsums[i].VarCoins)
 		if sp, ok := spreads[set.Tsums[i].Tsum]; ok {
 			sp.StdCoins = set.Tsums[i].StdCoins
@@ -539,6 +559,31 @@ func coinSpreads(db dbx.Builder, f Filter, group string) (map[string]Spread, err
 	out := map[string]Spread{}
 	for _, r := range rows {
 		out[r.G] = Spread{Q1: r.Q1, Median: r.Med, Q3: r.Q3, P90: r.P90}
+	}
+	return out, err
+}
+
+// robustRates is Robust per group: each round's expected coins a second, its
+// quartiles the lower nearest-rank values (as coinSpreads), and the longest
+// round's share of the group's seconds.
+func robustRates(db dbx.Builder, f Filter, group string) (map[string]Robust, error) {
+	where, p := f.whereAnd(expCondSQL)
+	var rows []struct {
+		G   string   `db:"g"`
+		Q1  *float64 `db:"q1"`
+		Med *float64 `db:"med"`
+		Q3  *float64 `db:"q3"`
+		Top *float64 `db:"top"`
+	}
+	at := func(frac string) string { return "MAX(CASE WHEN rn = 1 + (n - 1) * " + frac + " THEN v END)" }
+	err := db.NewQuery(`SELECT g, ` + at("1 / 4") + ` AS q1, ` + at("1 / 2") + ` AS med, ` + at("3 / 4") + ` AS q3,
+		MAX(duration_seconds) / SUM(duration_seconds) AS top
+		FROM (SELECT ` + group + ` AS g, v, duration_seconds,
+			ROW_NUMBER() OVER (PARTITION BY ` + group + ` ORDER BY v) AS rn, COUNT(*) OVER (PARTITION BY ` + group + `) AS n
+			FROM (SELECT *, ` + expSQL + ` / duration_seconds AS v FROM ts_rounds` + where + `)) GROUP BY g`).Bind(p).All(&rows)
+	out := map[string]Robust{}
+	for _, r := range rows {
+		out[r.G] = Robust{RateQ1: r.Q1, RateMedian: r.Med, RateQ3: r.Q3, TopShare: r.Top}
 	}
 	return out, err
 }
