@@ -193,7 +193,7 @@ async function open(run: Run, lim: Limits): Promise<Job> {
     run.stmt(`SELECT 'dirty' AS key, CAST(count(*) AS TEXT) AS value FROM dirty_days
       UNION ALL SELECT key, CASE WHEN key >= 'part:' AND key < 'part;'
           THEN json_object('from', value ->> 'from', 'to', value ->> 'to', 'rounds', value ->> 'rounds', 'bytes', value ->> 'bytes', 'files', value -> 'files')
-        WHEN key = 'totals' THEN '1' WHEN key = 'people' THEN coalesce(value ->> 'catalog', '') ELSE value END
+        WHEN key = 'totals' THEN '1' WHEN key = 'people' THEN (CASE WHEN json_type(value, '$.tsumsAll') IS NULL THEN '' ELSE coalesce(value ->> 'catalog', '') END) ELSE value END
       FROM state WHERE key IN ('trash', 'archived_through', 'dropped_through', 'archive', 'held', 'restored', 'render', 'parts_at', 'totals', 'people', 'presets_dirty')
         OR (key >= 'part:' AND key < 'part;') OR (key >= 'nocompact:' AND key < 'nocompact;')`),
     run.stmt("SELECT rows, reads FROM budget WHERE day = ?1", today),
@@ -254,7 +254,7 @@ async function open(run: Run, lim: Limits): Promise<Job> {
     else if (key === "render") for (const d of JSON.parse(value) as string[]) job.render.add(d);
     else if (key === "parts_at") job.partsAt = Number(value);
     else if (key === "totals") job.hasTotals = true;
-    // Counts made under another catalog are made again: a Tsum it lacked now counts.
+    // Counts made under another catalog, or before the 7-day and every-day ones were kept, are made again: a Tsum it lacked now counts.
     else if (key === "people") job.hasPeople = value === catalogId();
     else if (key === "dirty") job.more = value !== "0";
     else if (key === PRESETS_DIRTY) job.presetsDirty = value;

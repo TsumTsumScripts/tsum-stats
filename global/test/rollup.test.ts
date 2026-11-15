@@ -80,6 +80,18 @@ describe("recompute", () => {
     ]);
   });
 
+  it("makes the counts of people again when they were made before the 7-day and every-day ones were kept", async () => {
+    const c = await joinNew();
+    await upload(c.key, [record({})]);
+    await rollup();
+    // As a Worker before the windows left them: the same counts, without tsums7 and tsumsAll.
+    await env.DB.prepare("UPDATE state SET value = json_remove(value, '$.tsums7', '$.tsumsAll') WHERE key = 'people'").run();
+    await env.DB.prepare("INSERT OR REPLACE INTO state (key, value) VALUES ('parts_at', '0')").run();
+    await rollup();
+    const people = await one<{ v: string }>("SELECT value AS v FROM state WHERE key = 'people'");
+    expect(JSON.parse(people!.v)).toMatchObject({ tsums: { mickey: 1 }, tsums7: { mickey: 1 }, tsumsAll: { mickey: 1 } });
+  });
+
   it("files a round under the day it started, however long it lasted", async () => {
     const c = await joinNew();
     const midnight = Date.UTC(2026, 9, 14);

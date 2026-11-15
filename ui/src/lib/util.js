@@ -158,7 +158,9 @@ export const MIN_ROUNDS = 50;
  */
 export const playersIn = (row, days) => {
   if (!row || row.contributors == null) return null;
-  return (days === '7' ? row.contributors7 : days === '30' ? row.contributors : row.contributorsAll) ?? row.contributors;
+  // Every day's count can never be under the 30 days': under it, the manifest's counts predate the windows.
+  if (days === '7') return row.contributors7 ?? row.contributors;
+  return days === '30' || !(row.contributorsAll >= row.contributors) ? row.contributors : row.contributorsAll;
 };
 /** What playersIn counts over, for titles. */
 export const playersWindow = days => (days === '7' ? 'the last 7 days' : days === '30' ? 'the last 30 days' : 'every day');
