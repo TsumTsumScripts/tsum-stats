@@ -203,7 +203,10 @@ html { overflow-x: clip; }
 @media (max-width: 719px) {
   .topbar { gap: 8px; padding: 8px 16px; }
   .brand-badge { width: 32px; height: 32px; font-size: 12px; }
-  .topbar > .seg button { padding: 5px 10px; font-size: 14px; }
+  /* The sections stay on one row beside the badge, sharing it; a theme's wide font scrolls them sideways instead of wrapping. */
+  .topbar > .seg { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .topbar > .seg::-webkit-scrollbar { display: none; }
+  .topbar > .seg button { flex: 1 0 auto; padding: 5px 6px; font-size: 13px; }
   .topbar .spacer { flex: 0 0 100%; height: 0; order: 4; }
   .topbar .live { flex: 1 1 0; order: 5; }
   .topbar-actions, .topbar .theme-pick, .topbar .names-pick, .topbar #site-btn, .topbar #contribute-link { order: 7; }
@@ -213,6 +216,8 @@ html { overflow-x: clip; }
   :root { --sticky-top: 0px; }
   .topbar { position: relative; }
 }
+/* Small phones: the badge gives its room to the sections, so all of them show. */
+@media (max-width: 369px) { .topbar > .brand { display: none; } }
 .theme-pick { display: inline-flex; align-items: center; gap: 6px; }
 .theme-pick select { padding: 4px 8px; border-radius: 999px; border: 2px solid var(--panel-edge); background: var(--well);
   box-shadow: var(--inset); font-weight: 700; font-size: 13px; }
@@ -282,6 +287,7 @@ section[hidden] { display: none !important; }
 .chip-name { min-width: 0; max-width: 16em; overflow: hidden; text-overflow: ellipsis; }
 .rail-body { display: none; gap: 12px; }
 .rail.open .rail-body { display: grid; position: absolute; left: 0; right: 0; top: calc(100% + 6px); padding: 16px; border-radius: var(--radius);
+  max-height: var(--rail-room, calc(100dvh - var(--sticky-top) - var(--rail-h, 0px) - 18px)); overflow-y: auto; overscroll-behavior: contain;
   background: linear-gradient(180deg, var(--panel-hi), var(--panel)); border: 2px solid var(--panel-edge); box-shadow: var(--float); }
 .jump { display: flex; gap: 4px; margin-top: 8px; overflow-x: auto; scrollbar-width: none; }
 .jump button { all: unset; cursor: pointer; white-space: nowrap; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 800; color: var(--faint); }
@@ -295,7 +301,7 @@ section[hidden] { display: none !important; }
   .rail-toggle { display: none; }
   .rail-head { flex-direction: column; align-items: stretch; }
   .chips { flex-wrap: wrap; overflow: visible; }
-  .rail-body, .rail.open .rail-body { display: grid; position: static; padding: 0; background: none; border: 0; box-shadow: none; margin-top: 14px; }
+  .rail-body, .rail.open .rail-body { display: grid; position: static; padding: 0; background: none; border: 0; box-shadow: none; margin-top: 14px; max-height: none; overflow: visible; }
   /* One column: the rail is too narrow for a date box beside another field. */
   .rail .filters { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .rail .field input, .rail .devices summary { padding: 6px 10px; }
@@ -614,7 +620,10 @@ a.pill:hover { color: var(--ink); }
 .help .status-tile:hover { border-color: var(--accent-a); }
 .status-tile .label { font-size: 13px; color: var(--muted); }
 .status-tile b { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--coin); text-shadow: 0 2px 0 var(--coin-shadow); }
-.help-cols { display: grid; gap: 20px; align-items: start; }
+.help-cols { display: grid; gap: 20px; align-items: start; grid-template-columns: minmax(0, 1fr); }
+/* A long path or address wraps instead of widening its column past a phone's screen. */
+.help-cols > * { min-width: 0; }
+.help code { overflow-wrap: anywhere; }
 @media (min-width: 900px) { .help-cols { grid-template-columns: minmax(0, 1fr) 400px; } }
 .shot { margin: 0; display: grid; gap: 6px; justify-items: center; }
 .shot img { width: 100%; max-width: 400px; height: auto; border-radius: 14px; border: 2px solid var(--panel-edge); box-shadow: var(--drop); }
@@ -719,11 +728,13 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 
 /* ---- The Tsum page ---- */
 .tsum-head { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; border-top: 4px solid var(--tsum, var(--panel-edge)); }
-.tsum-title { flex: 1 1 260px; min-width: 0; display: grid; gap: 4px; }
+.tsum-title { flex: 1 1 260px; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .tsum-title h2 { font-size: 28px; overflow-wrap: anywhere; }
 .tsum-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .fact { padding: 3px 10px; border-radius: 999px; background: var(--well); font-size: 13px; color: var(--muted); white-space: nowrap; }
 .fact b { color: var(--ink); font-variant-numeric: tabular-nums; }
+/* Phone: a fact longer than the row wraps inside its pill instead of running past the panel. */
+@media (max-width: 559px) { .fact { white-space: normal; max-width: 100%; border-radius: 12px; } }
 .fact.up b, td.up { color: var(--good); }
 .fact.down b, td.down { color: var(--bad); }
 .fact.dim { color: var(--faint); }
@@ -787,7 +798,9 @@ td.medal .bd-bar > span.best { background: var(--medal); }
 }
 .settings-list { margin-top: 0; gap: 18px; }
 
-.insights .kpi .value .unit { font-size: 15px; color: var(--muted); }
+.insights .kpi .value .unit { font-size: 15px; color: var(--muted); white-space: nowrap; }
+/* A narrow tile puts the unit under its figure rather than past the tile's edge. */
+.insights .kpi .value { white-space: normal; }
 .insights .note .up { color: var(--good); font-weight: 800; }
 .insights .note .down { color: var(--bad); font-weight: 800; }
 .insights .note b { color: var(--ink); }

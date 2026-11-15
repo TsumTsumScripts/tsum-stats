@@ -94,6 +94,24 @@
   $effect(() => {
     document.documentElement.style.setProperty('--rail-h', wide ? '0px' : `${railH}px`);
   });
+  // Narrow, the open filters hang under the bar: --rail-room is the screen left below it, which they
+  // scroll within, so the fields past the screen's bottom stay reachable (the bar does not scroll away).
+  $effect(() => {
+    if (!open || wide || !rail) return;
+    const fit = () => {
+      const h = window.visualViewport?.height ?? innerHeight;
+      rail.style.setProperty('--rail-room', `${Math.max(200, Math.floor(h - rail.getBoundingClientRect().bottom - 12))}px`);
+    };
+    fit();
+    addEventListener('scroll', fit, {passive: true});
+    addEventListener('resize', fit);
+    window.visualViewport?.addEventListener('resize', fit);
+    return () => {
+      removeEventListener('scroll', fit);
+      removeEventListener('resize', fit);
+      window.visualViewport?.removeEventListener('resize', fit);
+    };
+  });
 </script>
 
 <svelte:document
