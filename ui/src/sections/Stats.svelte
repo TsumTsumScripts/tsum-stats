@@ -30,7 +30,7 @@
   import HeadToHead from './stats/HeadToHead.svelte';
   import Kpis from './stats/Kpis.svelte';
   import Versions from './stats/Versions.svelte';
-  import {EXP_WHAT, RUN_WHAT, expErr, expHour, oneLongRound, runHour} from '../lib/expected.js';
+  import {EXP_WHAT, RUN_WHAT, expErr, expHour, oneLongRound, runHour, runRateHour} from '../lib/expected.js';
 
   // initial: the link's params; onStateChange(filter, {push}) writes the link.
   let {hidden, initial, onStateChange} = $props();
@@ -451,6 +451,8 @@
     num('coins', () => `Total ${unit}`, r => r.coins, fmt, {meta: {cls: unitCls}}),
     num('coinsPerSec', () => `${U}/s`, r => r.coinsPerSec, fmtRate, {meta: {cls: unitCls, title: 'Per second of play'}}),
     num('coinsPerHour', () => `${U}/h`, r => (r.coinsPerSec === null ? null : r.coinsPerSec * 3600)),
+    num('medalsRun', () => approxName('Medals/h incl. between rounds'), r => runRateHour(r), fmt,
+      {meta: {cls: 'medal', show: () => !coinMode(), title: `Medals/h over play time plus the time between rounds: an hour of the script running. It ${RUN_WHAT}`}}),
     num('avgCoins', 'Average', r => r.avgCoins),
     num('medianCoins', approxName('Median'), r => r.medianCoins, fmt, {meta: {title: approxTitle('')}}),
     num('minCoins', 'Lowest', r => r.minCoins, fmt, {meta: {hidden: true}}),
@@ -469,6 +471,8 @@
     medal('medals', 'Total medals', m => m.coins, fmt, {cls: 'medal'}),
     medal('medalsPerSec', 'Medals/s', m => m.coinsPerSec, fmtRate, {cls: 'medal', hidden: true, title: 'Medals per second of play, a round that earned none counting as 0'}),
     medal('medalsPerHour', 'Medals/h', m => (m.coinsPerSec === null ? null : m.coinsPerSec * 3600), fmt, {cls: 'medal'}),
+    medal('medalsPerHourRun', approxName('Medals/h incl. between rounds'), m => runRateHour(m), fmt,
+      {cls: 'medal', hidden: true, title: `Medals/h over play time plus the time between rounds: an hour of the script running. It ${RUN_WHAT}`}),
     medal('avgMedals', 'Avg medals', m => m.avgCoins, fmt, {cls: 'medal', title: 'Average medals a round, a round that earned none counting as 0'}),
     medal('medianMedals', approxName('Median medals'), m => m.medianCoins, fmt, {hidden: true, title: approxTitle('')}),
     medal('minMedals', 'Lowest medals', m => m.minCoins, fmt, {hidden: true}),

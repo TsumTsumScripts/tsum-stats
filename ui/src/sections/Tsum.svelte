@@ -210,7 +210,7 @@
   /**
    * Where it ranks among the Tsums in the same filter, and how it compares with
    * all of them together: by expected net coins an hour (lib/expected.js), or
-   * in medals by medals a second.
+   * in medals by medals an hour.
    */
   const standing = $derived.by(() => {
     if (!detail) return null;
@@ -350,13 +350,13 @@
         {#if altName}<div class="sub">{altName}</div>{/if}
         <div class="tsum-facts">
           {#if standing?.rank}
-            <span class="fact" title="Among the Tsums with rounds in this filter, by {standing.medals ? 'medals per second' : `expected net coins an hour: ${EXP_WHAT}`}">
-              <b>#{standing.rank}</b> of {fmt(standing.of)} Tsums with {fmt(MIN_ROUNDS)}+ rounds by {standing.medals ? 'medals/s' : 'expected coins/h'}
+            <span class="fact" title="Among the Tsums with rounds in this filter, by {standing.medals ? 'medals an hour of play' : `expected net coins an hour: ${EXP_WHAT}`}">
+              <b>#{standing.rank}</b> of {fmt(standing.of)} Tsums with {fmt(MIN_ROUNDS)}+ rounds by {standing.medals ? 'medals/h' : 'expected coins/h'}
             </span>
           {/if}
           {#if standing?.vsAll !== null && standing?.vsAll !== undefined}
             <span class="fact" class:up={standing.vsAll > 0} class:down={standing.vsAll < 0}
-              title="Against all {whose === 'your' ? 'your ' : ''}Tsums together, {standing.medals ? `${fmtRate(standing.all)} medals/s` : `${fmt(standing.all * 3600)} expected coins/h`}">
+              title="Against all {whose === 'your' ? 'your ' : ''}Tsums together, {standing.medals ? `${fmt(standing.all * 3600)} medals/h` : `${fmt(standing.all * 3600)} expected coins/h`}">
               <b>{standing.vsAll > 0 ? '+' : ''}{pct(standing.vsAll)}</b> vs all Tsums
             </span>
           {/if}

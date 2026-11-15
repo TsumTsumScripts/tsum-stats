@@ -16,11 +16,11 @@
 
   const t = $derived(detail.summary.totals);
 
-  // Recent form in expected coins an hour (lib/expected.js), or the medal rate in medals.
+  // Recent form in expected coins an hour (lib/expected.js), or in medals medals an hour.
   // A change is coloured only when it is more than luck explains (medals: past half a percent).
   const medals = $derived(unit === 'medals');
   const form = $derived.by(() => {
-    const value = r => (r ? (medals ? r.coinsPerSec : expHour(r)) : null);
+    const value = r => (!r ? null : medals ? (r.coinsPerSec == null ? null : r.coinsPerSec * 3600) : expHour(r));
     const [recent, before] = ['recent', 'before'].map(k => detail.form.find(r => r.key === k) ?? null);
     if (value(recent) === null) return null;
     const vs = (r, base) => {
@@ -74,7 +74,7 @@
     <div class="panel kpi" title="The newest {fmt(form.recent.rounds)} rounds in the filter. A change is coloured only when it is more than the luck of which rounds were played explains">
       <div class="label">Recent form · last {fmt(form.recent.rounds)} rounds</div>
       {#if medals}
-        <div class="value">{fmtRate(form.value)} <span class="unit">medals/s</span></div>
+        <div class="value">{fmt(form.value)} <span class="unit">medals/h</span></div>
       {:else}
         <div class="value">{fmt(form.value)} <span class="unit">expected coins/h</span></div>
       {/if}

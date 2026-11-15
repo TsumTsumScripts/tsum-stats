@@ -286,7 +286,7 @@ function normalize(v) {
  * are equal to 1e-9 relative, as sums are added in another order. A spread
  * figure is checked by spreadDiff; with spreads off it is null.
  */
-const ROBUST = new Set(['expRateQ1', 'expRateMedian', 'expRateQ3', 'expTopShare', 'expBetweenSeconds']);
+const ROBUST = new Set(['expRateQ1', 'expRateMedian', 'expRateQ3', 'expTopShare', 'expBetweenSeconds', 'rateBetweenSeconds']);
 function diff(want, got, spreads, path = '') {
   if (typeof want === 'number' && typeof got === 'number') {
     // Expected coins' sum of squares is expanded from base coins' in a cell, which loses digits when a group's rounds are all alike.

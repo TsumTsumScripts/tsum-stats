@@ -200,6 +200,16 @@ sent, against the round before it on its device, and the page takes the
 average gap of the rounds that have one for every round (rounds sent before
 it, a device's first and any sent out of order have none).
 
+Medals get the same. In Medals mode the tiles lead with **medals an hour of
+play** (per second in its note), then **Medals/h, between rounds included**,
+whose note says how much the time between rounds adds to play time; the
+Tsums table has the same column. With coins primary, the *Medals per hour*
+tile's note gives the between-rounds figure, and the table has it as a
+hidden column. The summary carries it for any primary stat as `rateSeconds`
+(the rate's play time) and `rateBetweenSeconds` (the time between rounds of
+the same rounds): the rate times `rateSeconds / (rateSeconds +
+rateBetweenSeconds)`.
+
 **Script versions** (local site and snapshots) checks the script itself.
 By script version, or by device: the share of rounds with a figure the
 script could not read (left out of every other figure; red over 2 %, the
@@ -211,7 +221,7 @@ earlier version sharing 20 such rounds or more): *Slower* or
 luck*. A version that costs coins shows here before it shows anywhere else.
 It reads `/api/stats/health` (`health.go`).
 
-**The tiles.** Beside expected coins of play and between rounds included: the primary stat per second, the
+**The tiles.** Beside expected coins of play and between rounds included: the primary stat per second (medals an hour, in Medals), the
 average and median, the **typical round** (the middle half of rounds, Q1 to
 Q3, with the best round as a note: the extremes are misreads and jackpots),
 **consistency** (half the rounds land within ± this of the median), the
@@ -408,11 +418,11 @@ nothing is left out of them. Stats keeps every round.
 - **Skill level:** the header's picker (`skill` in the link and the API, a
   skill level 1 to 10) keeps one level's rounds, so the breakdowns compare like
   with like. With several levels mixed, each breakdown says so.
-- **Header:** where the Tsum ranks by expected coins an hour (medals a second
+- **Header:** where the Tsum ranks by expected coins an hour (medals an hour
   in Medals) among the Tsums in the same filter, that against all of them together, its share of your rounds, and, from the
   newest Tsum list for the build, its level, skill and boxes to max.
-- **Recent form:** the newest 50 rounds' expected coins an hour (medals a
-  second in Medals), with its ±, against all the rounds in the filter and
+- **Recent form:** the newest 50 rounds' expected coins an hour (medals an
+  hour in Medals), with its ±, against all the rounds in the filter and
   against the 50 before them, coloured only beyond luck.
 - **To the next skill:** boxes and their cost to the next skill level and to full
   skill, from the catalog's box counts and the Tsum list's progress, as play
@@ -460,7 +470,8 @@ Every panel, and the overview tiles with the insights under them, can be copied
 as a picture as on Stats; on this page the card always shows the Tsum's
 portrait and name.
 
-Each breakdown ranks by expected coins an hour with its ±: a row not yet
+Each breakdown ranks by expected coins an hour with its ± (medals an hour in
+Medals): a row not yet
 known within ± 5 % (in Medals, under 20 rounds) is dimmed and never marked
 best, and a change is coloured only when it is more than luck explains. Catalog cards
 of Tsums you have played link to their page. The page reads

@@ -298,7 +298,7 @@ export function createEngine(loader) {
     baseN: 0, baseSum: 0, finalN: 0, finalSum: 0,
     secsN: 0, secsSum: 0, rateCoins: 0, rateSecs: 0, rateN: 0,
     medalsN: 0, medalsSum: 0, earned: 0, first: null, last: null,
-    expN: 0, expSum: 0, expSecs: 0, expSq: 0, betSecs: 0, betKnown: true,
+    expN: 0, expSum: 0, expSecs: 0, expSq: 0, betSecs: 0, betKnown: true, rateBet: 0,
   });
 
   function add(a, sh, i, c) {
@@ -322,7 +322,11 @@ export function createEngine(loader) {
     const d = sh.duration[i];
     if (d !== null) { a.secsN++; a.secsSum += d; }
     // Rate: coins and seconds over the rounds that have both.
-    if (v !== null && d !== null && d > 0) { a.rateN++; a.rateCoins += v; a.rateSecs += d; }
+    if (v !== null && d !== null && d > 0) {
+      a.rateN++; a.rateCoins += v; a.rateSecs += d;
+      if (sh.between) a.rateBet += sh.between[i];
+      else a.betKnown = false;
+    }
     const e = expectedCoins(b, d, sh.items[i]);
     if (e !== null) {
       a.expN++; a.expSum += e; a.expSecs += d; a.expSq += e * e;
@@ -339,6 +343,8 @@ export function createEngine(loader) {
   const avg = (sum, n) => (n ? sum / n : null);
   /** The time between rounds of the rounds with expected coins (summary.go: Between); null without, or in an older snapshot. */
   const betweenOf = a => (a.expN && a.betKnown ? a.betSecs : null);
+  /** The rate's seconds and its rounds' time between rounds (summary.go: Between); the latter null in an older snapshot. */
+  const rateGapsOf = a => ({rateSeconds: a.rateN ? a.rateSecs : null, rateBetweenSeconds: a.rateN && a.betKnown ? a.rateBet : null});
   const rate = a => (a.rateN ? a.rateCoins / a.rateSecs : null);
   /** Population variance of the coins, as the server computes it. */
   const variance = a => (a.n ? a.sumSq / a.n - (a.sum / a.n) ** 2 : null);
@@ -352,7 +358,7 @@ export function createEngine(loader) {
     totalSeconds: a.secsN ? a.secsSum : null, avgSeconds: avg(a.secsSum, a.secsN),
     coinsPerSec: rate(a), totalMedals: a.medalsN ? a.medalsSum : null, earnedRounds: a.earned,
     first: a.first === null ? null : sqlTime(a.first), last: a.last === null ? null : sqlTime(a.last),
-    ...expectedOf(a), expBetweenSeconds: betweenOf(a),
+    ...expectedOf(a), expBetweenSeconds: betweenOf(a), ...rateGapsOf(a),
   });
 
   const tsumOf = (tsum, a) => ({
@@ -360,7 +366,7 @@ export function createEngine(loader) {
     avgCoins: avg(a.sum, a.n), minCoins: a.min, maxCoins: a.max,
     avgBaseCoins: avg(a.baseSum, a.baseN), avgFinalCoins: avg(a.finalSum, a.finalN),
     coins: a.n ? a.sum : null, totalSeconds: a.secsN ? a.secsSum : null, avgSeconds: avg(a.secsSum, a.secsN),
-    coinsPerSec: rate(a), earnedRounds: a.earned, ...expectedOf(a), expBetweenSeconds: betweenOf(a),
+    coinsPerSec: rate(a), earnedRounds: a.earned, ...expectedOf(a), expBetweenSeconds: betweenOf(a), ...rateGapsOf(a),
   });
 
   /**
@@ -414,7 +420,7 @@ export function createEngine(loader) {
   }
 
   /** The KPI totals and per-Tsum figures, with spreads, of column c (summary.go: statSet). */
-  // extras: the typical round's pace and the time between rounds, which the medal set leaves out (summary.go: statSet).
+  // extras: the typical round's pace and the time between rounds of expected coins, which the medal set leaves out (summary.go: statSet).
   function statSet(sel, c, extras = true) {
     const total = acc();
     const byTsum = new Map();

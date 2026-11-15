@@ -1038,7 +1038,9 @@ cells' rounds.
 - **Estimated**: each Tsum's and the totals' `expBetweenSeconds` (the
   time between rounds, `summary.go: Between`): the average gap of the
   rounds that have one (`gapSum / gapN`) times the rounds with expected
-  coins; null where none has one. A Tsum's `expTopShare`: the longest round
+  coins; null where none has one. `rateBetweenSeconds` the same for the
+  rounds the primary stat's rate counts: the average gap of the cells that
+  have that stat times their rounds. A Tsum's `expTopShare`: the longest round
   (`secsMax`) over `expSeconds`, null where a cell's is unknown. The
   quartiles of each round's pace (`expRateQ1` …) need each round: always null.
 - **Approximate**: `q1Coins`, `medianCoins`, `q3Coins`, `p90Coins` from the

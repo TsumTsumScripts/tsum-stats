@@ -102,27 +102,50 @@ var gapsSQL = `(SELECT *, CASE WHEN g >= 0 AND g <= ` + strconv.Itoa(BreakSecond
 	FROM (SELECT *, unixepoch(played_at) - duration_seconds - LAG(unixepoch(played_at)) OVER (PARTITION BY ` + deviceTagSQL + `
 		ORDER BY played_at, round_id) AS g FROM ts_rounds))`
 
-// Between is the time between rounds (gapsSQL) of the rounds Expected
-// counts: expected coins over expSeconds + this is an hour of the script
-// running, not just of play. Nil with no expected coins, and on the global
-// site, whose cells keep no round order.
+// Between is the time between rounds (gapsSQL) of two sets of rounds. The
+// rounds Expected counts: expected coins over expSeconds + BetweenSecs is an
+// hour of the script running, not just of play; nil with no expected coins,
+// and in the medal set. The rounds the primary stat's rate counts (rateCoins):
+// coinsPerSec * RateSecs / (RateSecs + RateBetweenSecs) is the same for the
+// primary stat, which is how medals get theirs; nil without such rounds.
 type Between struct {
-	BetweenSecs *float64 `db:"-" json:"expBetweenSeconds"`
+	BetweenSecs     *float64 `db:"-" json:"expBetweenSeconds"`
+	RateSecs        *float64 `db:"rate_secs" json:"rateSeconds"`
+	RateBetweenSecs *float64 `db:"-" json:"rateBetweenSeconds"`
 }
 
-// betweenSecs is Between per Tsum.
-func betweenSecs(db dbx.Builder, f Filter) (map[string]*float64, error) {
+// gapSums are one Tsum's time between rounds: of its rounds with expected
+// coins, and of its rounds the rate of column c counts.
+type gapSums struct {
+	Tsum string   `db:"tsum"`
+	Exp  *float64 `db:"exp"`
+	Rate *float64 `db:"rate"`
+}
+
+// betweenSecs is Between's sums per Tsum, for f.col().
+func betweenSecs(db dbx.Builder, f Filter) (map[string]gapSums, error) {
 	where, p := f.where()
-	var rows []struct {
-		Tsum string   `db:"tsum"`
-		Secs *float64 `db:"secs"`
-	}
-	err := db.NewQuery(`SELECT tsum, SUM(CASE WHEN ` + expCondSQL + ` THEN ov END) AS secs FROM ` + gapsSQL + where + ` GROUP BY tsum`).Bind(p).All(&rows)
-	out := map[string]*float64{}
+	c := f.col()
+	var rows []gapSums
+	err := db.NewQuery(`SELECT tsum, SUM(CASE WHEN ` + expCondSQL + ` THEN ov END) AS exp,
+		SUM(CASE WHEN ` + c + ` IS NOT NULL AND duration_seconds > 0 THEN ov END) AS rate FROM ` + gapsSQL + where + ` GROUP BY tsum`).Bind(p).All(&rows)
+	out := map[string]gapSums{}
 	for _, r := range rows {
-		out[r.Tsum] = r.Secs
+		out[r.Tsum] = r
 	}
 	return out, err
+}
+
+// addSecs adds v to *sum, a nil v leaving it as it is.
+func addSecs(sum **float64, v *float64) {
+	if v == nil {
+		return
+	}
+	t := *v
+	if *sum != nil {
+		t += **sum
+	}
+	*sum = &t
 }
 
 // Spread is where a set of rounds' coins fall; nil with no coin figures.
@@ -525,16 +548,12 @@ func statSet(db dbx.Builder, f Filter) (StatSet, error) {
 	where, p := f.where()
 	var spreads, all map[string]Spread
 	var robust map[string]Robust
-	var between map[string]*float64
-	// The medal set shows neither the typical round's pace nor the time between rounds: they are left nil.
+	var between map[string]gapSums
+	// The medal set shows neither the typical round's pace nor the time between
+	// rounds of expected coins: they are left nil. Its rate's time between rounds it has.
 	extras := !f.onlyMedals
 	err := runAll([]func() error{
-		func() (err error) {
-			if extras {
-				between, err = betweenSecs(db, f)
-			}
-			return err
-		},
+		func() (err error) { between, err = betweenSecs(db, f); return err },
 		func() (err error) {
 			if extras {
 				robust, err = robustRates(db, f, "tsum")
@@ -544,13 +563,13 @@ func statSet(db dbx.Builder, f Filter) (StatSet, error) {
 		func() error {
 			return db.NewQuery(`SELECT COUNT(*) AS rounds, AVG(score) AS avg_score, MAX(score) AS max_score, ` + coinStats(c) + `,
 				COUNT(` + c + `) AS coin_rounds, SUM(` + c + `) AS total_coins, SUM(duration_seconds) AS total_secs,
-				AVG(duration_seconds) AS avg_secs, SUM(medals) AS total_medals, ` + earnedSQL + `, MIN(played_at) AS first, MAX(played_at) AS last, ` + expCols + `
-				FROM ts_rounds` + where).Bind(p).One(&set.Totals)
+				AVG(duration_seconds) AS avg_secs, SUM(medals) AS total_medals, ` + earnedSQL + `, MIN(played_at) AS first, MAX(played_at) AS last, ` + expCols + `,
+				` + rateSecs(c) + ` AS rate_secs FROM ts_rounds` + where).Bind(p).One(&set.Totals)
 		},
 		func() error {
 			return db.NewQuery(`SELECT tsum, COUNT(*) AS rounds, AVG(score) AS avg_score, MAX(score) AS max_score, ` + coinStats(c) + `,
-				SUM(` + c + `) AS coins, SUM(duration_seconds) AS total_secs, AVG(duration_seconds) AS avg_secs, ` + earnedSQL + `, ` + expCols + `
-				FROM ts_rounds` + where + ` GROUP BY tsum ORDER BY rounds DESC`).Bind(p).All(&set.Tsums)
+				SUM(` + c + `) AS coins, SUM(duration_seconds) AS total_secs, AVG(duration_seconds) AS avg_secs, ` + earnedSQL + `, ` + expCols + `,
+				` + rateSecs(c) + ` AS rate_secs FROM ts_rounds` + where + ` GROUP BY tsum ORDER BY rounds DESC`).Bind(p).All(&set.Tsums)
 		},
 		func() (err error) { spreads, err = coinSpreads(db, f, "tsum"); return err },
 		func() (err error) { all, err = coinSpreads(db, f, "''"); return err },
@@ -559,17 +578,19 @@ func statSet(db dbx.Builder, f Filter) (StatSet, error) {
 		return set, err
 	}
 	set.Totals.StdCoins = stddev(set.Totals.VarCoins)
-	for _, secs := range between {
-		if secs != nil {
-			total := *secs
-			if set.Totals.BetweenSecs != nil {
-				total += *set.Totals.BetweenSecs
-			}
-			set.Totals.BetweenSecs = &total
+	if !extras {
+		for k, g := range between {
+			g.Exp = nil
+			between[k] = g
 		}
 	}
+	for _, g := range between {
+		addSecs(&set.Totals.BetweenSecs, g.Exp)
+		addSecs(&set.Totals.RateBetweenSecs, g.Rate)
+	}
 	for i := range set.Tsums {
-		set.Tsums[i].BetweenSecs = between[set.Tsums[i].Tsum]
+		g := between[set.Tsums[i].Tsum]
+		set.Tsums[i].BetweenSecs, set.Tsums[i].RateBetweenSecs = g.Exp, g.Rate
 		set.Tsums[i].Robust = robust[set.Tsums[i].Tsum]
 		set.Tsums[i].StdCoins = stddev(set.Tsums[i].VarCoins)
 		if sp, ok := spreads[set.Tsums[i].Tsum]; ok {

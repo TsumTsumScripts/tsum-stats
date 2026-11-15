@@ -97,5 +97,20 @@ export const BREAK_SECONDS = 300;
 export const runHour = g => (g?.expBetweenSeconds == null || !g.expSeconds ? null : (g.expCoins / (g.expSeconds + g.expBetweenSeconds)) * 3600);
 /** The average time between rounds, in seconds; null where it is not known. */
 export const avgBetween = g => (g?.expBetweenSeconds == null || !g.expRounds ? null : g.expBetweenSeconds / g.expRounds);
+/**
+ * The primary stat (medals, in medals mode) per second of the script running:
+ * coinsPerSec over play time plus the time between rounds of the rounds it
+ * counts. Null where that is not known (an older snapshot, a global cell cut
+ * by an outlier range).
+ */
+export const runRate = g => (g?.rateBetweenSeconds == null || !g.rateSeconds || g.coinsPerSec == null ? null
+  : (g.coinsPerSec * g.rateSeconds) / (g.rateSeconds + g.rateBetweenSeconds));
+/** runRate an hour; null where it is not known. */
+export const runRateHour = g => {
+  const r = runRate(g);
+  return r === null ? null : r * 3600;
+};
+/** What the time between rounds adds to the rate's play time, as a share of it; null where it is not known. */
+export const rateBetweenShare = g => (g?.rateBetweenSeconds == null || !g.rateSeconds ? null : g.rateBetweenSeconds / g.rateSeconds);
 /** What runHour is, in one line. */
 export const RUN_WHAT = `counts the time between rounds too: results, collecting, items and loading (gaps up to ${BREAK_SECONDS / 60} minutes; a longer one is a break)`;

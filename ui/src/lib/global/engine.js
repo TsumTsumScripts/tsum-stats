@@ -35,6 +35,11 @@ const gapsOf = a => ({
   expTopShare: a.expN && a.secsMaxKnown && a.expSecs ? a.secsMax / a.expSecs : null,
 });
 const NO_GAPS = {expBetweenSeconds: null, expTopShare: null};
+/** The rate's seconds and, estimated as gapsOf's, its rounds' time between rounds (summary.go: Between). */
+const rateGapsOf = a => ({
+  rateSeconds: a.rateN ? a.rateSecs : null,
+  rateBetweenSeconds: a.rateN && a.rateGapN ? (a.rateGapSum / a.rateGapN) * a.rateN : null,
+});
 
 // The built-in themes, in site.go: themeOrder order.
 const THEMES = [
@@ -331,7 +336,7 @@ export function createGlobalEngine(loader) {
     rounds: 0, n: 0, sum: 0, sumSq: 0, sqKnown: true, min: null, max: null,
     scoreSum: 0, scoreMin: null, scoreMax: null, baseSum: 0, finalSum: 0, secs: 0,
     rateCoins: 0, rateSecs: 0, rateN: 0, medalsN: 0, medalsSum: 0, earned: 0, first: null, last: null,
-    expN: 0, expSum: 0, expSecs: 0, expSq: 0, gapSum: 0, gapN: 0, secsMax: 0, secsMaxKnown: true,
+    expN: 0, expSum: 0, expSecs: 0, expSq: 0, gapSum: 0, gapN: 0, secsMax: 0, secsMaxKnown: true, rateGapSum: 0, rateGapN: 0,
   });
 
   function add(a, c, i, s) {
@@ -345,6 +350,7 @@ export function createGlobalEngine(loader) {
       if (a.max === null || s.max[i] > a.max) a.max = s.max[i];
       // Rate: the stat over the seconds of the rounds that have it (every round has a time).
       a.rateN += n; a.rateCoins += s.sum[i]; a.rateSecs += s.secs[i];
+      a.rateGapSum += c.gapSum[i]; a.rateGapN += c.gapN[i];
     }
     a.scoreSum += c.scoreSum[i];
     if (a.scoreMin === null || c.scoreMin[i] < a.scoreMin) a.scoreMin = c.scoreMin[i];
@@ -384,7 +390,7 @@ export function createGlobalEngine(loader) {
     totalSeconds: a.rounds ? a.secs : null, avgSeconds: avg(a.secs, a.rounds),
     coinsPerSec: rate(a), totalMedals: a.medalsN ? a.medalsSum : null, earnedRounds: a.earned,
     first: a.first === null ? null : sqlTime(a.first), last: a.last === null ? null : sqlTime(a.last),
-    ...expectedOf(a),
+    ...expectedOf(a), ...rateGapsOf(a),
   });
 
   const tsumOf = (tsum, a) => ({
@@ -392,7 +398,7 @@ export function createGlobalEngine(loader) {
     avgCoins: avg(a.sum, a.n), minCoins: a.min, maxCoins: a.max,
     avgBaseCoins: avg(a.baseSum, a.rounds), avgFinalCoins: avg(a.finalSum, a.rounds),
     coins: a.n ? a.sum : null, totalSeconds: a.rounds ? a.secs : null, avgSeconds: avg(a.secs, a.rounds),
-    coinsPerSec: rate(a), earnedRounds: a.earned, ...expectedOf(a),
+    coinsPerSec: rate(a), earnedRounds: a.earned, ...expectedOf(a), ...rateGapsOf(a),
   });
 
   /**

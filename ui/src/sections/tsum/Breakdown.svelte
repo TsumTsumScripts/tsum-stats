@@ -4,7 +4,7 @@
      compares with a reference row. A change is coloured, and a row marked best,
      only when the difference is more than the luck of which rounds were played
      explains; a row whose figure is not yet known within ± 5 % says so.
-     In medals there is no such error to go by: the medal rate, rows under
+     In medals there is no such error to go by: medals an hour, rows under
      `few` rounds flagged, as before. -->
 <script>
   import {differs, errText, expHour, trusted} from '../../lib/expected.js';
@@ -25,7 +25,7 @@
   };
 
   const view = $derived.by(() => {
-    const value = r => (medals ? r.coinsPerSec : expHour(r));
+    const value = r => (medals ? (r.coinsPerSec == null ? null : r.coinsPerSec * 3600) : expHour(r));
     const sure = r => (medals ? r.rounds >= few : trusted(r));
     const top = Math.max(0, ...rows.map(r => value(r) ?? 0));
     // The best is the highest of the rows known well enough, marked only when it clearly beats the next.
@@ -55,7 +55,7 @@
         <th>{head}</th>
         <th class="num">Rounds</th>
         {#if medals}
-          <th class="num">Medals/s</th>
+          <th class="num" title="Medals an hour of play">Medals/h</th>
         {:else}
           <th class="num" title="Expected net coins an hour of play: base coins with +Coin's bonus at its average, less what the items cost">Expected/h</th>
           <th class="num" title="How far the figure could be off by the luck of which rounds were played (one standard error)">±</th>
@@ -78,7 +78,7 @@
           </td>
           <td class="num">{fmt(r.rounds)}</td>
           <td class="num {medals ? 'medal' : 'coin'}">
-            <span class="bd-rate"><span class="bd-bar"><span style:width="{r.bar}%" class:best={r.best}></span></span>{medals ? fmtRate(r.v) : fmt(r.v)}</span>
+            <span class="bd-rate"><span class="bd-bar"><span style:width="{r.bar}%" class:best={r.best}></span></span>{fmt(r.v)}</span>
           </td>
           {#if !medals}<td class="num dim">{errText(r)}</td>{/if}
           <td class="num" class:up={r.real && r.change > 0} class:down={r.real && r.change < 0}>{r.change === null ? '' : `${r.change > 0 ? '+' : ''}${pct(r.change)}`}</td>

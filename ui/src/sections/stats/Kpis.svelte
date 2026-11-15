@@ -6,7 +6,7 @@
 <script>
   import CopyButton from '../../components/CopyButton.svelte';
   import {fit} from '../../lib/fit.js';
-  import {BREAK_SECONDS, EXPECTED_BONUS, avgBetween, errText, expHour, runHour} from '../../lib/expected.js';
+  import {BREAK_SECONDS, EXPECTED_BONUS, avgBetween, errText, expHour, rateBetweenShare, runHour, runRateHour} from '../../lib/expected.js';
   import {cap, fmt, fmtDuration, fmtRate, fmtShort, pct} from '../../lib/util.js';
 
   // t: the summary's totals; m: the same over medal Tsums' rounds, 0s included.
@@ -39,7 +39,13 @@
   const running = $derived(medals || runHour(t) === null ? null
     : ['Expected/h, between rounds included', fmt(runHour(t)), 'coin',
       `play time plus ${approx ? '≈ ' : ''}${fmt(avgBetween(t))} s between rounds on average (gaps up to ${BREAK_SECONDS / 60} min; longer is a break)`, fmtShort(runHour(t))]);
-  const rate = $derived([`${cap(basis)} per second`, fmtRate(t.coinsPerSec), `${expected ? '' : 'hero '}${unitCls}`, t.coinsPerSec === null ? '' : `≈ ${fmt(perHour(t.coinsPerSec))} ${u} an hour of play`]);
+  const gapsNote = share => `play time plus ${approx ? '≈ ' : ''}${pct(share)} between rounds (gaps up to ${BREAK_SECONDS / 60} min; longer is a break)`;
+  // Medals lead with their hourly rate, then the same with the time between rounds counted.
+  const rate = $derived(medals
+    ? ['Medals an hour of play', fmt(perHour(t.coinsPerSec)), 'hero medal', t.coinsPerSec === null ? '' : `${fmtRate(t.coinsPerSec)} a second`, fmtShort(perHour(t.coinsPerSec))]
+    : [`${cap(basis)} per second`, fmtRate(t.coinsPerSec), `${expected ? '' : 'hero '}${unitCls}`, t.coinsPerSec === null ? '' : `≈ ${fmt(perHour(t.coinsPerSec))} ${u} an hour of play`]);
+  const medalRunning = $derived(!medals || runRateHour(t) === null ? null
+    : ['Medals/h, between rounds included', fmt(runRateHour(t)), 'medal', gapsNote(rateBetweenShare(t)), fmtShort(runRateHour(t))]);
   const total = $derived([totalFirst ? `Total ${basis}` : `Total ${u}`, fmt(t.totalCoins), `${totalFirst ? 'hero ' : ''}${unitCls}`,
     medals || bonus === null ? '' : `coin bonus added ${pct(bonus)}`, fmtShort(t.totalCoins)]);
   const medalTotal = $derived(['Total medals', fmt(m.totalCoins), 'medal',
@@ -48,6 +54,7 @@
     ...(expected && !totalFirst ? [expected] : []),
     ...(running && !totalFirst ? [running] : []),
     totalFirst ? total : rate,
+    ...(medalRunning && !totalFirst ? [medalRunning] : []),
     [`Average ${u}`, fmt(t.avgCoins), unitCls, t.medianCoins === null && t.rounds ? missing : spread('median', t.medianCoins), fmtShort(t.avgCoins)],
     // The middle half of rounds, not the extremes: a misread round or a jackpot does not move it.
     ['Typical round', t.q1Coins === null ? '—' : `${about}${fmtShort(t.q1Coins)}–${fmtShort(t.q3Coins)}`, unitCls,
@@ -60,7 +67,9 @@
     ['Average score', fmt(t.avgScore), 'score', t.maxScore === null ? '' : `best ${fmt(t.maxScore)}`, fmtShort(t.avgScore)],
     // Medals beside coins, over medal Tsums' rounds (0s included); with medals primary the tiles above are these.
     ...(medals || (noMedals && !m.rounds) ? [] : [
-      ...(totalFirst ? [medalTotal] : [['Medals per hour', fmt(perHour(m.coinsPerSec)), 'medal', m.coinsPerSec === null ? '' : `${fmtRate(m.coinsPerSec)} a second`, fmtShort(perHour(m.coinsPerSec))]]),
+      ...(totalFirst ? [medalTotal] : [['Medals per hour', fmt(perHour(m.coinsPerSec)), 'medal',
+        runRateHour(m) !== null ? `${approx ? '≈ ' : ''}${fmt(runRateHour(m))} with the time between rounds` : m.coinsPerSec === null ? '' : `${fmtRate(m.coinsPerSec)} a second`,
+        fmtShort(perHour(m.coinsPerSec))]]),
       ['Average medals', fmt(m.avgCoins), 'medal', m.medianCoins === null && m.rounds ? missing : spread('median', m.medianCoins), fmtShort(m.avgCoins)],
       ['Highest medals', fmt(m.maxCoins), 'medal', spread('one in ten over', m.p90Coins), fmtShort(m.maxCoins)],
       ...(totalFirst ? [] : [medalTotal]),

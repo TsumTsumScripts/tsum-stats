@@ -107,7 +107,7 @@ function takeSpreads(want: any, got: any, on: boolean, net: boolean, path: strin
   return out;
 }
 
-const ROBUST = ["expRateQ1", "expRateMedian", "expRateQ3", "expTopShare", "expBetweenSeconds"];
+const ROBUST = ["expRateQ1", "expRateMedian", "expRateQ3", "expTopShare", "expBetweenSeconds", "rateBetweenSeconds"];
 
 function compareSummary(c: Case, want: any, got: any): string[] {
   const out: string[] = [];
