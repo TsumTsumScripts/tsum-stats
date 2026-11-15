@@ -6,7 +6,7 @@
 <script>
   import CopyButton from '../../components/CopyButton.svelte';
   import {fit} from '../../lib/fit.js';
-  import {EXPECTED_BONUS, errText, expHour, oneLongRound} from '../../lib/expected.js';
+  import {BREAK_SECONDS, EXPECTED_BONUS, avgBetween, errText, expHour, runHour} from '../../lib/expected.js';
   import {cap, fmt, fmtDuration, fmtRate, fmtShort, pct} from '../../lib/util.js';
 
   // t: the summary's totals; m: the same over medal Tsums' rounds, 0s included.
@@ -34,8 +34,11 @@
   // [label, value, class, note, short: the value's form for a tile it does not fit]
   // Expected net coins lead in coin modes: what an hour of play pays, without the coin bonus's luck.
   const expected = $derived(medals || expHour(t) === null ? null
-    : ['Expected coins an hour', fmt(expHour(t)), 'hero coin', [errText(t), oneLongRound(t) ? `one round is ${pct(t.expTopShare)} of the play: the typical round makes ${fmt(t.expRateMedian * 3600)}` : '',
-      `+Coin's bonus at its ${pct(EXPECTED_BONUS)} average, less item costs`].filter(Boolean).join(' · '), fmtShort(expHour(t))]);
+    : ['Expected coins an hour of play', fmt(expHour(t)), 'hero coin', [errText(t), `+Coin's bonus at its ${pct(EXPECTED_BONUS)} average, less item costs`].filter(Boolean).join(' · '), fmtShort(expHour(t))]);
+  // The same with the time between rounds counted: an hour of the script running, not only of play.
+  const running = $derived(medals || runHour(t) === null ? null
+    : ['Expected/h, between rounds included', fmt(runHour(t)), 'coin',
+      `play time plus ${fmt(avgBetween(t))} s between rounds on average (gaps up to ${BREAK_SECONDS / 60} min; longer is a break)`, fmtShort(runHour(t))]);
   const rate = $derived([`${cap(basis)} per second`, fmtRate(t.coinsPerSec), `${expected ? '' : 'hero '}${unitCls}`, t.coinsPerSec === null ? '' : `≈ ${fmt(perHour(t.coinsPerSec))} ${u} an hour of play`]);
   const total = $derived([totalFirst ? `Total ${basis}` : `Total ${u}`, fmt(t.totalCoins), `${totalFirst ? 'hero ' : ''}${unitCls}`,
     medals || bonus === null ? '' : `coin bonus added ${pct(bonus)}`, fmtShort(t.totalCoins)]);
@@ -43,6 +46,7 @@
     m.rounds ? `earned in ${fmt(m.earnedRounds)} of ${fmt(m.rounds)} rounds (${pct(m.earnedRounds / m.rounds)})` : '', fmtShort(m.totalCoins)]);
   const tiles = $derived([
     ...(expected && !totalFirst ? [expected] : []),
+    ...(running && !totalFirst ? [running] : []),
     totalFirst ? total : rate,
     [`Average ${u}`, fmt(t.avgCoins), unitCls, t.medianCoins === null && t.rounds ? missing : spread('median', t.medianCoins), fmtShort(t.avgCoins)],
     // The middle half of rounds, not the extremes: a misread round or a jackpot does not move it.

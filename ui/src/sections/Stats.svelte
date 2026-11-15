@@ -29,7 +29,7 @@
   import FocusBar from './stats/FocusBar.svelte';
   import HeadToHead from './stats/HeadToHead.svelte';
   import Kpis from './stats/Kpis.svelte';
-  import {EXP_WHAT, expErr, expHour, oneLongRound} from '../lib/expected.js';
+  import {EXP_WHAT, RUN_WHAT, expErr, expHour, oneLongRound, runHour} from '../lib/expected.js';
 
   // initial: the link's params; onStateChange(filter, {push}) writes the link.
   let {hidden, initial, onStateChange} = $props();
@@ -432,6 +432,8 @@
     num('players', 'Players', r => r.players, fmt, {meta: {show: () => globalSite, title: 'Contributors who sent rounds of this Tsum in the last 30 days'}}),
     num('share', () => `${U.slice(0, -1)} share`, r => r.share, pct, {meta: {title: "This Tsum's part of the primary stat in the filter"}}),
     num('expPerHour', 'Expected/h', r => expHour(r), fmt, {meta: {cls: 'coin', title: `Expected net coins an hour of play: ${EXP_WHAT}`}}),
+    num('expRun', 'Expected/h incl. between rounds', r => runHour(r), fmt,
+      {meta: {cls: 'coin', show: () => !globalSite, title: `Expected/h over play time plus the time between rounds: an hour of the script running. It ${RUN_WHAT}`}}),
     num('expTypical', 'Typical/h', r => (r.expRateMedian == null ? null : r.expRateMedian * 3600), fmt,
       {meta: {cls: 'coin', show: () => !globalSite, title: "The median round's expected coins an hour: the typical round's pace, which one hours-long round cannot move as it can Expected/h"}}),
     num('expErr', '±', r => expErr(r), v => (v === null || v === undefined ? '' : `± ${pct(v)}`), {meta: {cls: 'dim', title: 'How far Expected/h could be off by the luck of which rounds were played (one standard error)'}}),

@@ -137,6 +137,9 @@ type monthFile struct {
 	Medals        []*int64   `json:"medals"`
 	// Items is the boost-item bitmask (see itemBits), null when unknown.
 	Items []*int `json:"items"`
+	// Between is each round's time between rounds (summary.go: gapsSQL),
+	// 0 when none; a snapshot from before it has none, and so no such figure.
+	Between []float64 `json:"between"`
 }
 
 // dictionary numbers distinct strings in the order they first appear.
@@ -187,6 +190,7 @@ func encodeMonth(month string, rounds []Round, devices func(string) string) ([]b
 		m.FinalCoins = append(m.FinalCoins, r.FinalCoins)
 		m.Medals = append(m.Medals, r.Medals)
 		m.Items = append(m.Items, r.Items)
+		m.Between = append(m.Between, r.Between)
 	}
 	m.Dict.Tsum, m.Dict.Build, m.Dict.SkillType = orEmpty(tsum.values), orEmpty(build.values), orEmpty(skill.values)
 	m.Dict.ScriptVersion, m.Dict.Device, m.Dict.Source = orEmpty(ver.values), orEmpty(device.values), orEmpty(source.values)
@@ -240,8 +244,20 @@ func ExportSnapshot(db dbx.Builder, site fs.FS, dir string, o SnapshotOptions) (
 	if err := db.NewQuery("SELECT " + roundColumns + " FROM ts_rounds ORDER BY played_at, round_id").All(&rounds); err != nil {
 		return res, err
 	}
+	var gaps []struct {
+		ID string  `db:"round_id"`
+		Ov float64 `db:"ov"`
+	}
+	if err := db.NewQuery("SELECT round_id, ov FROM " + gapsSQL).All(&gaps); err != nil {
+		return res, err
+	}
+	between := make(map[string]float64, len(gaps))
+	for _, g := range gaps {
+		between[g.ID] = g.Ov
+	}
 	for i := range rounds {
 		rounds[i].Items = itemsOf(rounds[i].Settings)
+		rounds[i].Between = between[rounds[i].ID]
 	}
 
 	dataDir := filepath.Join(dir, filepath.FromSlash(SnapshotDir))

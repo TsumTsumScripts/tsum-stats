@@ -84,3 +84,18 @@ export const errText = g => {
  * already; this is for one hours-long round among many.
  */
 export const oneLongRound = g => g?.expTopShare != null && g.expRounds > 0 && g.expTopShare > Math.max(0.1, 5 / g.expRounds);
+
+/** The longest gap between rounds that counts as time between them, in seconds (summary.go: BreakSeconds); longer is a break. */
+export const BREAK_SECONDS = 300;
+
+/**
+ * Expected net coins per hour of the script running: play time plus the time
+ * between rounds (results, collecting, items, loading; gaps of BREAK_SECONDS
+ * or less, a longer one being a break). Null where it is not known (the
+ * global site, an older snapshot).
+ */
+export const runHour = g => (g?.expBetweenSeconds == null || !g.expSeconds ? null : (g.expCoins / (g.expSeconds + g.expBetweenSeconds)) * 3600);
+/** The average time between rounds, in seconds; null where it is not known. */
+export const avgBetween = g => (g?.expBetweenSeconds == null || !g.expRounds ? null : g.expBetweenSeconds / g.expRounds);
+/** What runHour is, in one line. */
+export const RUN_WHAT = `counts the time between rounds too: results, collecting, items and loading (gaps up to ${BREAK_SECONDS / 60} minutes; a longer one is a break)`;

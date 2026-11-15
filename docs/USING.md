@@ -180,10 +180,23 @@ time, so one hours-long round can own it (rounds are never capped or cut for
 their length). The Tsums table's **Typical/h** is the median round's own pace
 (`expRateMedian`, with `expRateQ1` and `expRateQ3`), and a Tsum is flagged
 *one long round* when its longest round holds over 10 % of its play time and
-over five average rounds' share (`expTopShare`); the expected tile says the
-same. Both need each round's figures, so the global site has neither.
+over five average rounds' share (`expTopShare`). Both need each round's
+figures, so the global site has neither.
 
-**The tiles.** Beside expected coins: the primary stat per second, the
+**Expected/h, between rounds included.** Expected coins an hour counts play
+time only. Between two rounds the script also spends time on the results
+screen, collecting coins, picking items and loading, and that time earns
+nothing. The second tile, and the Tsums table's *Expected/h incl. between
+rounds*, add it back: an hour of the script running, not only of play. A
+round's time between rounds is the gap from the previous round's end on the
+same device to its own start, when that gap is 5 minutes or less
+(`BreakSeconds` in `summary.go`); a longer gap is a break (the script
+stopped, the emulator was off, the game was down) and counts for nothing. The
+device is the one in the round's id, so rounds sent without a device name
+count too. Only the gap is judged, never a round's own length. The global site
+does not have it yet: its cells keep no round order.
+
+**The tiles.** Beside expected coins of play and between rounds included: the primary stat per second, the
 average and median, the **typical round** (the middle half of rounds, Q1 to
 Q3, with the best round as a note: the extremes are misreads and jackpots),
 **consistency** (half the rounds land within ± this of the median), the
@@ -501,7 +514,9 @@ after the round before. The dictionaries are the Tsum, build, skill type,
 script version, device, source (live or CSV) and each round's script settings
 as stored, which the Tsum page's *By script setting* reads, so a published
 page shows them. Rounds are in time order. `null` is a figure the script could
-not read. Round ids and anything else the page does not show are left out.
+not read. `between` is each round's time between rounds (0 for none), worked
+out from the round ids when the snapshot is taken, so the ids themselves can
+stay out: they and anything else the page does not show are left out.
 
 **Why months.** A finished month never changes, so a host caches it for good,
 and a repo grows by the current month per publish, not by the whole history.

@@ -25,6 +25,9 @@ type Round struct {
 	Source        string   `db:"source" json:"source"`
 	// Items is the boost-item bitmask from Settings (see itemBits); nil when unknown.
 	Items *int `db:"-" json:"items"`
+	// Between is the time between this round and the one before on its device
+	// (gapsSQL), for a snapshot; never sent.
+	Between float64 `db:"-" json:"-"`
 }
 
 const (

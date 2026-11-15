@@ -154,12 +154,17 @@ var PlaySettings = []PlaySetting{
 
 // skillLevelSQL is a round's skill level as text, a whole number 1-10, or ''
 // when not recorded or anything else: the global site's skill level, read as
-// global/src/records.ts reads it (-1 there for '').
-var skillLevelSQL = func() string {
-	v := "json_extract(" + settingsSQL + ", '$.skillLevel')"
-	return "(CASE WHEN json_type(" + settingsSQL + ", '$.skillLevel') IN ('integer', 'real') AND " + v + " BETWEEN 1 AND 10 AND " +
+// global/src/records.ts reads it (-1 there for ''). The skill_level column
+// (addItemsColumn) holds skillLevelOf(settings).
+const skillLevelSQL = "skill_level"
+
+// skillLevelOf is skillLevelSQL's value for the settings JSON in col.
+func skillLevelOf(col string) string {
+	obj := "(CASE WHEN json_valid(" + col + ") AND json_type(" + col + ") = 'object' THEN " + col + " ELSE '{}' END)"
+	v := "json_extract(" + obj + ", '$.skillLevel')"
+	return "(CASE WHEN json_type(" + obj + ", '$.skillLevel') IN ('integer', 'real') AND " + v + " BETWEEN 1 AND 10 AND " +
 		v + " = CAST(" + v + " AS INTEGER) THEN CAST(CAST(" + v + " AS INTEGER) AS TEXT) ELSE '' END)"
-}()
+}
 
 // playSettingSQL is a round's value of ps as text, as the engines' playValue
 // and the global site keep it: a Number setting's whole value 0-999, an id

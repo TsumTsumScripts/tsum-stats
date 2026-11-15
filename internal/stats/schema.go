@@ -3,6 +3,8 @@
 package stats
 
 import (
+	"strings"
+
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -128,28 +130,41 @@ func migrate(app core.App) error {
 	return rereadListsOnce(app, "device-from-folder")
 }
 
-// addItemsColumn gives ts_rounds its items column: a round's boost-item
-// bitmask (itemBits), NULL when its settings predate the items, worked out
-// from settings once instead of in every query (itemsMaskSQL). Triggers keep
-// it in step with settings whoever writes the row, and rows from before it are
-// filled in here.
+// addItemsColumn gives ts_rounds the columns worked out from settings once
+// instead of in every query: items, a round's boost-item bitmask (itemBits),
+// NULL when its settings predate the items (itemsMaskSQL), and skill_level,
+// its skill level 1-10 as text, '' when none (skillLevelOf). Triggers keep
+// them in step with settings whoever writes the row, and rows from before a
+// column are filled in here.
 func addItemsColumn(app core.App) error {
-	var n int
-	err := app.DB().NewQuery(`SELECT COUNT(*) FROM pragma_table_info('ts_rounds') WHERE name = 'items'`).Row(&n)
-	if err != nil {
-		return err
+	cols := []struct {
+		name, def string
+		value     func(settings string) string
+	}{
+		{"items", "INTEGER", itemsMaskSQL},
+		{"skill_level", "TEXT NOT NULL DEFAULT ''", skillLevelOf},
 	}
-	set := "UPDATE ts_rounds SET items = " + itemsMaskSQL("NEW.settings") + " WHERE rowid = NEW.rowid;"
-	qs := []string{
-		`CREATE TRIGGER IF NOT EXISTS ts_rounds_items_insert AFTER INSERT ON ts_rounds BEGIN ` + set + ` END`,
-		`CREATE TRIGGER IF NOT EXISTS ts_rounds_items_update AFTER UPDATE OF settings ON ts_rounds BEGIN ` + set + ` END`,
+	var qs []string
+	sets := make([]string, len(cols))
+	for i, c := range cols {
+		var n int
+		err := app.DB().NewQuery(`SELECT COUNT(*) FROM pragma_table_info('ts_rounds') WHERE name = {:c}`).Bind(dbx.Params{"c": c.name}).Row(&n)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			qs = append(qs, `ALTER TABLE ts_rounds ADD COLUMN `+c.name+` `+c.def, `UPDATE ts_rounds SET `+c.name+` = `+c.value("settings"))
+		}
+		sets[i] = c.name + " = " + c.value("NEW.settings")
 	}
-	if n == 0 {
-		qs = append([]string{
-			`ALTER TABLE ts_rounds ADD COLUMN items INTEGER`,
-			`UPDATE ts_rounds SET items = ` + itemsMaskSQL("settings"),
-		}, qs...)
-	}
+	// Made again each start, so a column added since is in them.
+	set := "UPDATE ts_rounds SET " + strings.Join(sets, ", ") + " WHERE rowid = NEW.rowid;"
+	qs = append(qs,
+		`DROP TRIGGER IF EXISTS ts_rounds_items_insert`,
+		`DROP TRIGGER IF EXISTS ts_rounds_items_update`,
+		`CREATE TRIGGER ts_rounds_items_insert AFTER INSERT ON ts_rounds BEGIN `+set+` END`,
+		`CREATE TRIGGER ts_rounds_items_update AFTER UPDATE OF settings ON ts_rounds BEGIN `+set+` END`,
+	)
 	for _, q := range qs {
 		if _, err := app.DB().NewQuery(q).Execute(); err != nil {
 			return err

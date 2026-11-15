@@ -64,20 +64,65 @@ type Totals struct {
 	Last   *string `db:"last" json:"last"`
 	Spread
 	Expected
-	Robust
+	Between
 }
 
-// Robust is the typical round's pace beside the pooled rate (expected coins
-// over all the seconds), which one hours-long round can own: the quartiles
-// of each round's own expected coins a second (expSQL over its time), each a
-// real round's, and the share of the seconds the longest round holds. Nil
-// with no expected coins, and always on the global site, whose cells keep
-// neither.
+// Robust is a Tsum's typical round's pace beside its pooled rate (expected
+// coins over all the seconds), which one hours-long round can own: the
+// quartiles of each round's own expected coins a second (expSQL over its
+// time), each a real round's, and the share of the seconds the longest round
+// holds. Nil with no expected coins, in the medal set, and always on the
+// global site, whose cells keep neither.
 type Robust struct {
 	RateQ1     *float64 `db:"-" json:"expRateQ1"`
 	RateMedian *float64 `db:"-" json:"expRateMedian"`
 	RateQ3     *float64 `db:"-" json:"expRateQ3"`
 	TopShare   *float64 `db:"-" json:"expTopShare"`
+}
+
+// BreakSeconds is the longest gap between one round's end and the next
+// round's start on the same device that still counts as time between rounds
+// (results, collecting coins, picking items, loading). A longer gap is a
+// break: the script stopped, the emulator was off, the game was down. It
+// judges the gap only, never a round's own length.
+const BreakSeconds = 300
+
+// deviceTagSQL is the device a round came from: its id's last 6 bytes (a
+// UUIDv7 the script makes, global/CONTRACT.md §1), the same for every round of
+// one device whether or not it was sent with a device name. An id of another
+// shape is a device of its own, so it has no round before it.
+const deviceTagSQL = "(CASE WHEN length(round_id) = 36 THEN substr(round_id, 25) ELSE round_id END)"
+
+// gapsSQL is every round with its time between rounds as ov: the gap from
+// the previous round's end on the same device to this one's start (its end
+// less its time), when that is 0 to BreakSeconds; else 0. Over the whole
+// table, as the round before may be any Tsum's; a filter goes on the outside,
+// once the window has seen every round.
+var gapsSQL = `(SELECT *, CASE WHEN g >= 0 AND g <= ` + strconv.Itoa(BreakSeconds) + ` THEN g ELSE 0 END AS ov
+	FROM (SELECT *, unixepoch(played_at) - duration_seconds - LAG(unixepoch(played_at)) OVER (PARTITION BY ` + deviceTagSQL + `
+		ORDER BY played_at, round_id) AS g FROM ts_rounds))`
+
+// Between is the time between rounds (gapsSQL) of the rounds Expected
+// counts: expected coins over expSeconds + this is an hour of the script
+// running, not just of play. Nil with no expected coins, and on the global
+// site, whose cells keep no round order.
+type Between struct {
+	BetweenSecs *float64 `db:"-" json:"expBetweenSeconds"`
+}
+
+// betweenSecs is Between per Tsum.
+func betweenSecs(db dbx.Builder, f Filter) (map[string]*float64, error) {
+	where, p := f.where()
+	var rows []struct {
+		Tsum string   `db:"tsum"`
+		Secs *float64 `db:"secs"`
+	}
+	err := db.NewQuery(`SELECT tsum, SUM(CASE WHEN ` + expCondSQL + ` THEN ov END) AS secs FROM ` + gapsSQL + where + ` GROUP BY tsum`).Bind(p).All(&rows)
+	out := map[string]*float64{}
+	for _, r := range rows {
+		out[r.Tsum] = r.Secs
+	}
+	return out, err
 }
 
 // Spread is where a set of rounds' coins fall; nil with no coin figures.
@@ -122,6 +167,7 @@ type TsumStat struct {
 	Spread
 	Expected
 	Robust
+	Between
 }
 
 // DayTsumStat is one Tsum on one day, for the per-day charts split by Tsum.
@@ -478,10 +524,23 @@ func statSet(db dbx.Builder, f Filter) (StatSet, error) {
 	c := f.col()
 	where, p := f.where()
 	var spreads, all map[string]Spread
-	var robust, robustAll map[string]Robust
+	var robust map[string]Robust
+	var between map[string]*float64
+	// The medal set shows neither the typical round's pace nor the time between rounds: they are left nil.
+	extras := !f.onlyMedals
 	err := runAll([]func() error{
-		func() (err error) { robust, err = robustRates(db, f, "tsum"); return err },
-		func() (err error) { robustAll, err = robustRates(db, f, "''"); return err },
+		func() (err error) {
+			if extras {
+				between, err = betweenSecs(db, f)
+			}
+			return err
+		},
+		func() (err error) {
+			if extras {
+				robust, err = robustRates(db, f, "tsum")
+			}
+			return err
+		},
 		func() error {
 			return db.NewQuery(`SELECT COUNT(*) AS rounds, AVG(score) AS avg_score, MAX(score) AS max_score, ` + coinStats(c) + `,
 				COUNT(` + c + `) AS coin_rounds, SUM(` + c + `) AS total_coins, SUM(duration_seconds) AS total_secs,
@@ -500,8 +559,17 @@ func statSet(db dbx.Builder, f Filter) (StatSet, error) {
 		return set, err
 	}
 	set.Totals.StdCoins = stddev(set.Totals.VarCoins)
-	set.Totals.Robust = robustAll[""]
+	for _, secs := range between {
+		if secs != nil {
+			total := *secs
+			if set.Totals.BetweenSecs != nil {
+				total += *set.Totals.BetweenSecs
+			}
+			set.Totals.BetweenSecs = &total
+		}
+	}
 	for i := range set.Tsums {
+		set.Tsums[i].BetweenSecs = between[set.Tsums[i].Tsum]
 		set.Tsums[i].Robust = robust[set.Tsums[i].Tsum]
 		set.Tsums[i].StdCoins = stddev(set.Tsums[i].VarCoins)
 		if sp, ok := spreads[set.Tsums[i].Tsum]; ok {

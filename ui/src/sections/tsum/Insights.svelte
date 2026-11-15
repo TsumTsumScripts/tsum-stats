@@ -47,13 +47,15 @@
     const u = max.unit;
     // Coins at what all the Tsums in the filter earn in expected net coins: the bonus's luck and the items' cost out.
     const rate = u === 'medals' ? detail.earn.medalsPerSec : expRate(sumExp(detail.field)) ?? detail.earn.coinsPerSec;
-    const time = cost => (rate > 0 ? playTime(cost / rate) : null);
+    // The time between rounds stretches play time into time running the script, where it is known (this Tsum's share).
+    const stretch = t.expBetweenSeconds != null && t.expSeconds ? (t.expSeconds + t.expBetweenSeconds) / t.expSeconds : null;
+    const time = cost => (rate > 0 ? playTime((cost / rate) * (stretch ?? 1)) : null);
     // What the next level earns over this one, when the filter has rounds of both (the global site's usually does):
     // the hours of play its gain takes to earn back the boxes.
     const level = k => detail.settings.find(r => r.setting === 'skillLevel' && r.key === String(k));
     const now = level(own.skill), then = next && level(next.skill);
     const gain = u === 'coins' && now && then && differs(then, now) ? expHour(then) - expHour(now) : null;
-    return {next, max, u, rate, nextTime: next && time(next.cost), maxTime: time(max.cost),
+    return {next, max, u, rate, stretch, nextTime: next && time(next.cost), maxTime: time(max.cost),
       gain, payback: gain > 0 ? playTime((next.cost / gain) * 3600) : null};
   });
 
@@ -89,7 +91,7 @@
         <div class="label">To skill {boxes.next.skill}</div>
         <div class="value">{fmt(boxes.next.boxes)} <span class="unit">{boxes.next.boxes === 1 ? 'box' : 'boxes'}</span></div>
         <div class="note">
-          {fmt(boxes.next.cost)} {boxes.u}{#if boxes.nextTime}{' '}≈ <b>{boxes.nextTime}</b> of play{/if}
+          {fmt(boxes.next.cost)} {boxes.u}{#if boxes.nextTime}{' '}≈ <b>{boxes.nextTime}</b> {boxes.stretch ? 'of the script running, time between rounds included' : 'of play'}{/if}
           {#if boxes.max.boxes > boxes.next.boxes} · full skill: {fmt(boxes.max.boxes)} boxes{#if boxes.maxTime}{' '}≈ {boxes.maxTime}{/if}{/if}
         </div>
         {#if boxes.gain !== null}
