@@ -62,7 +62,8 @@ describe("recompute", () => {
     });
     const perTsum = new Map<string, number>();
     for (const c of want.cells) perTsum.set(c.tsum, (perTsum.get(c.tsum) ?? 0) + c.rounds);
-    expect(m.tsums).toEqual([...perTsum].map(([tsum, rounds]) => ({ tsum, rounds, contributors: 2 }))
+    // Every round here is from the last 7 days: the same two players in each window, the banned one in none.
+    expect(m.tsums).toEqual([...perTsum].map(([tsum, rounds]) => ({ tsum, rounds, contributors: 2, contributors7: 2, contributorsAll: 2 }))
       .sort((a, b) => b.rounds - a.rounds || (a.tsum < b.tsum ? -1 : 1)));
     // Each play setting's values, by rounds, not recorded left out.
     const values = (col: "scan" | "chain" | "bubble", known: (v: number | string) => boolean) => {
@@ -196,10 +197,10 @@ describe("render", () => {
       expect(p.sha).toBe(sha);
       expect(p.file).toBe(`day-${p.from}.${sha}.json`);
       const part = JSON.parse(new TextDecoder().decode(bytes)) as PartFile;
-      expect(part).toMatchObject({ kind: "tsum-global-part", format: 5, from: p.from, to: p.to });
+      expect(part).toMatchObject({ kind: "tsum-global-part", format: 6, from: p.from, to: p.to });
       expect(Object.keys(part.cells)).toEqual(["n", "day", "build", "tsum", "skill", "skillType", "items", "scan", "chain", "bubble", "medal", "jackpot", "rounds", "secs",
         "scoreSum", "scoreMin", "scoreMax", "first", "last", "baseSum", "baseSq", "baseMin", "baseMax", "finalSum", "finalSq",
-        "finalMin", "finalMax", "medalsN", "medalsSum", "medalsSq", "medalsMin", "medalsMax", "medalsSecs"]);
+        "finalMin", "finalMax", "medalsN", "medalsSum", "medalsSq", "medalsMin", "medalsMax", "medalsSecs", "gapSum", "gapN", "secsMax"]);
       expect(Object.keys(part.bins)).toEqual(["n", "day", "build", "tsum", "skill", "skillType", "items", "scan", "chain", "bubble", "medal", "jackpot", "base", "final", "medals"]);
       const dayCells = cells.filter(c => c.day === p.from);
       sameRows(partRows(part.cells), dayCells, CELL_KEY);

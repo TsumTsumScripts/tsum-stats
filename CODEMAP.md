@@ -194,7 +194,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 
 `global/README.md` § Layout is the file table, one row per `global/src/` file;
 this is its index. `migrations/0001_init.sql` is the D1 schema (CONTRACT §3.1),
-`migrations/0002_cell_bins.sql` its bins per cell, `migrations/0005_presets.sql` the preset gallery (`0006_preset_limits.sql` its limits),
+`migrations/0002_cell_bins.sql` its bins per cell, `migrations/0005_presets.sql` the preset gallery (`0006_preset_limits.sql` its limits), `migrations/0007_gaps.sql` the time between rounds,
 `wrangler.jsonc` the bindings, route, cron and tunables, `deploy.sh` the
 by-hand deploy when the Devkit is not available.
 

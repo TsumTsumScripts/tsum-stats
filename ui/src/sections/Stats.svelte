@@ -22,7 +22,7 @@
   import {expand, shared, toast} from '../lib/ui.svelte.js';
   import {
     api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsCost, itemsLabel, loadPref, pct, savePref,
-    MIN_ROUNDS, PLAY, playValueName, skillTypeName, tsumColor, tsumName,
+    MIN_ROUNDS, PLAY, playValueName, playersIn, skillTypeName, tsumColor, tsumName,
   } from '../lib/util.js';
   import ChainBest from './stats/ChainBest.svelte';
   import FilterRail from './stats/FilterRail.svelte';
@@ -326,7 +326,7 @@
   const itemChoices = $derived([...itemSets,
     ...pickedItems.filter(m => !itemSets.some(s => String(s.items) === m)).map(m => ({items: Number(m), rounds: null}))]);
   // Contributors per Tsum; one with fewer than status.minContributors is flagged "few players".
-  const playersOf = $derived(new Map(played.map(t => [t.tsum, t.contributors ?? null])));
+  const playersOf = $derived(new Map(played.map(t => [t.tsum, playersIn(t, filter.days)])));
   const fewPlayers = r => globalSite && status && r.players !== null && r.players < status.minContributors;
   /**
    * Why the global site's spreads are missing, when they are: a range cuts the
@@ -439,11 +439,12 @@
     {id: 'pick', header: '', enableSorting: false, enableHiding: false, meta: {cls: 'pick'}, snippet: pickCell},
     {id: 'tsum', header: 'Tsum', accessorFn: r => r.name, snippet: tsumCell, sortDescFirst: false, enableHiding: false, meta: {search: true}},
     num('rounds', 'Rounds', r => r.rounds),
-    num('players', 'Players', r => r.players, fmt, {meta: {show: () => globalSite, title: 'Contributors who sent rounds of this Tsum in the last 30 days'}}),
+    num('players', 'Players', r => r.players, fmt, {meta: {show: () => globalSite, title: 'Contributors who sent rounds of this Tsum over the time range: the last 7 or 30 days, else every day'}}),
     num('share', () => `${U.slice(0, -1)} share`, r => r.share, pct, {meta: {title: "This Tsum's part of the primary stat in the filter"}}),
     num('expPerHour', 'Expected/h', r => expHour(r), fmt, {meta: {cls: 'coin', title: `Expected net coins an hour of play: ${EXP_WHAT}`}}),
-    num('expRun', 'Expected/h incl. between rounds', r => runHour(r), fmt,
-      {meta: {cls: 'coin', show: () => !globalSite, title: `Expected/h over play time plus the time between rounds: an hour of the script running. It ${RUN_WHAT}`}}),
+    num('expRun', () => (globalSite ? '≈ Expected/h incl. between rounds' : 'Expected/h incl. between rounds'), r => runHour(r), fmt,
+      {meta: {cls: 'coin', title: `Expected/h over play time plus the time between rounds: an hour of the script running. It ${RUN_WHAT}${globalSite
+        ? '. Here an estimate: the average gap of the rounds sent right after the round before them on their device, for every round' : ''}`}}),
     num('expTypical', 'Typical/h', r => (r.expRateMedian == null ? null : r.expRateMedian * 3600), fmt,
       {meta: {cls: 'coin', show: () => !globalSite, title: "The median round's expected coins an hour: the typical round's pace, which one hours-long round cannot move as it can Expected/h"}}),
     num('expErr', '±', r => expErr(r), v => (v === null || v === undefined ? '' : `± ${pct(v)}`), {meta: {cls: 'dim', title: 'How far Expected/h could be off by the luck of which rounds were played (one standard error)'}}),

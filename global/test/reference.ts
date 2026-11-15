@@ -23,9 +23,10 @@ export interface RoundRow {
   base: number;
   final: number;
   medals: number | null;
+  gap: number | null;
 }
 
-const REAL = new Set(["secs", "base_sq", "final_sq", "medals_sq", "medals_secs"]);
+const REAL = new Set(["secs", "base_sq", "final_sq", "medals_sq", "medals_secs", "gap_sum", "secs_max"]);
 
 const group = <T>(list: T[], key: (x: T) => string) => {
   const out = new Map<string, T[]>();
@@ -51,6 +52,8 @@ export function reference(rounds: RoundRow[], hidden: Set<number>, anon: Set<num
         final_sum: sum(rs.map(r => r.final)), final_sq: sum(rs.map(r => r.final ** 2)), final_min: minOf(rs.map(r => r.final)), final_max: maxOf(rs.map(r => r.final)),
         medals_n: m.length, medals_sum: sum(m.map(r => r.medals!)), medals_sq: sum(m.map(r => r.medals! ** 2)),
         medals_min: minOf(m.map(r => r.medals!)), medals_max: maxOf(m.map(r => r.medals!)), medals_secs: sum(m.map(r => r.duration)),
+        gap_sum: sum(rs.filter(r => r.gap !== null).map(r => r.gap!)), gap_n: rs.filter(r => r.gap !== null).length,
+        secs_max: maxOf(rs.map(r => r.duration)),
       };
     });
   // Each bin's figures (CONTRACT §5): rounds, secs, score, base, final, medals.

@@ -150,6 +150,19 @@ export const fmtRate = v => (v === null || v === undefined ? '—' : (Math.abs(v
  */
 export const MIN_ROUNDS = 50;
 
+/**
+ * A Tsum's players on the global site (the manifest's tsums row) over the
+ * time range `days` ('7', '30', else every day): contributors7, contributors
+ * (30 days) or contributorsAll; a manifest from before the windows has the
+ * 30 days' only. Null without a row.
+ */
+export const playersIn = (row, days) => {
+  if (!row || row.contributors == null) return null;
+  return (days === '7' ? row.contributors7 : days === '30' ? row.contributors : row.contributorsAll) ?? row.contributors;
+};
+/** What playersIn counts over, for titles. */
+export const playersWindow = days => (days === '7' ? 'the last 7 days' : days === '30' ? 'the last 30 days' : 'every day');
+
 export const pct = v => (v === null || v === undefined ? '—' : `${nf1.format(v * 100)}%`);
 
 /** A localStorage JSON value; private mode or bad JSON gives fallback. */

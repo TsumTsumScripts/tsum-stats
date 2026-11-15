@@ -59,13 +59,14 @@ const same = (s: Stored, r: Round) =>
 
 // One row per round in json_each(?1): [key, played_at, build, tsum, skill, skill type,
 // items, scan, chain, bubble, version, settings hash, duration, score, base, final,
-// medals, bins...]. The
+// medals, bins..., gap]. The
 // settings ids are looked up once, as a map, for the batch's hashes ?3. A
-// conflict updates only this contributor's row, and only when it changed.
-const UPSERT_ROUNDS = `INSERT INTO rounds (key, contributor, ${FIGURES.join(", ")})
+// conflict updates only this contributor's row, and only when it changed; its
+// gap (worked out at its first upload, when the round before it was known) stays.
+const UPSERT_ROUNDS = `INSERT INTO rounds (key, contributor, ${FIGURES.join(", ")}, gap)
   SELECT r->>0, ?2, r->>1, r->>2, r->>3, r->>4, r->>5, r->>6, r->>7, r->>8, r->>9, r->>10,
     (SELECT json_group_object(hash, id) FROM settings WHERE hash IN (SELECT value FROM json_each(?3))) ->> ('$."' || (r->>11) || '"'),
-    r->>12, r->>13, r->>14, r->>15, r->>16, r->>17, r->>18, r->>19
+    r->>12, r->>13, r->>14, r->>15, r->>16, r->>17, r->>18, r->>19, r->>20
   FROM (SELECT value AS r FROM json_each(?1)) WHERE true
   ON CONFLICT (key) DO UPDATE SET ${FIGURES.map(f => `${f} = excluded.${f}`).join(", ")}
   WHERE rounds.contributor = excluded.contributor
@@ -83,10 +84,40 @@ const RACED = "INSERT OR IGNORE INTO dirty_days (day) SELECT value FROM json_eac
 // format 1: the cells and cell_bins rows are keyed by jackpot too (migrations/0004_jackpot.sql).
 const PENDING = "INSERT INTO pending (contributor, n, days, tsums, cells, bins, cell_bins, cc, format) VALUES (?1, ?2, ?3, ?4, ?5, '[]', ?6, ?7, 1)";
 
-const row = (r: Round) => [
+const row = (r: Round, gaps: Map<string, number | null>) => [
   r.key, r.playedAt, r.build, r.tsum, r.skill, r.skillType, r.items, r.scan, r.chain, r.bubble, r.version, r.settingsHash,
-  r.duration, r.score, r.base, r.final, r.medals, r.binBase, r.binFinal, r.binMedals,
+  r.duration, r.score, r.base, r.final, r.medals, r.binBase, r.binFinal, r.binMedals, gaps.get(r.key) ?? null,
 ];
+
+/** The longest gap that counts as time between rounds, in seconds (summary.go: BreakSeconds); a longer one is a break. */
+export const BREAK_SECONDS = 300;
+
+/**
+ * Each round's time between rounds (CONTRACT §3.1, rounds.gap), by key: the
+ * seconds from the previous round's end on its device to its start (its end
+ * less its time), when that is 0 to BREAK_SECONDS; 0 for a longer gap (a
+ * break). The round before is the batch's own, or the device's latest round
+ * already here (`lastSeen`, its end). Null when there is none, or the round
+ * starts before it (sent out of order): the gap cannot be told.
+ */
+export function roundGaps(rounds: Round[], lastSeen: Map<string, number>): Map<string, number | null> {
+  const out = new Map<string, number | null>();
+  const byDevice = new Map<string, Round[]>();
+  for (const r of rounds) {
+    if (!byDevice.has(r.device)) byDevice.set(r.device, []);
+    byDevice.get(r.device)!.push(r);
+  }
+  for (const [device, rs] of byDevice) {
+    rs.sort((a, b) => a.playedAt - b.playedAt || (a.key < b.key ? -1 : 1));
+    let prev = lastSeen.get(device) ?? null;
+    for (const r of rs) {
+      const g = prev === null ? null : r.playedAt - r.duration - prev;
+      out.set(r.key, g === null || g < 0 ? null : g <= BREAK_SECONDS ? g : 0);
+      prev = prev === null ? r.playedAt : Math.max(prev, r.playedAt);
+    }
+  }
+  return out;
+}
 
 /** A bin's figures (CONTRACT §5): its rounds and their seconds, score, base coins, final coins and medals. */
 export type BinFigures = [number, number, number, number, number, number];
@@ -97,7 +128,7 @@ export type BinFigures = [number, number, number, number, number, number];
  * lacks stays out of the public figures), and contrib_cells rows by device. A
  * few rows a batch, so the job reads a few rows for a hundred rounds.
  */
-export function aggregate(rounds: Round[]) {
+export function aggregate(rounds: Round[], gaps: Map<string, number | null> = new Map()) {
   const cells = new Map<string, (string | number | null)[]>();
   const bins = new Map<string, (string | number | Record<string, BinFigures>)[]>();
   const cc = new Map<string, (string | number)[]>();
@@ -112,13 +143,18 @@ export function aggregate(rounds: Round[]) {
       const K = key.length;
       const k = JSON.stringify(key);
       const m = r.medals, read = m !== null;
+      const gap = gaps.get(r.key) ?? null;
       const c = cells.get(k);
       if (!c) {
         cells.set(k, [...key, 1, r.duration, r.score, r.score, r.score, r.playedAt, r.playedAt,
           r.base, r.base * r.base, r.base, r.base, r.final, r.final * r.final, r.final, r.final,
-          read ? 1 : 0, m ?? 0, read ? m! * m! : 0, m, m, read ? r.duration : 0]);
+          read ? 1 : 0, m ?? 0, read ? m! * m! : 0, m, m, read ? r.duration : 0,
+          gap ?? 0, gap === null ? 0 : 1, r.duration]);
       } else {
         const v = c as number[];
+        // The time between rounds (where told) and the longest round (rollup.ts: CELLS' last three).
+        if (gap !== null) { v[K + 21] += gap; v[K + 22]++; }
+        v[K + 23] = Math.max(v[K + 23], r.duration);
         v[K]++; v[K + 1] += r.duration; v[K + 2] += r.score; v[K + 3] = Math.min(v[K + 3], r.score); v[K + 4] = Math.max(v[K + 4], r.score);
         v[K + 5] = Math.min(v[K + 5], r.playedAt); v[K + 6] = Math.max(v[K + 6], r.playedAt);
         v[K + 7] += r.base; v[K + 8] += r.base * r.base; v[K + 9] = Math.min(v[K + 9], r.base); v[K + 10] = Math.max(v[K + 10], r.base);
@@ -197,6 +233,7 @@ export async function ingest(records: Record<string, unknown>[], env: Env, c: Co
   const knownDevices = new Map<string, { first_seen: number; last_seen: number }>();
   const hashes = [...new Set(rounds.map(r => r.settingsHash))];
   const tags = [...new Set(rounds.map(r => r.device))];
+  let gaps = new Map<string, number | null>();
   if (rounds.length) {
     const [had, settings, devices] = await db.batch([
       db.prepare(`SELECT r.key, r.contributor, r.played_at, r.build, r.tsum, r.skill, r.skill_type, r.items, r.scan, r.chain, r.bubble, r.version, s.hash,
@@ -211,6 +248,8 @@ export async function ingest(records: Record<string, unknown>[], env: Env, c: Co
     for (const s of settings.results as { hash: string }[]) knownSettings.add(s.hash);
     for (const d of devices.results as { device_hash: string; first_seen: number; last_seen: number }[]) knownDevices.set(d.device_hash, d);
     reads += had.meta.rows_read + settings.meta.rows_read + devices.meta.rows_read;
+    // The new rounds' gaps, against the batch's own rounds and the device's latest one here.
+    gaps = roundGaps(rounds.filter(r => !stored.has(r.key)), new Map([...knownDevices].map(([h, d]) => [h, d.last_seen])));
   }
 
   // New rows and this contributor's changed ones are written; another
@@ -265,11 +304,11 @@ export async function ingest(records: Record<string, unknown>[], env: Env, c: Co
     }
     const freshDays = JSON.stringify([...fresh].sort());
     stmts.push(
-      db.prepare(UPSERT_ROUNDS).bind(JSON.stringify(write.map(row)), c.id, JSON.stringify([...new Set(write.map(r => r.settingsHash))])),
+      db.prepare(UPSERT_ROUNDS).bind(JSON.stringify(write.map(r => row(r, gaps))), c.id, JSON.stringify([...new Set(write.map(r => r.settingsHash))])),
       db.prepare(RACED).bind(freshDays, accepted),
     );
     if (freshRows.length) {
-      const sums = aggregate(freshRows);
+      const sums = aggregate(freshRows, gaps);
       stmts.push(db.prepare(PENDING).bind(c.id, freshRows.length, freshDays, JSON.stringify(freshTsums),
         JSON.stringify(sums.cells), JSON.stringify(sums.bins), JSON.stringify(sums.cc)));
     }

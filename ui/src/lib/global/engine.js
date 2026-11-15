@@ -21,8 +21,20 @@
 import {EXPECTED_BONUS, PLAY_SETTINGS, bucketOf, expectedOf, histBounds, itemCost, parseFilter, parseTime, sqlTime} from '../snapshot/engine.js';
 
 const DAY = 86400;
-/** summary.go: Robust and Between, which need each round's figures and order: none here. */
-const NO_ROBUST = {expRateQ1: null, expRateMedian: null, expRateQ3: null, expTopShare: null, expBetweenSeconds: null};
+/** summary.go: Robust's quartiles, which need each round's pace: none here. */
+const NO_ROBUST = {expRateQ1: null, expRateMedian: null, expRateQ3: null};
+/**
+ * summary.go: Between and Robust's expTopShare, from the cells' gaps and
+ * longest rounds. The time between rounds is an estimate: the average gap of
+ * the rounds that told one (sent after the round before them on their device)
+ * over every round with expected coins. Null where no round told one, or a
+ * cell's longest round is unknown (a part from before format 6).
+ */
+const gapsOf = a => ({
+  expBetweenSeconds: a.expN && a.gapN ? (a.gapSum / a.gapN) * a.expN : null,
+  expTopShare: a.expN && a.secsMaxKnown && a.expSecs ? a.secsMax / a.expSecs : null,
+});
+const NO_GAPS = {expBetweenSeconds: null, expTopShare: null};
 
 // The built-in themes, in site.go: themeOrder order.
 const THEMES = [
@@ -73,8 +85,12 @@ function netCols(s, items) {
 /** A bins object {"<bin>": figures} as bins in bin order. */
 const binList = o => Object.entries(o).map(([b, f]) => [Number(b), ...f]).sort((x, y) => x[0] - y[0]);
 
-/** Key columns a part before format 3 (skillType), 4 (the play settings) or 5 (jackpot) lacks, as its cells read: not recorded, no jackpot. */
-const LATER = {skillType: '', scan: -1, chain: -1, bubble: '', jackpot: 0};
+/**
+ * Columns a part before format 3 (skillType), 4 (the play settings), 5
+ * (jackpot) or 6 (the time between rounds and the longest round) lacks, as
+ * its cells read: not recorded, no jackpot, no gaps told, longest unknown.
+ */
+const LATER = {skillType: '', scan: -1, chain: -1, bubble: '', jackpot: 0, gapSum: 0, gapN: 0, secsMax: null};
 /** The key columns, in the tables' order: how a cell's bins find it. */
 const KEY = ['day', 'build', 'tsum', 'skill', 'skillType', 'items', 'scan', 'chain', 'bubble', 'medal', 'jackpot'];
 
@@ -161,7 +177,7 @@ const within = (v, lo, hi) => (lo === null || v >= lo) && (hi === null || v <= h
 /** The columns a derived set of cells is built in, empty. */
 const RAW = ['day', 'at', 'build', 'tsum', 'skill', 'skillType', 'items', 'scan', 'chain', 'bubble', 'medal', 'jackpot', 'rounds', 'secs', 'scoreSum', 'scoreMin', 'scoreMax', 'first', 'last',
   'baseSum', 'baseSq', 'baseMin', 'baseMax', 'finalSum', 'finalSq', 'finalMin', 'finalMax',
-  'medalsN', 'medalsSum', 'medalsSq', 'medalsMin', 'medalsMax', 'medalsSecs'];
+  'medalsN', 'medalsSum', 'medalsSq', 'medalsMin', 'medalsMax', 'medalsSecs', 'gapSum', 'gapN', 'secsMax'];
 
 /**
  * The part of cell i of c that a range r keeps, as raw columns pushed onto
@@ -193,8 +209,9 @@ function cutCell(c, i, r, medalTsums, out, outBins) {
   const sum = k => kept.reduce((s, b) => s + b[k], 0);
   const n = sum(B.n);
   const row = Object.fromEntries(RAW.map(k => [k, c[k][i]]));
+  // The kept rounds' gaps are not told apart from the rest: none (the others' average stands for them), the longest the cell's.
   Object.assign(row, {rounds: n, secs: sum(B.secs), scoreSum: sum(B.score), baseSum: sum(B.base), finalSum: sum(B.final),
-    baseSq: null, finalSq: null, medalsSq: null});
+    baseSq: null, finalSq: null, medalsSq: null, gapSum: 0, gapN: 0});
   if (c.medal[i]) Object.assign(row, {medalsN: n, medalsSum: sum(B.medals), medalsSecs: row.secs});
   else if (c.medalsN[i] === c.rounds[i]) Object.assign(row, {medalsN: n, medalsSum: 0, medalsSecs: row.secs});
   // A cell whose medals were read for some rounds only: its share of them, about.
@@ -314,7 +331,7 @@ export function createGlobalEngine(loader) {
     rounds: 0, n: 0, sum: 0, sumSq: 0, sqKnown: true, min: null, max: null,
     scoreSum: 0, scoreMin: null, scoreMax: null, baseSum: 0, finalSum: 0, secs: 0,
     rateCoins: 0, rateSecs: 0, rateN: 0, medalsN: 0, medalsSum: 0, earned: 0, first: null, last: null,
-    expN: 0, expSum: 0, expSecs: 0, expSq: 0,
+    expN: 0, expSum: 0, expSecs: 0, expSq: 0, gapSum: 0, gapN: 0, secsMax: 0, secsMaxKnown: true,
   });
 
   function add(a, c, i, s) {
@@ -341,6 +358,10 @@ export function createGlobalEngine(loader) {
       const m = c.items[i] & 1 ? 1 + EXPECTED_BONUS : 1, k = c.rounds[i];
       a.expN += k; a.expSum += m * c.baseSum[i] - cost * k; a.expSecs += c.secs[i];
       a.expSq = a.expSq === null || c.baseSq[i] === null ? null : a.expSq + m * m * c.baseSq[i] - 2 * m * cost * c.baseSum[i] + k * cost * cost;
+      // The time between rounds of the rounds that told it, and the longest round (CONTRACT §3.1: gap_sum, gap_n, secs_max).
+      a.gapSum += c.gapSum[i]; a.gapN += c.gapN[i];
+      if (c.secsMax[i] === null) a.secsMaxKnown = false;
+      else a.secsMax = Math.max(a.secsMax, c.secsMax[i]);
     }
     a.medalsN += c.medalsN[i]; a.medalsSum += c.medalsSum[i];
     if (c.medal[i]) a.earned += c.rounds[i];
@@ -433,7 +454,8 @@ export function createGlobalEngine(loader) {
    * The KPI totals and per-Tsum figures of stat key k, with spreads when asked
    * and the bins have them (summary.go: statSet). spreads says whether they did.
    */
-  function statSet(sel, k, wantSpreads) {
+  // extras: the time between rounds and the longest round's share, which the medal set leaves out (summary.go: statSet).
+  function statSet(sel, k, wantSpreads, extras = true) {
     const total = acc();
     const byTsum = new Map();
     each(sel, (c, i) => {
@@ -449,14 +471,13 @@ export function createGlobalEngine(loader) {
 
     const totals = totalsOf(total);
     totals.stdCoins = std(variance(total));
-    // The time between rounds needs the rounds' order (summary.go: Between): cells keep sums only.
-    totals.expBetweenSeconds = null;
+    totals.expBetweenSeconds = extras ? gapsOf(total).expBetweenSeconds : null;
     Object.assign(totals, all.get('') ?? noSpread());
 
     const tsums = [...byTsum].map(([t, a]) => {
       const row = tsumOf(t, a);
       row.stdCoins = std(variance(a));
-      return Object.assign(row, perTsum.get(t) ?? noSpread(), NO_ROBUST);
+      return Object.assign(row, perTsum.get(t) ?? noSpread(), NO_ROBUST, extras ? gapsOf(a) : NO_GAPS);
     }).sort((a, b) => b.rounds - a.rounds);
     return {totals, tsums, byTsum, spreads};
   }
@@ -510,7 +531,7 @@ export function createGlobalEngine(loader) {
 
     const main = statSet(sel, k, fits(kindOf[k]));
     // With medals as the primary stat the two sets are the same cells and stat.
-    const medals = f.medals ? main : statSet(await select(f, {onlyMedals: true}), 'medals', fits('medals'));
+    const medals = f.medals ? main : statSet(await select(f, {onlyMedals: true}), 'medals', fits('medals'), false);
 
     const daily = new Map(), dailyTsums = new Map(), mix = new Map(), chains = new Map();
     each(sel, (c, i) => {

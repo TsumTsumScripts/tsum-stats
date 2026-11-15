@@ -38,7 +38,7 @@
   // The same with the time between rounds counted: an hour of the script running, not only of play.
   const running = $derived(medals || runHour(t) === null ? null
     : ['Expected/h, between rounds included', fmt(runHour(t)), 'coin',
-      `play time plus ${fmt(avgBetween(t))} s between rounds on average (gaps up to ${BREAK_SECONDS / 60} min; longer is a break)`, fmtShort(runHour(t))]);
+      `play time plus ${approx ? '≈ ' : ''}${fmt(avgBetween(t))} s between rounds on average (gaps up to ${BREAK_SECONDS / 60} min; longer is a break)`, fmtShort(runHour(t))]);
   const rate = $derived([`${cap(basis)} per second`, fmtRate(t.coinsPerSec), `${expected ? '' : 'hero '}${unitCls}`, t.coinsPerSec === null ? '' : `≈ ${fmt(perHour(t.coinsPerSec))} ${u} an hour of play`]);
   const total = $derived([totalFirst ? `Total ${basis}` : `Total ${u}`, fmt(t.totalCoins), `${totalFirst ? 'hero ' : ''}${unitCls}`,
     medals || bonus === null ? '' : `coin bonus added ${pct(bonus)}`, fmtShort(t.totalCoins)]);

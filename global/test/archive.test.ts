@@ -20,6 +20,7 @@ interface ArchiveFile {
   key: string[]; playedAt: number[]; build: number[]; tsum: string[]; skill: number[]; skillType: string[]; items: number[];
   scan: number[]; chain: number[]; bubble: string[]; version: string[];
   settings: number[]; duration: number[]; score: number[]; base: number[]; final: number[]; medals: (number | null)[];
+  gap: (number | null)[];
 }
 
 /** An archive file back into rounds rows, checking its arrays line up. */
@@ -27,12 +28,12 @@ function fileRows(f: ArchiveFile): Record<string, unknown>[] {
   const cols: [string, keyof ArchiveFile][] = [["key", "key"], ["played_at", "playedAt"], ["build", "build"], ["tsum", "tsum"],
     ["skill", "skill"], ["skill_type", "skillType"], ["items", "items"],
     ["scan", "scan"], ["chain", "chain"], ["bubble", "bubble"], ["version", "version"], ["settings", "settings"], ["duration", "duration"],
-    ["score", "score"], ["base", "base"], ["final", "final"], ["medals", "medals"]];
+    ["score", "score"], ["base", "base"], ["final", "final"], ["medals", "medals"], ["gap", "gap"]];
   for (const [, c] of cols) expect(f[c], c).toHaveLength(f.n);
   return Array.from({ length: f.n }, (_, i) => Object.fromEntries(cols.map(([name, c]) => [name, (f[c] as unknown[])[i]])));
 }
 
-const ROUND_COLS = "key, played_at, build, tsum, skill, skill_type, items, scan, chain, bubble, version, settings, duration, score, base, final, medals";
+const ROUND_COLS = "key, played_at, build, tsum, skill, skill_type, items, scan, chain, bubble, version, settings, duration, score, base, final, medals, gap";
 
 /** The dataset, with contributor 2 banned and some of contributor 1's rounds already unlinked (contributor 0). */
 async function archived(later: Env = DROP) {

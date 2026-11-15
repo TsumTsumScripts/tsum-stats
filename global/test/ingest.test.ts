@@ -92,6 +92,22 @@ describe("bad requests", () => {
 });
 
 describe("what is stored", () => {
+  it("works out each new round's time between rounds, from the batch and the device's latest round here", async () => {
+    const c = await joinNew();
+    const end = NOW - 7200_000;
+    // Three rounds 220 s apart, each 181.5 s long: the first has no round before it here.
+    await upload(c.key, series(3, { end, gap: 220, duration: 181.5 }));
+    // The next upload: one 400 s after the last (a gap of 218.5 s), one 10 minutes after that (a break),
+    // one sent out of order (it starts before the latest round here), and one from a device not seen before.
+    await upload(c.key, [record({ at: end + 400_000, duration: 181.5 }), record({ at: end + 1_000_000, duration: 181.5 }),
+      record({ at: end - 1_000_000, duration: 181.5 }), record({ at: end + 50_000, duration: 181.5, tag: TAG_B })]);
+    const gaps = (await rows<{ played_at: number; gap: number | null }>("SELECT played_at, gap FROM rounds ORDER BY played_at, key")).map(r => [r.played_at - end / 1000, r.gap]);
+    expect(gaps).toEqual([[-1000, null], [-440, null], [-220, 38.5], [0, 38.5], [50, null], [400, 218.5], [1000, 0]]);
+    // The cells add them up, with the rounds that tell one and the longest round.
+    await rollup();
+    expect(await one("SELECT sum(gap_sum) AS s, sum(gap_n) AS n, max(secs_max) AS m FROM cells3")).toEqual({ s: 38.5 * 2 + 218.5, n: 4, m: 181.5 });
+  });
+
   it("keeps each accepted round with its derived fields, keyed without the device tag", async () => {
     const c = await joinNew();
     const recs = [
@@ -111,12 +127,12 @@ describe("what is stored", () => {
       {
         key: recs[0].id.replace(/-/g, "").slice(0, 20) + (await hashOf(TAG_A)), contributor: c.id, played_at: (NOW - 7200_000) / 1000,
         build: 1, tsum: "mickeyplus", skill: 6, skill_type: "pair_tsum", items: 17, scan: 6, chain: 15, bubble: "save_one_mid_chain", version: "3.0b4", settings: expect.any(Number), duration: 181.5,
-        score: 12345678, base: 3000, final: 4500, medals: 150, bin_base: bin(3000), bin_final: bin(4500), bin_medals: bin(150),
+        score: 12345678, base: 3000, final: 4500, medals: 150, bin_base: bin(3000), bin_final: bin(4500), bin_medals: bin(150), gap: null,
       },
       {
         key: recs[1].id.replace(/-/g, "").slice(0, 20) + (await hashOf(TAG_B)), contributor: c.id, played_at: (NOW - 3600_000) / 1000,
         build: 0, tsum: "mickey", skill: -1, skill_type: "", items: -1, scan: -1, chain: -1, bubble: "", version: "3.0b4", settings: expect.any(Number), duration: 181.5,
-        score: 12345678, base: 3000, final: 4500, medals: null, bin_base: bin(3000), bin_final: bin(4500), bin_medals: null,
+        score: 12345678, base: 3000, final: 4500, medals: null, bin_base: bin(3000), bin_final: bin(4500), bin_medals: null, gap: null,
       },
     ].sort((a, b) => (a.key < b.key ? -1 : 1)));
     // New rounds wait in pending for the hourly job; no day needs recomputing.

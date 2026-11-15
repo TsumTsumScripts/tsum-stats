@@ -463,7 +463,7 @@ share slot or a skill). Only the code is stored, written again by the table
 
 ## 3. Storage
 
-### 3.1 D1 schema (`global/migrations/0001_init.sql`, `0002_cell_bins.sql`, `0003_skill_type.sql`, `0005_presets.sql`: the gallery's `presets`, `0006_preset_limits.sql`: its limits, §2.7)
+### 3.1 D1 schema (`global/migrations/0001_init.sql`, `0002_cell_bins.sql`, `0003_skill_type.sql`, `0005_presets.sql`: the gallery's `presets`, `0006_preset_limits.sql`: its limits, §2.7, `0007_gaps.sql`: the time between rounds)
 
 ```sql
 CREATE TABLE contributors (
@@ -508,6 +508,7 @@ CREATE TABLE rounds (
   bin_base INTEGER NOT NULL,
   bin_final INTEGER NOT NULL,
   bin_medals INTEGER,                    -- NULL unless medals > 0
+  gap REAL,                              -- 0007: the time between rounds (below); NULL when it cannot be told
   skill_type TEXT NOT NULL DEFAULT '',   -- 0003: as sent; '' for none, and for every round stored before 0003
   scan INTEGER NOT NULL DEFAULT -1,      -- 0003: the play settings (§1.2), -1 and '' not recorded;
   chain INTEGER NOT NULL DEFAULT -1,     --   made from their settings for the rounds stored before
@@ -558,6 +559,7 @@ CREATE TABLE cells3 (
   final_sum INTEGER NOT NULL, final_sq REAL NOT NULL, final_min INTEGER NOT NULL, final_max INTEGER NOT NULL,
   medals_n INTEGER NOT NULL, medals_sum INTEGER NOT NULL, medals_sq REAL NOT NULL,
   medals_min INTEGER, medals_max INTEGER, medals_secs REAL NOT NULL,
+  gap_sum REAL NOT NULL DEFAULT 0, gap_n INTEGER NOT NULL DEFAULT 0, secs_max REAL,   -- 0007
   PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot)
 ) WITHOUT ROWID;
 
@@ -619,6 +621,19 @@ A cell's figures are over its rounds: `secs` their durations; `score_*`,
 `base_*`, `final_*` every round's (`*_sq` is the exact integer sum of squares,
 kept as REAL). The `medals_*` columns are over the rounds whose medals were
 read (not null): `medals_n` counts them, `medals_secs` adds their durations.
+`gap_sum` adds the gaps of the rounds that have one and `gap_n` counts them;
+`secs_max` is the longest round (NULL in a cell made before `0007_gaps.sql`
+until its day is recomputed).
+
+**A round's gap** (`rounds.gap`, `0007_gaps.sql`) is its time between rounds,
+worked out at upload (`ingest.ts: roundGaps`) and never again: the seconds from
+the previous round's end on the same device to this one's start (its end less
+its duration), when that is 0 to 300; 0 for a longer gap (a break: the script
+stopped, the game was down); NULL when there is no round before it here (the
+device's first), or it starts before the latest one here (sent out of order).
+The round before is the upload's own, or the device's `devices.last_seen`
+(this contributor's). A re-sent round keeps its gap. Rounds stored before
+`0007` have none.
 A `cell_bins3` row holds the bins of the same cell's rounds: each of its
 rounds counted in the bin of its base coins, of its final coins and, when it
 earned any, of its medals. An object's keys are bin numbers (§5) as text, in
@@ -799,13 +814,15 @@ manifest with `public, max-age=300`, both `application/json`.
  "key": ["…32 hex…"], "playedAt": [1787250000], "build": [0], "tsum": ["beastda"], "skill": [5],
  "skillType": ["beastda"], "items": [7], "scan": [3], "chain": [-1], "bubble": ["all_mid_chain"],
  "version": ["3.0b4"], "settings": [12], "duration": [181.5],
- "score": [12345678], "base": [3000], "final": [4500], "medals": [null]}
+ "score": [12345678], "base": [3000], "final": [4500], "medals": [null], "gap": [38.5]}
 ```
 
 Every field a round was stored with is in its file, so a restore loses
 nothing. Format 1 (before `0003_skill_type.sql`) has no `skillType`,
 `scan`, `chain` or `bubble`: a restore files its rounds with skill type `''`
 and their play settings made from their settings (`records.ts: playSQL`).
+A file written before `0007_gaps.sql` has no `gap` (or an empty one): its
+rounds come back with none.
 
 `contributor` is null in a `u` or `b` file. `<hex>` is the first 16 hex digits
 of an HMAC (`DEVICE_KEY`) of what the file holds, so it names no one and a
@@ -837,7 +854,7 @@ into it; 0 for a contributor being unlinked or no longer there; never for one
   "rounds": 123456, "contributors": 12, "devices": 40,
   "first": "2026-08-20 00:01:02", "last": "2026-10-14 18:59:59",
   "parts": [{"from": "2026-10-14", "to": "2026-10-15", "file": "day-2026-10-14.1a2b3c4d.json", "rounds": 9000, "sha": "1a2b3c4d"}],
-  "tsums": [{"tsum": "beastda", "rounds": 5000, "contributors": 4}],
+  "tsums": [{"tsum": "beastda", "rounds": 5000, "contributors": 4, "contributors7": 2, "contributorsAll": 9}],
   "medalTsums": ["…"],
   "skills": [2, 3, 4, 5, 6],
   "skillTypes": [{"skillType": "burst", "rounds": 80000}, {"skillType": "beastda", "rounds": 5000}],
@@ -858,7 +875,9 @@ into it; 0 for a contributor being unlinked or no longer there; never for one
   files for the same `[from, to)`** (§4.2), one entry each, in the part's
   order, each with its own `rounds` and `sha`; different ranges never overlap.
 - `tsums`: every Tsum in the public cells, most rounds first; `contributors`
-  as above but per Tsum.
+  as above but per Tsum, `contributors7` the same over the last 7 days and
+  `contributorsAll` over every day (`recent` keeps each contributor's newest
+  day with each Tsum). The page counts a Tsum's players over its time range.
 - `medalTsums`: the catalog's `medal: true` ids. `skills`: the distinct
   skill levels (not -1) in the cells, ascending. `skillTypes`: every skill
   type (not `''`) in the cells, most rounds first; the rest of `rounds` have
@@ -871,7 +890,9 @@ into it; 0 for a contributor being unlinked or no longer there; never for one
 ### 4.2 Part files
 
 One day (`day-…`) or one month (`month-…`), columnar like the snapshot's
-month files. Format 5 (since `0004_jackpot.sql`) keys every cell and bins
+month files. Format 6 (since `0007_gaps.sql`) adds each cell's `gapSum`,
+`gapN` and `secsMax`; the page reads a part without them as no gaps told and
+no longest round known. Format 5 (since `0004_jackpot.sql`) keys every cell and bins
 row by `jackpot` too; format 4 (since `0003_skill_type.sql`) by skill type
 (`skillType`) and the play settings (`scan`, `chain`, `bubble`); format 3 had
 the skill type only, and format 2 (since `0002_cell_bins.sql`) neither: the
@@ -881,12 +902,13 @@ cells but none of its bins:
 
 ```json
 {
-  "kind": "tsum-global-part", "format": 5, "from": "2026-10-14", "to": "2026-10-15",
+  "kind": "tsum-global-part", "format": 6, "from": "2026-10-14", "to": "2026-10-15",
   "cells": {"n": 2, "day": ["2026-10-14", "…"], "build": [0, 1], "tsum": ["beastda", "…"], "skill": [5, -1],
             "skillType": ["beastda", ""], "items": [7, -1], "scan": [3, -1], "chain": [4, -1], "bubble": ["all_mid_chain", ""], "medal": [0, 1], "jackpot": [0, 0], "rounds": [], "secs": [], "scoreSum": [], "scoreMin": [], "scoreMax": [],
             "first": [], "last": [], "baseSum": [], "baseSq": [], "baseMin": [], "baseMax": [],
             "finalSum": [], "finalSq": [], "finalMin": [], "finalMax": [],
-            "medalsN": [], "medalsSum": [], "medalsSq": [], "medalsMin": [], "medalsMax": [], "medalsSecs": []},
+            "medalsN": [], "medalsSum": [], "medalsSq": [], "medalsMin": [], "medalsMax": [], "medalsSecs": [],
+            "gapSum": [], "gapN": [], "secsMax": []},
   "bins": {"n": 1, "day": ["2026-10-14"], "build": [0], "tsum": ["beastda"], "skill": [5], "skillType": ["beastda"], "items": [7],
            "scan": [3], "chain": [4], "bubble": ["all_mid_chain"], "medal": [0], "jackpot": [0], "base": [{"231": [4, 726.5, 48020000, 3801, 5702, 0]}], "final": [{"…": […]}], "medals": [{}]}
 }
@@ -1013,6 +1035,12 @@ cells' rounds.
   its items have +Coin) − cost × rounds`, `expSeconds` its `secs`,
   `expRounds` its rounds, and `expSq` the square expanded from `baseSq` and
   `baseSum`; a cell whose items are unknown has none.
+- **Estimated**: each Tsum's and the totals' `expBetweenSeconds` (the
+  time between rounds, `summary.go: Between`): the average gap of the
+  rounds that have one (`gapSum / gapN`) times the rounds with expected
+  coins; null where none has one. A Tsum's `expTopShare`: the longest round
+  (`secsMax`) over `expSeconds`, null where a cell's is unknown. The
+  quartiles of each round's pace (`expRateQ1` …) need each round: always null.
 - **Approximate**: `q1Coins`, `medianCoins`, `q3Coins`, `p90Coins` from the
   bins of the group's cells. A bin's rounds of one item cost (net coins; 0
   otherwise) across the group stand at their average less that cost; in that

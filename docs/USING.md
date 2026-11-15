@@ -180,8 +180,9 @@ time, so one hours-long round can own it (rounds are never capped or cut for
 their length). The Tsums table's **Typical/h** is the median round's own pace
 (`expRateMedian`, with `expRateQ1` and `expRateQ3`), and a Tsum is flagged
 *one long round* when its longest round holds over 10 % of its play time and
-over five average rounds' share (`expTopShare`). Both need each round's
-figures, so the global site has neither.
+over five average rounds' share (`expTopShare`). The global site has the
+flag (from each cell's longest round) but not *Typical/h*, which needs each
+round's pace.
 
 **Expected/h, between rounds included.** Expected coins an hour counts play
 time only. Between two rounds the script also spends time on the results
@@ -193,8 +194,11 @@ same device to its own start, when that gap is 5 minutes or less
 (`BreakSeconds` in `summary.go`); a longer gap is a break (the script
 stopped, the emulator was off, the game was down) and counts for nothing. The
 device is the one in the round's id, so rounds sent without a device name
-count too. Only the gap is judged, never a round's own length. The global site
-does not have it yet: its cells keep no round order.
+count too. Only the gap is judged, never a round's own length. On the global
+site it is an estimate (≈): the Worker works out each round's gap when it is
+sent, against the round before it on its device, and the page takes the
+average gap of the rounds that have one for every round (rounds sent before
+it, a device's first and any sent out of order have none).
 
 **Script versions** (local site and snapshots) checks the script itself.
 By script version, or by device: the share of rounds with a figure the
@@ -731,9 +735,10 @@ everyone's rounds, and in the *Winter Village* theme until you pick another:
   round. Only the range's own figure keeps its median and histogram: with a
   coin range the medal spreads go, and with a medal range the coin ones
   (except in Medals mode).
-- **Players.** The Tsums table's Players column counts the contributors who
-  sent rounds of that Tsum in the last 30 days. Under 3, the row is dimmed and
-  marked *few players*.
+- **Players.** The Tsums table's Players column (and the Tsum page's) counts
+  the contributors who sent rounds of that Tsum over the time range: the last
+  7 or 30 days, else every day. Under 3, the row is dimmed and marked *few
+  players*.
 - **The Tsum page** is there, over everyone's rounds of the Tsum: its rank by
   rate among every Tsum, its share of all rounds and its players, the KPI
   tiles, consistency and rounds under a target (≈, from the bins), by skill

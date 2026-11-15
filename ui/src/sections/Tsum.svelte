@@ -24,7 +24,7 @@
   import {names} from '../lib/names.svelte.js';
   import {shared} from '../lib/ui.svelte.js';
   import {
-    MIN_ROUNDS, api, buildLabel, cap, chainsLabel, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref,
+    MIN_ROUNDS, api, buildLabel, playersIn, playersWindow, cap, chainsLabel, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref,
     PLAY, playValueName, skillTypeName, skillTypeValue, tsumColor, tsumName,
   } from '../lib/util.js';
   import Kpis from './stats/Kpis.svelte';
@@ -288,7 +288,7 @@
   });
 
   // The global site: how many players sent rounds of it lately, and whether that is too few to stand for everyone.
-  const players = $derived(globalSite ? (played.find(t => t.tsum === filter.id)?.contributors ?? null) : null);
+  const players = $derived(globalSite ? playersIn(played.find(t => t.tsum === filter.id), filter.days) : null);
   const fewPlayers = $derived(players !== null && status !== null && players < status.minContributors);
   const whose = globalSite ? 'all' : 'your';
 
@@ -362,7 +362,7 @@
           {/if}
           {#if standing?.share}<span class="fact"><b>{pct(standing.share)}</b> of {whose} rounds</span>{/if}
           {#if players !== null}
-            <span class="fact" class:dim={fewPlayers} title="Contributors who sent rounds of it in the last 30 days{fewPlayers ? '. Too few players\' rounds to stand for everyone\'s yet' : ''}">
+            <span class="fact" class:dim={fewPlayers} title="Contributors who sent rounds of it over {playersWindow(filter.days)}{fewPlayers ? '. Too few players\' rounds to stand for everyone\'s yet' : ''}">
               <b>{fmt(players)}</b> {players === 1 ? 'player' : 'players'}{fewPlayers ? ' · few' : ''}
             </span>
           {/if}

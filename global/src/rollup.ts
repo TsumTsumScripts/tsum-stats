@@ -42,13 +42,16 @@ const CELLS: [string, string, string][] = [
   ["medals_n", "count(medals)", "+"], ["medals_sum", "coalesce(sum(medals), 0)", "+"], ["medals_sq", "coalesce(sum(medals * medals), 0)", "+"],
   ["medals_min", "min(medals)", "min"], ["medals_max", "max(medals)", "max"],
   ["medals_secs", "coalesce(sum(CASE WHEN medals IS NOT NULL THEN duration END), 0)", "+"],
+  // The time between rounds of the rounds that tell it, and the longest round (migrations/0007_gaps.sql).
+  // An upload summed before them has none: its sums add nothing (coalesce below).
+  ["gap_sum", "coalesce(sum(gap), 0)", "+"], ["gap_n", "count(gap)", "+"], ["secs_max", "max(duration)", "max"],
 ];
 const CELLS_KEY = 10;
 const cellNames = CELLS.map(([c]) => c);
 
 /** The rounds of day ?1-?2 (dayRange), as columns the aggregates read. */
 const DAY_SOURCE = `(SELECT contributor, played_at, build, tsum, skill, skill_type, items, scan, chain, bubble, duration, score, base, final, medals,
-    bin_base, bin_final, bin_medals, substr(key, 21) AS device FROM rounds WHERE ${DAY_ROUNDS})`;
+    bin_base, bin_final, bin_medals, gap, substr(key, 21) AS device FROM rounds WHERE ${DAY_ROUNDS})`;
 
 /** A pending sum its day's last full recompute already read (state skip: {day: seq}); `day` names its day. */
 const notSkipped = (day: string) => `p.seq > coalesce((SELECT value FROM state WHERE key = 'skip') ->> ('$."' || ${day} || '"'), 0)`;
@@ -109,7 +112,7 @@ const pendingOf = (col: string, ids: string, layout = false) => `pending p, json
 const FOLD_CELLS = `INSERT INTO cells3 (day, ${cellNames.join(", ")})
   SELECT e.value ->> 0, ${CELLS.map(([, , how], i) => {
     const v = `e.value ->> ${i + 1}`;
-    return i < CELLS_KEY ? v : how === "+" ? `sum(${v})` : `${how}(${v})`;
+    return i < CELLS_KEY ? v : how === "+" ? `coalesce(sum(${v}), 0)` : `${how}(${v})`;
   }).join(", ")}
   FROM ${pendingOf("cells", "?2", true)}
   GROUP BY ${cellNames.slice(0, CELLS_KEY + 1).map((_, i) => `e.value ->> ${i}`).join(", ")}

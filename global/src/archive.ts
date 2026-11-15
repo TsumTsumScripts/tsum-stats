@@ -55,6 +55,8 @@ const COLUMNS: [string, string][] = [
   ["skillType", "skill_type"], ["items", "items"], ["scan", "scan"], ["chain", "chain"], ["bubble", "bubble"],
   ["version", "version"], ["settings", "settings"],
   ["duration", "duration"], ["score", "score"], ["base", "base"], ["final", "final"], ["medals", "medals"],
+  // The time between rounds, worked out at upload (migrations/0007_gaps.sql): it cannot be told again later.
+  ["gap", "gap"],
 ];
 /**
  * Columns archive format 2 has and format 1 lacks, as a format 1 file's
@@ -63,6 +65,7 @@ const COLUMNS: [string, string][] = [
  */
 const OPTIONAL = new Map([
   ["skillType", "''"],
+  ["gap", "NULL"],
   ...PLAY_SETTINGS.map(ps => [ps.param, playSQL(ps, "(SELECT json FROM settings WHERE id = c_settings.v)")] as [string, string]),
 ]);
 

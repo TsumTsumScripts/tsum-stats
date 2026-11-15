@@ -25,7 +25,7 @@ const camel = (c: string) => c.replace(/_([a-z])/g, (_, x: string) => x.toUpperC
 const CELL_COLUMNS = [
   "day", "build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal", "jackpot", "rounds", "secs", "score_sum", "score_min", "score_max",
   "first", "last", "base_sum", "base_sq", "base_min", "base_max", "final_sum", "final_sq", "final_min", "final_max",
-  "medals_n", "medals_sum", "medals_sq", "medals_min", "medals_max", "medals_secs",
+  "medals_n", "medals_sum", "medals_sq", "medals_min", "medals_max", "medals_secs", "gap_sum", "gap_n", "secs_max",
 ];
 const BIN_COLUMNS = ["day", "build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal", "jackpot", "base", "final", "medals"];
 const BIN_KEY_COLUMNS = 11;
@@ -38,11 +38,12 @@ const arrays = (cols: string[], json: string[] = []) =>
 
 /**
  * A part's body from the cells3 rows `cells` and the cell_bins3 rows `bins`
- * (subqueries). Format 5: format 2 (bins per cell, each bin with its rounds'
+ * (subqueries). Format 6: format 2 (bins per cell, each bin with its rounds'
  * figures) with the cells keyed by skill type (format 3), the play settings
- * (format 4) and whether they are coin-bonus jackpots too.
+ * (format 4) and whether they are coin-bonus jackpots (format 5), and with
+ * the time between rounds and the longest round too.
  */
-const body = (cells: string, bins: string) => `json_object('kind', 'tsum-global-part', 'format', 5, 'from', ?1, 'to', ?2,
+const body = (cells: string, bins: string) => `json_object('kind', 'tsum-global-part', 'format', 6, 'from', ?1, 'to', ?2,
     'cells', json((SELECT json_object('n', count(*), ${arrays(CELL_COLUMNS)}) FROM ${cells})),
     'bins', json((SELECT json_object('n', count(*), ${arrays(BIN_COLUMNS, ["base", "final", "medals"])}) FROM ${bins})))`;
 
@@ -265,7 +266,9 @@ const MANIFEST_SQL = `WITH p AS (SELECT value AS v FROM state WHERE key >= 'part
     'parts', json((SELECT json_group_array(json_object('from', v ->> 'from', 'to', v ->> 'to', 'file', f ->> 'file',
       'rounds', f ->> 'rounds', 'sha', f ->> 'sha')) FROM (SELECT p.v, f.value AS f FROM p, json_each(p.v, '$.files') f ORDER BY p.v ->> 'from', f.key))),
     'tsums', json((SELECT json_group_array(json_object('tsum', key, 'rounds', value, 'contributors',
-        coalesce((SELECT v FROM people) ->> ('$.tsums."' || key || '"'), 0)))
+        coalesce((SELECT v FROM people) ->> ('$.tsums."' || key || '"'), 0),
+        'contributors7', coalesce((SELECT v FROM people) ->> ('$.tsums7."' || key || '"'), 0),
+        'contributorsAll', coalesce((SELECT v FROM people) ->> ('$.tsumsAll."' || key || '"'), 0)))
       FROM (SELECT key, value FROM json_each((SELECT v FROM totals), '$.tsums') ORDER BY value DESC, key))),
     'medalTsums', json(?2),
     'skills', json((SELECT json_group_array(CAST(key AS INTEGER)) FROM (SELECT key FROM json_each((SELECT v FROM totals), '$.skills') ORDER BY CAST(key AS INTEGER)))),
@@ -276,17 +279,22 @@ const MANIFEST_SQL = `WITH p AS (SELECT value AS v FROM state WHERE key >= 'part
     'minContributors', CAST(?3 AS INTEGER)) AS body`;
 
 /**
- * The manifest's counts of people, from `recent`: contributors (not 0, not
- * banned) with rounds of the catalog's Tsums ?3 since day ?1, per Tsum and
- * in all, and devices seen since ?2. Made again only when they can have
- * moved, or under another catalog (its id ?4, job.ts: open).
+ * The manifest's counts of people, from `recent` (each contributor's newest
+ * day with each Tsum): contributors (not 0, not banned) with rounds of the
+ * catalog's Tsums ?3 since day ?1 (30 days), per Tsum and in all; per Tsum
+ * also over the last 7 of those days and over every day; and devices seen
+ * since ?2. Made again only when they can have moved, or under another
+ * catalog (its id ?4, job.ts: open).
  */
-const PEOPLE = `WITH r AS MATERIALIZED (SELECT contributor, tsum FROM recent WHERE day >= ?1 AND instr(?3, ',' || tsum || ',') > 0
-    AND contributor NOT IN (SELECT id FROM contributors WHERE status IN ('banned', 'unlinking-banned')))
+const PEOPLE = `WITH a AS MATERIALIZED (SELECT contributor, tsum, day FROM recent WHERE instr(?3, ',' || tsum || ',') > 0
+    AND contributor NOT IN (SELECT id FROM contributors WHERE status IN ('banned', 'unlinking-banned'))),
+    r AS (SELECT contributor, tsum FROM a WHERE day >= ?1)
   INSERT OR REPLACE INTO state (key, value) SELECT 'people', json_object(
     'contributors', (SELECT count(DISTINCT contributor) FROM r),
     'devices', (SELECT count(DISTINCT device_hash) FROM devices WHERE last_seen >= ?2),
     'tsums', json((SELECT json_group_object(tsum, n) FROM (SELECT tsum, count(*) AS n FROM r GROUP BY tsum))),
+    'tsums7', json((SELECT json_group_object(tsum, n) FROM (SELECT tsum, count(*) AS n FROM a WHERE day >= date(?1, '+23 days') GROUP BY tsum))),
+    'tsumsAll', json((SELECT json_group_object(tsum, n) FROM (SELECT tsum, count(*) AS n FROM a GROUP BY tsum))),
     'catalog', ?4)`;
 
 /** A running total over the parts, at `path` of each summary: the old total, less what parts ?1 had, plus what the summaries ?2 have. */
