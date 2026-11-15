@@ -5,14 +5,15 @@
      the last 30 days. -->
 <script>
   import {onMount} from 'svelte';
-  import {isGlobal} from '../lib/global/client.js';
+  import {everyoneApi, isGlobal} from '../lib/global/client.js';
+  import {levelGains} from '../lib/skillCurve.js';
   import {isSnapshot} from '../lib/snapshot/client.js';
   import Avatar from '../components/Avatar.svelte';
   import NewTsums from '../components/NewTsums.svelte';
   import Seg from '../components/Seg.svelte';
   import MaxOut from './catalog/MaxOut.svelte';
   import Progress from './catalog/Progress.svelte';
-  import {maxOutTotals, toMax} from '../lib/boxes.js';
+  import {maxOutTotals, toMax, toNext} from '../lib/boxes.js';
   import {names} from '../lib/names.svelte.js';
   import {shared} from '../lib/ui.svelte.js';
   import {api, debounce, fmt, loadPref, savePref, tsumColor} from '../lib/util.js';
@@ -31,6 +32,7 @@
     level: {label: 'Level', dir: 'desc'},
     skill: {label: 'Skill level', dir: 'desc'},
     left: {label: 'Boxes to max', dir: 'desc'},
+    payback: {label: 'Next skill pays back', dir: 'asc'},
   };
   const VIEWS = ['card', 'list'];
 
@@ -48,6 +50,31 @@
       // Before the page-wide language, names was 'en', 'jp' or 'all' (both).
       both: typeof p.both === 'boolean' ? p.both : p.names ? p.names === 'all' : d.both,
     };
+  }
+
+  // ---- What the next skill level earns, over everyone's rounds (the global site's, through the local server) ----
+
+  /** Days of the global site's rounds the next-skill figures are worked out from. */
+  const GAIN_DAYS = 90;
+  /** levelGains over everyone's rounds of the build, or null when they cannot be had (contributing off, offline, a snapshot). */
+  let gains = $state.raw(null);
+  $effect(() => {
+    if (globalSite || isSnapshot()) return;
+    const b = filter.build;
+    const from = new Date(Date.now() - GAIN_DAYS * 864e5).toISOString();
+    everyoneApi('summary', {build: b, from}).then(s => { if (b === filter.build) gains = levelGains(s.mix); }, () => { gains = null; });
+  });
+  /**
+   * An owned coin Tsum's next skill level: what it earns an hour more and the
+   * hours of play that take to pay back its boxes, when that gain is more than
+   * luck explains; null without the figures.
+   */
+  function nextPay(id, own) {
+    const n = toNext(catalog.byId.get(id), own);
+    const g = n && n.unit === 'coins' ? gains?.get(id)?.get(own.skill) : null;
+    if (!g) return null;
+    const sure = g.err !== null && Math.abs(g.gain) > 2 * g.err;
+    return {...g, sure, cost: n.cost, hours: sure && g.gain > 0 ? n.cost / g.gain : null};
   }
 
   // "20260920-140211" → a Date in the viewer's zone. The script names the file in
@@ -148,7 +175,7 @@
       const name = n[first] || n[second] || id;
       const alt = prefs.both && n[second] && n[second] !== n[first] ? n[second] : '';
       return {id, name, alt, search: `${n.global} ${n.jp}`.toLowerCase(), own, color: tsumColor(catalog, id),
-        left: toMax(catalog.byId.get(id), own)};
+        left: toMax(catalog.byId.get(id), own), next: nextPay(id, own)};
     };
     const entries = catalog.tsums.filter(t => t[build] || owned.has(t.id)).map(t => named(t.id, t, owned.get(t.id) ?? null));
     for (const [id, o] of owned) {
@@ -162,6 +189,7 @@
       (!q || e.search.includes(q) || e.id.includes(q)));
     const collator = new Intl.Collator(first === 'jp' ? 'ja' : undefined);
     const value = (e, key) => (key === 'name' ? e.name : key === 'left' ? e.left?.boxes ?? null
+      : key === 'payback' ? e.next?.hours ?? null
       : key === 'rounds' ? played.get(e.id) ?? null : e.own?.[key] ?? null);
     // A Tsum with no figure for a key goes last whichever way it sorts.
     const compare = ({key, dir}) => (a, b) => {
@@ -243,6 +271,17 @@
   {#if !l}<span class="sub">—</span>
   {:else if !l.boxes}<span class="sub">Skill maxed</span>
   {:else}<span class="to-max {l.unit}" title={leftTitle(l)}>{fmt(l.boxes)} {l.boxes === 1 ? 'box' : 'boxes'} · <b>{compact.format(l.cost)}</b></span>{/if}
+{/snippet}
+
+<!-- The next skill level over everyone's rounds: what it earns an hour more, and the hours of play that pay back its boxes. -->
+{#snippet nextText(n)}
+  {#if n}
+    <span class="next-skill sub" title="Over every player's rounds of the last {GAIN_DAYS} days at this level and the next, with the same items: {fmt(n.rounds)} rounds at the next level. ± {n.err === null ? '?' : fmt(n.err)} coins/h">
+      {#if n.hours !== null}next skill +{compact.format(n.gain)}/h · pays back in <b>{fmt(n.hours)} h</b> of play
+      {:else if n.sure}next skill earns less here
+      {:else}next skill: within luck{/if}
+    </span>
+  {/if}
 {/snippet}
 
 {#snippet emptyState()}
@@ -350,7 +389,7 @@
           <table class="tsum-list">
             <thead>
               <tr>
-                {#each [['Tsum', 'name'], ['Lv', 'level'], ['Skill', 'skill'], ['To max', 'left'], ['Acquired', 'order']] as [label, key] (key)}
+                {#each [['Tsum', 'name'], ['Lv', 'level'], ['Skill', 'skill'], ['To max', 'left'], ...(gains ? [['Next skill', 'payback']] : []), ['Acquired', 'order']] as [label, key] (key)}
                   <th class:num={key === 'level' || key === 'skill' || key === 'left'} aria-sort={ariaSort(key)} title="Click to sort, Shift-click to add a sort">
                     <button type="button" onclick={e => toggleSort(key, e.shiftKey)}>{label}{#if sortArrow(key)}<span class="arrow">{sortArrow(key)}</span>{/if}</button>
                   </th>
@@ -365,6 +404,7 @@
                   <td class="num">{@render figure(o, o?.level, MAX_LEVEL, o ? `${o.level ?? '?'}/${MAX_LEVEL}` : '', 'level')}</td>
                   <td class="num">{@render figure(o, o?.skill, o?.skillMax, o ? skillText(o) : '', 'skill')}</td>
                   <td class="num">{@render toMaxText(e.left)}</td>
+                  {#if gains}<td>{@render nextText(e.next)}</td>{/if}
                   <td>{o ? `${acquiredLabel(o.acquired) || '—'}${o.order ? ` · #${o.order}` : ''}` : 'Not owned'}</td>
                 </tr>
               {/each}
@@ -385,6 +425,7 @@
                 {@render meter('Lv', o.level, MAX_LEVEL, 'level')}
                 {@render meter('Skill', o.skill, o.skillMax, 'skill')}
                 <div class="meta-left">{@render toMaxText(e.left)}</div>
+                {#if e.next}<div class="meta-left">{@render nextText(e.next)}</div>{/if}
                 <div class="meta"><span>{acquiredLabel(o.acquired) || '—'}</span><span title="Order acquired">{o.order ? `#${o.order}` : ''}</span></div>
               </div>
             {:else}

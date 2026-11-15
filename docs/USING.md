@@ -501,6 +501,19 @@ playing other accounts make the pace look too fast. The chart draws each Tsum's
 share still to earn down to its finish date. Pace window and on-hand figures
 are saved in the browser.
 
+**What to max next.** On the local site, an owned coin Tsum's card (and the
+list's *Next skill* column) says what its next skill level earns an hour
+more and how many hours of play that takes to pay back its boxes, and the
+*Next skill pays back* sort puts the quickest first. One player's rounds
+rarely cover two levels of one Tsum, so this is over **every player's**
+rounds of the last 90 days: the page runs the global site's engine on its
+published files, which the local server fetches for it
+(`/api/stats/global-data/`, `globaldata.go`; nothing is sent, and nothing
+shows with `--global-url ""` or offline). The levels are compared within each
+item set both were played with (`ui/src/lib/skillCurve.js`), and a figure shows
+only when the gain is more than luck explains; otherwise *within luck*. It
+fills in a few seconds after the page.
+
 **Skill progress**, under it on the local site, reads every Tsum list the
 picked device sent (`/api/stats/owned-history`), oldest first. Between one
 list and the next: the boxes opened (each Tsum's boxes left before, less

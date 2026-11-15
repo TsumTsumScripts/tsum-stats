@@ -105,6 +105,7 @@ Cloudflare account only, never the GAP one (`global/README.md`,
 | `internal/stats/github.go` | GitHub API calls for Share: who is signed in, the repo, one commit of the snapshot, Pages |
 | `internal/stats/publish.go` | `Publisher`: Share's saved token and choices, the background publish, topic `ts/publish` |
 | `internal/stats/presets.go` | The preset gallery from this computer (CONTRACT §2.7, §7.3): submit, mine and delete with the saved contributor key; `galleryError` (the site's code for the page) |
+| `internal/stats/globaldata.go` | `GlobalData`: the global site's published files, fetched and kept a while for the page's own global engine (`/api/stats/global-data/`) |
 | `internal/stats/global.go` | `Contributor`: the forwarder to the global site (CONTRACT §7) -- join, leave and unlink, the hourly passes, refusals and `Retry-After`, `GlobalRecord`, `RoundBatch`, topic `ts/global` |
 
 Tests: `stats_test.go` (CSV parsing, event + CSV merge, filters, summary, Tsum
@@ -114,7 +115,7 @@ through a fake adb; unzip refusing escapes), `legacy_test.go`, `site_test.go`
 `ui/tests/parity.mjs`), `publish_test.go` (a fake GitHub;
 `TestPageSubscribesToEveryTopic`), `art_test.go` (portraits through a fake
 origin), `global_test.go` (the forwarder against a
-fake Worker), `presets_test.go` (the gallery calls, same fake), `global_parity_test.go` (`TestGlobalParity`, which runs
+fake Worker), `presets_test.go` (the gallery calls, same fake), `globaldata_test.go` (the global files kept and passed on), `global_parity_test.go` (`TestGlobalParity`, which runs
 `global/test/parity.test.ts`).
 
 ### `internal/starter/` -- the service starter's website
@@ -170,6 +171,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `ui/src/lib/util.js` | Formats, `api()`, the catalog, `tsumName`, Tsum colours, `IMAGE_URL` |
 | `ui/src/lib/names.svelte.js` | The page-wide Tsum name language (`names.lang`: `en`, English else JP; `jp`), set from the top bar's EN/JP toggle, a per-browser preference |
 | `ui/src/lib/expected.js` | Expected net coins (`EXPECTED_BONUS`, `expRate`, `expHour`, `sumExp`): the page's side of `summary.go`'s `Expected` sums |
+| `ui/src/lib/skillCurve.js` | `levelGains`: each Tsum's gain from one skill level to the next, within item sets (the Catalog's what to max next) |
 | `ui/src/lib/fit.js` | A number too long for its box shows its short form, 1.3B (`fit`, the action; `refit`, which the copy card calls too) |
 | `ui/src/lib/popup.js` | `popup`, the action every popup uses (menus, suggestion lists, the column picker, the tooltip, toasts): the browser's top layer, above every panel and dialog whatever its z-index, placed at its anchor |
 | `ui/src/lib/ui.svelte.js` | Shared page state: catalog, devices, tooltip, toasts, expanded panel, theme |
@@ -180,7 +182,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `ui/src/lib/snapshot/engine.js` | **The server's `/api/stats` answers in the browser**, from a snapshot's monthly files. Held to Go by `TestSnapshotParity` |
 | `snapshot/client.js`, `snapshot/worker.js` | Is this a snapshot; run the engine in a Web Worker and keep loaded months |
 | `ui/src/lib/global/engine.js` | The same answers from the global site's part files (cells, not rounds; quartiles, P90 and the outlier ranges from each cell's bins), the Tsum page's included. Reuses the snapshot engine's helpers |
-| `global/client.js`, `global/worker.js` | Is this the global site (`isGlobal`); run the engine in a Web Worker, keep parts, refetch a replaced part |
+| `global/client.js`, `global/worker.js` | Is this the global site (`isGlobal`); run the engine in a Web Worker, keep parts, refetch a replaced part; `everyoneApi`, the same engine on the local site through `/api/stats/global-data/` |
 | `ui/src/lib/presets/shareCode.js` | **Tsum share codes** (`Name: TSUM4-…~`) read and written as the script's settings page does, over the script's own table `shareCodes.json` (synced by `tools/sync-share-codes.js`, never edited). The page and the Worker (submit check) both use it; `clean` keeps only values the script applies as is (ranges from the table) |
 | `presets/links.js` | Presets to and from GAP Companion: a `gap-presets` document in a link's fragment (`companionLink`, `unpackPresets`) |
 | `presets/text.js` | Cleaning a preset's name and description (control and format characters dropped), for the Worker's submit and presets GAP Companion sent |

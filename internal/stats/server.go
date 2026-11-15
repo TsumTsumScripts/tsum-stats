@@ -376,6 +376,18 @@ func registerRoutes(se *core.ServeEvent, events *Events, importer *Importer, pul
 
 // registerGlobalRoutes is Contribute: sending rounds to the global stats site (global.go).
 func registerGlobalRoutes(g *router.RouterGroup[*core.RequestEvent], contributor *Contributor) {
+	// The global site's published files, for the page's own global engine (globaldata.go).
+	data := NewGlobalData(contributor.url)
+	g.GET("/global-data/{name...}", func(e *core.RequestEvent) error {
+		status, body, err := data.Get(e.Request.PathValue("name"), e.Request.URL.Query().Get("fresh") == "1")
+		if err != nil {
+			return e.Error(http.StatusBadGateway, "the global site could not be reached", err)
+		}
+		if status != http.StatusOK {
+			return e.NoContent(status)
+		}
+		return e.Blob(http.StatusOK, "application/json", body)
+	})
 	// Opening the dialog counts the waiting rounds afresh.
 	g.GET("/global", func(e *core.RequestEvent) error {
 		return e.JSON(http.StatusOK, contributor.Refresh())
