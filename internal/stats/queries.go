@@ -460,6 +460,15 @@ func PlayedPlaySettings(db dbx.Builder) (map[string][]PlayValue, error) {
 	return out, nil
 }
 
+// PlayedSkillLevels is each skill level (skillLevelSQL's text) with at least
+// one round, not recorded among them as "", for the Stats rail's skill filter.
+func PlayedSkillLevels(db dbx.Builder) ([]PlayValue, error) {
+	out := []PlayValue{}
+	err := db.NewQuery(`SELECT ` + skillLevelSQL + ` AS value, COUNT(*) AS rounds FROM ts_rounds
+		GROUP BY value ORDER BY rounds DESC, value`).All(&out)
+	return out, err
+}
+
 // MedalTsums is every Tsum that has earned medals, by name.
 func MedalTsums(db dbx.Builder) ([]string, error) {
 	out := []string{}

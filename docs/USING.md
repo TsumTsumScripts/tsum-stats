@@ -242,6 +242,12 @@ The rail's **Include incomplete rounds** box (`incomplete=1`) keeps them.
 range is base or final coins even in Medals mode, and the medal range only
 judges medal Tsums' rounds, so it does not drop other Tsums' 0-medal rounds.
 
+**Skill level.** The rail's Skill level list (`skill` in the link, a comma
+list; `-1` is the rounds that recorded none) keeps the rounds played at the
+levels ticked (1 to 10, as the global site reads them), so Tsums, items and
+chain pairs compare at one level. Opening the Tsum page carries one picked
+level across.
+
 **Skill type.** The rail's Skill type list (`skillType` in the link, a comma
 list) keeps the rounds the script played with the skill types ticked: the
 script's way of playing the skill, such as `burst` or a Tsum's own

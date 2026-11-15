@@ -390,6 +390,8 @@ func TestSnapshotParity(t *testing.T) {
 		t.Fatalf("too few play setting values to test with: %v", play)
 	}
 	cases = append(cases, testCase{Name: "played play settings", Route: "play-settings", Params: map[string]any{}, Expected: roundtrip(play)})
+	levels, _ := PlayedSkillLevels(app.DB())
+	cases = append(cases, testCase{Name: "played skill levels", Route: "skill-levels", Params: map[string]any{}, Expected: roundtrip(levels)})
 	srcs, _ := TsumListSources(app.DB())
 	cases = append(cases, testCase{Name: "owned sources", Route: "owned-sources", Params: map[string]any{}, Expected: roundtrip(srcs)})
 	for _, src := range srcs {

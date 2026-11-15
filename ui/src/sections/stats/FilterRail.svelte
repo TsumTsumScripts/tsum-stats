@@ -11,7 +11,7 @@
 
   // skillTypes: the script's skill types with rounds, [{skillType, rounds}]; pickedTypes: the filter's, '-' for none.
   // playChoices: each play setting's values with rounds, {scan: [{value, rounds}], ...}; pickedPlay: the filter's, '-' for not recorded.
-  // skills: the global site's skill levels; itemChoices: its item sets, [{items, rounds}].
+  // skills: the skill levels with rounds (the global site's from its status); itemChoices: the global site's item sets, [{items, rounds}].
   let {
     filter, range, outliers, chips, picked, played, playedDevices, pickedDevices, skillTypes = [], pickedTypes = [],
     playChoices = {}, pickedPlay = {}, comparing,
@@ -154,20 +154,20 @@
             </div>
           {/if}
         {/each}
+        {#if skills.length}
+          <div class="field devices-field" title="Tick one or more skill levels to count only rounds played at them">Skill level
+            <details class="devices">
+              <summary>{pickedSkills.length ? `Level ${pickedSkills.map(s => (Number(s) < 0 ? '?' : s)).join(', ')}` : 'All levels'}</summary>
+              <div class="device-list">
+                {#each [...skills, -1] as s (s)}
+                  <label><input type="checkbox" checked={pickedSkills.includes(String(s))}
+                    onchange={e => toggleIn('skill', pickedSkills, String(s), e.target.checked)}><span class="device-name">{skillName(s)}</span></label>
+                {/each}
+              </div>
+            </details>
+          </div>
+        {/if}
         {#if globalSite}
-          {#if skills.length}
-            <div class="field devices-field" title="Tick one or more skill levels to count only rounds played at them">Skill level
-              <details class="devices">
-                <summary>{pickedSkills.length ? `Level ${pickedSkills.map(s => (Number(s) < 0 ? '?' : s)).join(', ')}` : 'All levels'}</summary>
-                <div class="device-list">
-                  {#each [...skills, -1] as s (s)}
-                    <label><input type="checkbox" checked={pickedSkills.includes(String(s))}
-                      onchange={e => toggleIn('skill', pickedSkills, String(s), e.target.checked)}><span class="device-name">{skillName(s)}</span></label>
-                  {/each}
-                </div>
-              </details>
-            </div>
-          {/if}
           {#if itemChoices.length}
             <div class="field devices-field" title="Tick one or more item sets to count only rounds played with them">Items used
               <details class="devices">

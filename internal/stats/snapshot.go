@@ -78,6 +78,8 @@ type snapshotManifest struct {
 	SkillTypes []SkillTypeCount `json:"skillTypes"`
 	// PlaySettings is PlayedPlaySettings, for the filters' options.
 	PlaySettings map[string][]PlayValue `json:"playSettings"`
+	// SkillLevels is PlayedSkillLevels, for the skill filter.
+	SkillLevels []PlayValue `json:"skillLevels"`
 	// MedalTsums is medalTsumsSQL, for the engine's completeness and medal range.
 	MedalTsums []string `json:"medalTsums"`
 	Themes     []Theme  `json:"themes"`
@@ -334,6 +336,9 @@ func ExportSnapshot(db dbx.Builder, site fs.FS, dir string, o SnapshotOptions) (
 		}
 	}
 	if man.SkillTypes, err = PlayedSkillTypes(db); err != nil {
+		return res, err
+	}
+	if man.SkillLevels, err = PlayedSkillLevels(db); err != nil {
 		return res, err
 	}
 	if man.PlaySettings, err = PlayedPlaySettings(db); err != nil {

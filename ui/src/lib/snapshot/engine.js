@@ -754,6 +754,11 @@ export function createEngine(loader) {
     return Object.fromEntries(PLAY_SETTINGS.map(({param}) => [param, ps[param] ?? []]));
   }
 
+  /** queries.go: PlayedSkillLevels; an older snapshot lists none. */
+  async function skillLevels() {
+    return (await getManifest()).skillLevels ?? [];
+  }
+
   // One device's newest list for a build; null when it has none.
   async function owned(q) {
     const man = await getManifest();
@@ -784,6 +789,7 @@ export function createEngine(loader) {
         case 'round-devices': return roundDevices();
         case 'skill-types': return skillTypes();
         case 'play-settings': return playSettings();
+        case 'skill-levels': return skillLevels();
         case 'owned': return owned(params);
         case 'owned-sources': return ownedSources();
         case 'status': return status();

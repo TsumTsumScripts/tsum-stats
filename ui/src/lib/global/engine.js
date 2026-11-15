@@ -736,6 +736,8 @@ export function createGlobalEngine(loader) {
         case 'tsums': return tsums();
         case 'skill-types': return skillTypes();
         case 'play-settings': return playSettings();
+        // The Stats rail takes the global site's skill levels from status.
+        case 'skill-levels': return (await getManifest()).skills.map(s => ({value: String(s), rounds: null}));
         case 'status': return status();
         case 'themes': return THEMES.map(t => ({...t}));
         case 'devices': case 'round-devices': case 'owned-sources': return [];
