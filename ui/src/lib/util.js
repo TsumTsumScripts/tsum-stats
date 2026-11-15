@@ -110,8 +110,23 @@ export function itemsLabel(mask) {
 
 /** A skill type as the skillType filter lists it: '-' for the rounds sent without one (queries.go: NoSkillType). */
 export const skillTypeValue = t => (t === '' ? '-' : t);
-/** A skill type as the script names it, or "Not recorded" ('' or '-'). */
-export const skillTypeName = t => (t === '' || t === '-' ? 'Not recorded' : t);
+// The Tsum script's English names for its skill types, by the id a round
+// records (SkillType in shared.d.ts, the names in uiEn.ts; 5.0 and 6.0, plus
+// ids since retired, so older rounds still read by name).
+const SKILLS = {
+  burst: 'Burst', burst_bubbles: 'Burst + clear bubbles', donald: 'Donald', donaldx: 'Holiday Donald',
+  lukej: 'Jedi Luke', moana: 'Moana', marie: 'Marie', missbunny: 'Miss Bunny', rabbit: 'Rabbit',
+  mickeyh2015: 'Horn Hat Mickey', snowwhite: 'Snow White', cinderella: 'Cinderella', woody2: 'Sheriff Woody',
+  cabbage_mickey: 'Cabbage Mickey', buzzl: 'Cpt. Lightyear', buzzl_120: 'Cpt. Lightyear 120',
+  mcqueenplus: 'Lightning McQueen+', beastda: 'Formal Beast', minnie12thplus: 'Tiara Minnie+',
+  elsa_coronation: 'Coronation Day Elsa', elsa_coronation_legacy: 'Coronation Day Elsa (legacy)',
+  rapunzelplus: 'Rapunzel+', gaston: 'Gaston', auroraink: 'Lorcana Aurora',
+  nbc_set: 'Nightmare Before Christmas (Set)', villains_set: 'Disney Villains (Set)',
+  colorful_mickey_set: 'Colorful Mickey (Set)', magic_wand_change: 'Magic Wand Change', cloud: 'KH2 Cloud',
+  pair_tsum: 'Pair Tsum', nokill: 'No Skill', unknown_skill: 'Unknown skill',
+};
+/** A skill type as the script names it, or "Not recorded" ('' or '-'); an id it does not know reads as itself. */
+export const skillTypeName = t => (t === '' || t === '-' ? 'Not recorded' : SKILLS[t] ?? t);
 
 /**
  * The play settings the filters go by (the engines' PLAY_SETTINGS), by query

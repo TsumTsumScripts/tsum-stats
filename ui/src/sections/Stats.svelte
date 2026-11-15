@@ -503,7 +503,7 @@
     num('medalsPerSec', 'Medals/s', r => (r.medals !== null && r.durationSeconds ? r.medals / r.durationSeconds : null), fmtRate,
       {meta: {cls: 'medal', hidden: true, show: coinMode}}),
     num('durationSeconds', 'Time', r => r.durationSeconds, fmtDuration),
-    {id: 'skillType', header: 'Skill', accessorKey: 'skillType', cell: r => r.skillType || '—', enableSorting: false, meta: {cls: 'dim', hidden: true}},
+    {id: 'skillType', header: 'Skill', accessorKey: 'skillType', cell: r => (r.skillType ? skillTypeName(r.skillType) : '—'), enableSorting: false, meta: {cls: 'dim', hidden: true}},
     {id: 'device', header: 'Device', accessorKey: 'device', cell: r => r.device || '—', sortDescFirst: false, meta: {cls: 'dim'}},
   ];
 
