@@ -10,7 +10,9 @@
   import {differs, errText, expHour, trusted} from '../../lib/expected.js';
   import {fmt, fmtRate, parseUTC, pct} from '../../lib/util.js';
 
-  // rows: [{label, rounds, avgCoins, maxCoins, coinsPerSec, avgScore, first, last, exp*, mark?}].
+  // rows: [{label, rounds, avgCoins, maxCoins, coinsPerSec, avgScore, first, last, exp*, mark?, stepCost?}].
+  // stepCost (skill levels, against 'prev'): the coins the boxes from the row above to this one cost, when
+  // the row above is the level below; the row then says how many hours of play its gain takes to earn that back.
   // against: 'prev' compares each row with the one above it, 'most' with the most played row.
   // few: in medals, rows with fewer rounds than this are marked as too few to trust.
   let {rows, unit, head, against = 'most', few = 20} = $props();
@@ -35,15 +37,19 @@
       const change = ref && value(ref) && value(r) !== null ? value(r) / value(ref) - 1 : null;
       // Medals have no error to judge by: a change past half a percent is shown as one.
       const real = change !== null && (medals ? Math.abs(change) > 0.005 : differs(r, ref));
-      return {...r, v: value(r), bar: top > 0 && value(r) !== null ? (value(r) / top) * 100 : 0, change, real, best: r === best, sure: sure(r)};
+      // Hours of play for this level's gain over the level below to earn back the boxes between them.
+      const gain = ref && value(r) !== null && value(ref) !== null ? value(r) - value(ref) : null;
+      const payback = !medals && r.stepCost && real && gain > 0 ? r.stepCost / gain : null;
+      return {...r, v: value(r), bar: top > 0 && value(r) !== null ? (value(r) / top) * 100 : 0, change, real, best: r === best, sure: sure(r), payback};
     });
   });
+  const paying = $derived(view.some(r => r.stepCost));
   const changeTitle = $derived(`${against === 'prev' ? 'Against the row above' : 'Against the most played row'}; coloured only when the difference is more than luck explains`);
 </script>
 
 <div class="table-wrap">
   <table class="breakdown">
-    <colgroup><col class="bd-c-label"><col class="bd-c-n"><col class="bd-c-rate">{#if !medals}<col class="bd-c-n">{/if}<col class="bd-c-n"><col class="bd-c-n"><col class="bd-c-n"><col class="bd-c-n"><col class="bd-c-when"></colgroup>
+    <colgroup><col class="bd-c-label"><col class="bd-c-n"><col class="bd-c-rate">{#if !medals}<col class="bd-c-n">{/if}<col class="bd-c-n">{#if paying}<col class="bd-c-n">{/if}<col class="bd-c-n"><col class="bd-c-n"><col class="bd-c-n"><col class="bd-c-when"></colgroup>
     <thead>
       <tr>
         <th>{head}</th>
@@ -55,6 +61,7 @@
           <th class="num" title="How far the figure could be off by the luck of which rounds were played (one standard error)">±</th>
         {/if}
         <th class="num" title={changeTitle}>Change</th>
+        {#if paying}<th class="num" title="Hours of play for the gain over the level below to earn back the boxes between them (30,000 coins each); only where the gain is more than luck explains">Pays back in</th>{/if}
         <th class="num">{medals ? 'Average' : 'Coins/s'}</th>
         <th class="num">{medals ? 'Highest' : 'Average'}</th>
         <th class="num">Avg score</th>
@@ -75,6 +82,7 @@
           </td>
           {#if !medals}<td class="num dim">{errText(r)}</td>{/if}
           <td class="num" class:up={r.real && r.change > 0} class:down={r.real && r.change < 0}>{r.change === null ? '' : `${r.change > 0 ? '+' : ''}${pct(r.change)}`}</td>
+          {#if paying}<td class="num dim">{r.payback === null ? '' : `${fmt(r.payback)} h`}</td>{/if}
           <td class="num">{medals ? fmt(r.avgCoins) : fmtRate(r.coinsPerSec)}</td>
           <td class="num">{medals ? fmt(r.maxCoins) : fmt(r.avgCoins)}</td>
           <td class="num score">{fmt(r.avgScore)}</td>

@@ -374,14 +374,21 @@ nothing is left out of them. Stats keeps every round.
   against the 50 before them, coloured only beyond luck.
 - **To the next skill:** boxes and their cost to the next skill level and to full
   skill, from the catalog's box counts and the Tsum list's progress, as play
-  time at what all your Tsums earned a second in the filter: final coins (less
-  item costs with *Less item costs*), or medals for a medal Tsum.
+  time at what all your Tsums earned a second in the filter: expected net
+  coins, or medals for a medal Tsum. When the filter has rounds at both your
+  level and the next, it says what the next level earns an hour more and how
+  many hours of play that takes to pay back its boxes (only when the gain is
+  more than luck explains).
 - **Consistency:** half the rounds land within ± this share of the median (half
   the middle half's width over the median, so a misread round does not stretch
   it). Type a target to see what share of rounds fell under it; the target is
   kept per Tsum and primary stat in this browser (`target=` in the API).
 - **By skill level:** the figures per `skillLevel` the script was set to, each
-  against the level below. The level the Tsum list says it is at is marked
+  against the level below. *Pays back in* is the hours of play a level's gain
+  in expected coins takes to earn back the boxes from the level below (30,000
+  coins each; not for medal Tsums), where the gain is more than luck explains:
+  the skill curve, and which level-up is worth its boxes. The global site's,
+  over every player's rounds, usually has the levels yours lacks. The level the Tsum list says it is at is marked
   *now*. Below it, each level with 20 rounds or more is a line of its share of
   rounds per coin bucket (the histogram's buckets).
 - **Do the items pay?** Each boost item in expected net coins an hour, against

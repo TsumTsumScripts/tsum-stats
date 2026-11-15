@@ -3,7 +3,7 @@
      with the share of rounds under a target the player sets. -->
 <script>
   import {toMax, toNext} from '../../lib/boxes.js';
-  import {differs, errText, expHour} from '../../lib/expected.js';
+  import {differs, errText, expHour, expRate, sumExp} from '../../lib/expected.js';
   import {debounce, fmt, fmtRate, pct} from '../../lib/util.js';
 
   // detail: the /tsum answer; own: the Tsum's Tsum list row (null when not owned,
@@ -45,9 +45,16 @@
     if (!own || !entry?.boxes?.length) return null;
     const next = toNext(entry, own), max = toMax(entry, own);
     const u = max.unit;
-    const rate = u === 'medals' ? detail.earn.medalsPerSec : detail.earn.coinsPerSec;
+    // Coins at what all the Tsums in the filter earn in expected net coins: the bonus's luck and the items' cost out.
+    const rate = u === 'medals' ? detail.earn.medalsPerSec : expRate(sumExp(detail.field)) ?? detail.earn.coinsPerSec;
     const time = cost => (rate > 0 ? playTime(cost / rate) : null);
-    return {next, max, u, rate, nextTime: next && time(next.cost), maxTime: time(max.cost)};
+    // What the next level earns over this one, when the filter has rounds of both (the global site's usually does):
+    // the hours of play its gain takes to earn back the boxes.
+    const level = k => detail.settings.find(r => r.setting === 'skillLevel' && r.key === String(k));
+    const now = level(own.skill), then = next && level(next.skill);
+    const gain = u === 'coins' && now && then && differs(then, now) ? expHour(then) - expHour(now) : null;
+    return {next, max, u, rate, nextTime: next && time(next.cost), maxTime: time(max.cost),
+      gain, payback: gain > 0 ? playTime((next.cost / gain) * 3600) : null};
   });
 
   // Half the middle half's width against the median: a misread round cannot stretch it as it does the standard deviation.
@@ -77,7 +84,7 @@
   {/if}
 
   {#if boxes}
-    <div class="panel kpi" title="At what all your Tsums earned a second of play in this filter: {fmtRate(boxes.rate)} {boxes.u === 'medals' ? 'medals' : 'final coins'}/s">
+    <div class="panel kpi" title="At what all {whose} Tsums earned a second of play in this filter: {fmtRate(boxes.rate)} {boxes.u === 'medals' ? 'medals' : 'expected net coins'}/s">
       {#if boxes.next}
         <div class="label">To skill {boxes.next.skill}</div>
         <div class="value">{fmt(boxes.next.boxes)} <span class="unit">{boxes.next.boxes === 1 ? 'box' : 'boxes'}</span></div>
@@ -85,6 +92,9 @@
           {fmt(boxes.next.cost)} {boxes.u}{#if boxes.nextTime}{' '}≈ <b>{boxes.nextTime}</b> of play{/if}
           {#if boxes.max.boxes > boxes.next.boxes} · full skill: {fmt(boxes.max.boxes)} boxes{#if boxes.maxTime}{' '}≈ {boxes.maxTime}{/if}{/if}
         </div>
+        {#if boxes.gain !== null}
+          <div class="note">skill {boxes.next.skill} earns <span class={boxes.gain > 0 ? 'up' : 'down'}>{boxes.gain > 0 ? '+' : '−'}{fmt(Math.abs(boxes.gain))}</span> expected coins/h{#if boxes.payback}: pays back in {boxes.payback} of play{/if}</div>
+        {/if}
       {:else}
         <div class="label">Skill</div>
         <div class="value">Full</div>

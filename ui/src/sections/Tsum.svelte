@@ -17,7 +17,7 @@
   import Panel from '../components/Panel.svelte';
   import Seg from '../components/Seg.svelte';
   import {drawDaily, drawHistogram, drawItems, drawSkillSpread} from '../lib/charts.js';
-  import {toMax} from '../lib/boxes.js';
+  import {BOX_PRICE, toMax} from '../lib/boxes.js';
   import {JACKPOT_TIMES} from '../lib/snapshot/engine.js';
   import {cardContext} from '../lib/card.js';
   import CopyButton from '../components/CopyButton.svelte';
@@ -238,7 +238,10 @@
   /** Skill levels, lowest first, with the one the Tsum list says it is at marked. */
   const skills = $derived(settingRows('skillLevel', k => `Skill ${k}`)
     .sort((a, b) => Number(a.key) - Number(b.key))
-    .map(r => ({...r, mark: owned?.own?.skill != null && Number(r.key) === owned.own.skill ? 'now' : ''})));
+    .map((r, i, all) => ({...r, mark: owned?.own?.skill != null && Number(r.key) === owned.own.skill ? 'now' : '',
+      // The boxes from the level below to this one (boxes[i] takes skill i to i+1), in coins; a medal Tsum's take medals.
+      stepCost: i && Number(all[i - 1].key) === Number(r.key) - 1 && entry?.boxes?.[Number(r.key) - 1] && !entry.medal
+        ? entry.boxes[Number(r.key) - 1] * BOX_PRICE.coins : null})));
 
   // Settings the page shows elsewhere: the skill level, and the boost items (each bonus*).
   const shownElsewhere = k => k === 'skillLevel' || k.startsWith('bonus');
@@ -460,7 +463,7 @@
       </div>
 
       {#if skills.length}
-        <Panel title="By skill level" sub="the skill level set in the script for each round · change is against the level below" expandable={false}>
+        <Panel title="By skill level" sub="the skill level set in the script for each round · change is against the level below · pays back in: hours of play for the gain to earn back that level's boxes" expandable={false}>
           <Breakdown rows={skills} {unit} head="Skill" against="prev" />
         </Panel>
         {#if skills.filter(r => r.rounds >= 20).length > 1}
