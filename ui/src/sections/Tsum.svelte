@@ -53,6 +53,13 @@
     savePref(VIEW_KEY, {...views});
     if (key === 'best') loadBest();
   }
+  // A chart's measure as drawn and the rate measures offered: as on Stats (Stats.svelte: mv), medals an hour in Medals mode.
+  const mv = key => {
+    const v = views[key];
+    if (filter.coins === 'medals') return v === 'exp' || v === 'rate' ? 'hour' : v;
+    return v === 'hour' ? 'exp' : v;
+  };
+  const rateOpts = () => (filter.coins === 'medals' ? [['hour', `${U}/h`]] : [['exp', 'Expected/h'], ['rate', `${U}/s`]]);
 
   const catalog = shared.catalog;
   const nameOf = id => (id ? tsumName(catalog, id) : '');
@@ -294,12 +301,12 @@
 
   const args = $derived(s && {
     skills: [detail.skillBins, s.histogram],
-    daily: [s.daily, s.dailyTsums, ctx, views.daily],
+    daily: [s.daily, s.dailyTsums, ctx, mv('daily')],
     hist: [s.histogram, s.totals, ctx],
-    items: [s.mix, views.items],
+    items: [s.mix, mv('items')],
   });
-  const dailySub = $derived({rate: `${basis} per second of play`, avg: `average ${basis} per round`, stack: `total ${basis} each day`,
-    exp: 'expected net coins an hour of play · band: where the day\'s true figure most likely is (two standard errors)'}[views.daily]
+  const dailySub = $derived({rate: `${basis} per second of play`, hour: `${basis} an hour of play`, avg: `average ${basis} per round`, stack: `total ${basis} each day`,
+    exp: 'expected net coins an hour of play · band: where the day\'s true figure most likely is (two standard errors)'}[mv('daily')]
     + (globalSite ? ' · by the UTC day each round began' : ''));
   const builds = $derived(new Set((s?.mix ?? []).map(m => m.build)).size > 1 || Boolean(filter.build));
 
@@ -476,7 +483,7 @@
 
       <Panel title="{U} per day" sub={dailySub}>
         {#snippet tools()}
-          <Seg sm label="Chart" value={views.daily} onpick={v => setView('daily', v)} options={[['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average'], ['stack', 'Total']]} />
+          <Seg sm label="Chart" value={mv('daily')} onpick={v => setView('daily', v)} options={[...rateOpts(), ['avg', 'Average'], ['stack', 'Total']]} />
         {/snippet}
         <Chart draw={drawDaily} args={args?.daily} {unit} />
       </Panel>
@@ -488,7 +495,7 @@
       <div class="charts">
         <Panel class="wide" title="By items used" sub="every item set, best first">
           {#snippet tools()}
-            <Seg sm label="Measure" value={views.items} onpick={v => setView('items', v)} options={[['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
+            <Seg sm label="Measure" value={mv('items')} onpick={v => setView('items', v)} options={[...rateOpts(), ['avg', 'Average'], ['rounds', 'Rounds']]} />
           {/snippet}
           <Chart draw={drawItems} args={args?.items} {unit} size="square" />
         </Panel>

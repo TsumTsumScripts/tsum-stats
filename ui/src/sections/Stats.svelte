@@ -97,6 +97,19 @@
     views[key] = v;
     savePref(VIEW_KEY, {...views});
   }
+  /**
+   * A chart's measure as drawn. In Medals mode expected coins and the per-second
+   * rate both stand for medals an hour ('hour'), so no chart under a medal title
+   * ranks by coins; in coin modes 'hour' is expected coins an hour again. The
+   * stored choice is left as it was, so switching back restores it.
+   */
+  const mv = key => {
+    const v = views[key];
+    if (filter.coins === 'medals') return v === 'exp' || v === 'rate' ? 'hour' : v;
+    return v === 'hour' ? 'exp' : v;
+  };
+  /** The rate measures a chart offers: Medals/h in Medals mode, else expected coins an hour and the coin rate. */
+  const rateOpts = () => (filter.coins === 'medals' ? [['hour', `${U}/h`]] : [['exp', 'Expected/h'], ['rate', `${U}/s`]]);
 
   const filter = $state(blank());
   /** Devices that have played a round: {device, rounds}. */
@@ -363,7 +376,7 @@
   });
 
   const effSub = $derived(summary && {
-    rate: `${fmt(byRounds.length)} Tsums · click one to focus, Ctrl/⌘-click to compare${views.effMetric === 'exp' ? ` · expected: ${EXP_WHAT}` : ''}`,
+    rate: `${fmt(byRounds.length)} Tsums · click one to focus, Ctrl/⌘-click to compare${mv('effMetric') === 'exp' ? ` · expected: ${EXP_WHAT}` : ''}`,
     box: 'the 12 most played · box: middle half · bar: median · dot: average · whiskers: lowest to 90th percentile · ring: highest',
     bubble: 'every Tsum · across: average coins · up: coins per second · size: rounds',
   }[views.eff] + (minRounds ? ` · Tsums with ${fmt(minRounds)} rounds or more` : ''));
@@ -371,9 +384,9 @@
     ? (new Set(summary.mix.map(m => m.build)).size > 1 ? 'inner: game · middle: Tsum · outer: items used' : 'inner: Tsum · outer: items used')
     : 'top 8 Tsums, the rest as Other'));
   const dailySub = $derived(summary && {
-    stack: `total ${basis}, top 7 Tsums`, rate: `${basis} per second of play`, avg: `average ${basis} per round`,
+    stack: `total ${basis}, top 7 Tsums`, rate: `${basis} per second of play`, hour: `${basis} an hour of play`, avg: `average ${basis} per round`,
     exp: `expected net coins an hour of play · band: where the day's true figure most likely is (two standard errors)`,
-  }[views.daily] + (globalSite ? ' · by the UTC day each round began' : ''));
+  }[mv('daily')] + (globalSite ? ' · by the UTC day each round began' : ''));
   const histSub = $derived(summary && (noSpreads ? `not available ${noSpreads}: ${noSpreadsWhy}`
     : `how many rounds ended with each amount of ${basis}, by Tsum${summary.global ? ' · ≈ from 2 % wide bins' : ''}`));
 
@@ -398,19 +411,19 @@
   // Shares are of every Tsum in the filter, ranked or not; the table lists the ranked ones.
   const tableRows = $derived(tsumRows.filter(ranked));
   // A card's efficiency chart keeps the 10 best by its measure.
-  const effGet = {exp: expHour, rate: t => t.coinsPerSec, avg: t => t.avgCoins, median: t => t.medianCoins, max: t => t.maxCoins};
+  const effGet = {exp: expHour, rate: t => t.coinsPerSec, hour: t => (t.coinsPerSec == null ? null : t.coinsPerSec * 3600), avg: t => t.avgCoins, median: t => t.medianCoins, max: t => t.maxCoins};
   const effTop = $derived.by(() => {
     if (views.eff !== 'rate') return byRounds.slice(0, 10);
-    const get = effGet[views.effMetric] ?? effGet.rate;
+    const get = effGet[mv('effMetric')] ?? effGet.rate;
     return byRounds.filter(t => get(t) != null).sort((a, c) => get(c) - get(a)).slice(0, 10);
   });
   const args = $derived(summary && {
-    compare: picked.length > 1 ? [summary.dailyTsums, picked, ctx, views.compare] : null,
-    eff: [views.eff, byRounds, spreadCtx, views.effMetric],
-    daily: [summary.daily, summary.dailyTsums, ctx, views.daily],
+    compare: picked.length > 1 ? [summary.dailyTsums, picked, ctx, mv('compare')] : null,
+    eff: [views.eff, byRounds, spreadCtx, mv('effMetric')],
+    daily: [summary.daily, summary.dailyTsums, ctx, mv('daily')],
     share: [views.share, views.share === 'sunburst' ? summary.mix : summary.tsums, ctx, views.shareMetric],
-    items: [summary.mix, views.items],
-    chains: [summary.chains, views.chains],
+    items: [summary.mix, mv('items')],
+    chains: [summary.chains, mv('chains')],
     hist: [summary.histogram, summary.totals, spreadCtx],
     bonus: [views.bonusView, summary.bonus, views.bonus, ctx],
   });
@@ -604,8 +617,8 @@
       {/if}
       <div class="panel-head versus-head">
         <div><h3>Per day</h3></div>
-        <Seg sm label="Measure" value={views.compare} onpick={v => setView('compare', v)}
-          options={[['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average'], ['total', 'Total'], ['rounds', 'Rounds']]} />
+        <Seg sm label="Measure" value={mv('compare')} onpick={v => setView('compare', v)}
+          options={[...rateOpts(), ['avg', 'Average'], ['total', 'Total'], ['rounds', 'Rounds']]} />
       </div>
       <Chart draw={drawCompare} args={args?.compare} {unit} bind:legend={legends.compare} />
       <Legend items={legends.compare} />
@@ -614,16 +627,16 @@
     <Panel id="s-efficiency" class="anchor" title="{U.slice(0, -1)} efficiency by Tsum" sub={effSub}>
       {#snippet tools()}
         <Seg sm label="Chart" value={views.eff} onpick={v => setView('eff', v)} options={[['rate', 'Ranked'], ['box', 'Spread'], ['bubble', 'Bubbles']]} />
-        <Seg sm label="Measure" value={views.effMetric} onpick={v => setView('effMetric', v)} hidden={views.eff !== 'rate'}
-          options={[['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average'], ['median', 'Median'], ['max', 'Best']]} />
+        <Seg sm label="Measure" value={mv('effMetric')} onpick={v => setView('effMetric', v)} hidden={views.eff !== 'rate'}
+          options={[...rateOpts(), ['avg', 'Average'], ['median', 'Median'], ['max', 'Best']]} />
       {/snippet}
-      <Chart draw={drawEfficiency} args={args?.eff} cardArgs={args && [views.eff, effTop, spreadCtx, views.effMetric]} {unit} size="tall" />
+      <Chart draw={drawEfficiency} args={args?.eff} cardArgs={args && [views.eff, effTop, spreadCtx, mv('effMetric')]} {unit} size="tall" />
     </Panel>
 
     <div class="charts anchor" id="s-time">
       <Panel class="wide" title="{U} per day" sub={dailySub}>
         {#snippet tools()}
-          <Seg sm label="Chart" value={views.daily} onpick={v => setView('daily', v)} options={[['stack', 'By Tsum'], ['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average']]} />
+          <Seg sm label="Chart" value={mv('daily')} onpick={v => setView('daily', v)} options={[['stack', 'By Tsum'], ...rateOpts(), ['avg', 'Average']]} />
         {/snippet}
         <Chart draw={drawDaily} args={args?.daily} {unit} bind:legend={legends.daily} />
         <Legend items={legends.daily} />
@@ -645,7 +658,7 @@
     <div class="charts anchor" id="s-when">
       <Panel class="wide" title="By items used" sub="every item set over every Tsum and skill level, best first · pick one Tsum, and see its page, to compare like with like">
         {#snippet tools()}
-          <Seg sm label="Measure" value={views.items} onpick={v => setView('items', v)} options={[['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
+          <Seg sm label="Measure" value={mv('items')} onpick={v => setView('items', v)} options={[...rateOpts(), ['avg', 'Average'], ['rounds', 'Rounds']]} />
         {/snippet}
         <Chart draw={drawItems} args={args?.items} {unit} size="square" />
       </Panel>
@@ -656,7 +669,7 @@
       {#snippet tools()}
         <Seg sm label="View" value={views.chainsView} onpick={v => setView('chainsView', v)} options={[['all', 'Every pair'], ['best', 'Best per Tsum']]} />
         {#if views.chainsView !== 'best'}
-          <Seg sm label="Measure" value={views.chains} onpick={v => setView('chains', v)} options={[['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
+          <Seg sm label="Measure" value={mv('chains')} onpick={v => setView('chains', v)} options={[...rateOpts(), ['avg', 'Average'], ['rounds', 'Rounds']]} />
         {/if}
       {/snippet}
       {#if views.chainsView === 'best'}

@@ -137,18 +137,21 @@ const expBand = {mid: p => expHour(p), lo: p => expHour(p) * (1 - 2 * (expErr(p)
 export function drawDaily(container, daily, dailyTsums, ctx, mode) {
   const f = frame(container, {top: 12, right: 16, bottom: 26, left: 52});
   const {g, inner} = f;
-  if (mode === 'rate' || mode === 'avg' || mode === 'exp') {
+  if (mode === 'rate' || mode === 'hour' || mode === 'avg' || mode === 'exp') {
     // The average has no band: a day's lowest and highest round widen with how much was played, not how steady it was.
-    const get = mode === 'rate' ? {mid: p => p.coinsPerSec} : mode === 'exp' ? expBand : {mid: p => p.avgCoins};
+    const get = mode === 'rate' ? {mid: p => p.coinsPerSec} : mode === 'hour' ? {mid: p => (p.coinsPerSec == null ? null : p.coinsPerSec * 3600)}
+      : mode === 'exp' ? expBand : {mid: p => p.avgCoins};
     const pts = daily.filter(d => get.mid(d) !== null).map(d => ({...d, date: parseDay(d.day)}));
     if (!pts.length) return empty(f);
     const x = dayScale(f, pts);
     const lo = d3.min(pts, get.lo || get.mid), hi = d3.max(pts, get.hi || get.mid);
     const y = d3.scaleLinear().domain([Math.max(0, lo - (hi - lo) * 0.15), hi * 1.03]).nice().range([inner.h, 0]);
     dayAxes(f, x, y, mode === 'rate' ? v => fmtRate(v) : undefined);
-    bandLine(f, pts, x, y, css('--coin'), get);
+    bandLine(f, pts, x, y, css(U === 'medals' && mode !== 'exp' ? '--medal' : '--coin'), get);
     dayHover(f, x, pts, (p, e) => showTip([[b(dayLabel.format(p.date))], [`${fmt(p.rounds)} rounds`], ...(mode === 'rate'
       ? [[b(fmtRate(p.coinsPerSec)), ` ${U} per second`]]
+      : mode === 'hour'
+        ? [[b(fmt(p.coinsPerSec * 3600)), ` ${U} an hour`]]
       : mode === 'exp'
         ? [[b(fmt(expHour(p))), ' expected coins/h'], ...(expErr(p) === null ? [] : [[dim(`± ${pct(expErr(p))} · band: two standard errors either side`)]])]
         : [['Average ', b(fmt(p.avgCoins)), ` ${U}`], [`Lowest ${fmt(p.minCoins)} · Highest ${fmt(p.maxCoins)}`]])], e));
@@ -190,6 +193,7 @@ export function drawDaily(container, daily, dailyTsums, ctx, mode) {
 const COMPARE = {
   exp: {get: r => expHour(r), fmt: v => fmt(v), name: () => 'expected coins per hour'},
   rate: {get: r => r.coinsPerSec, fmt: v => fmtRate(v), name: () => `${U} per second`},
+  hour: {get: r => (r.coinsPerSec == null ? null : r.coinsPerSec * 3600), fmt: v => fmt(v), name: () => `${U} per hour`},
   avg: {get: r => r.avgCoins, fmt: v => fmt(v), name: () => `average ${U}`},
   total: {get: r => r.coins, fmt: v => fmt(v), name: () => `total ${U}`},
   rounds: {get: r => r.rounds, fmt: v => fmt(v), name: () => 'rounds'},
@@ -221,6 +225,7 @@ export function drawCompare(container, dailyTsums, ids, ctx, metric) {
 const METRICS = {
   exp: {get: t => expHour(t), fmt, name: () => 'expected coins per hour'},
   rate: {get: t => t.coinsPerSec, fmt: fmtRate, name: () => `${U} per second`},
+  hour: {get: t => (t.coinsPerSec == null ? null : t.coinsPerSec * 3600), fmt, name: () => `${U} per hour`},
   avg: {get: t => t.avgCoins, fmt, name: () => `average ${U}`},
   median: {get: t => t.medianCoins, fmt, name: () => `median ${U}`},
   max: {get: t => t.maxCoins, fmt, name: () => `best ${U}`},
@@ -454,6 +459,7 @@ export function drawShare(container, view, rows, ctx, metric) {
 const ITEM_METRIC = {
   exp: {get: s => (s.expSeconds ? (s.expCoins / s.expSeconds) * 3600 : null), fmt: v => `${fmt(v)}/h`},
   rate: {get: s => (s.secs ? s.rateCoins / s.secs : null), fmt: v => `${fmtRate(v)}/s`},
+  hour: {get: s => (s.secs ? (s.rateCoins / s.secs) * 3600 : null), fmt: v => `${fmt(v)}/h`},
   avg: {get: s => (s.coinRounds ? s.coins / s.coinRounds : null), fmt: v => fmt(v)},
   rounds: {get: s => s.rounds, fmt: v => fmt(v)},
 };
