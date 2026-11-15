@@ -22,7 +22,7 @@
       const r = d.round;
       let status = 'Idle';
       if (!online) status = 'Offline';
-      else if (r) status = `${r.tally ? 'Tallying' : 'Round'} ${r.round} · ${r.tsum ? tsumName(shared.catalog, r.tsum, r.build) : '?'}`;
+      else if (r) status = `${r.tally ? 'Tallying' : 'Round'} ${r.round} · ${r.tsum ? tsumName(shared.catalog, r.tsum) : '?'}`;
       else if (d.paused) status = 'Paused';
       else if (d.active) status = 'Running';
       const lastSeen = !online && d.lastSeen ? `last seen ${seen.format(new Date(d.lastSeen))}` : '';

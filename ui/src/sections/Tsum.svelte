@@ -21,6 +21,7 @@
   import {JACKPOT_TIMES} from '../lib/snapshot/engine.js';
   import {cardContext} from '../lib/card.js';
   import CopyButton from '../components/CopyButton.svelte';
+  import {names} from '../lib/names.svelte.js';
   import {shared} from '../lib/ui.svelte.js';
   import {
     api, buildLabel, cap, chainsLabel, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref,
@@ -52,7 +53,7 @@
   }
 
   const catalog = shared.catalog;
-  const nameOf = id => (id ? tsumName(catalog, id, filter.build || 'global') : '');
+  const nameOf = id => (id ? tsumName(catalog, id) : '');
   const colorOf = id => tsumColor(catalog, id);
   const ctx = {nameOf, colorOf, onPick: () => {}};
 
@@ -76,7 +77,7 @@
   const entry = $derived(catalog.byId.get(filter.id));
   const name = $derived(nameOf(filter.id));
   const altName = $derived.by(() => {
-    const other = entry && (filter.build === 'jp' ? entry.global : entry.jp);
+    const other = entry && (names.lang === 'jp' ? entry.global : entry.jp);
     return other && other !== name ? other : '';
   });
 
@@ -188,7 +189,7 @@
 
   function pick(typed) {
     const text = typed.trim().toLowerCase();
-    const hit = text && played.find(t => [tsumName(catalog, t.tsum), tsumName(catalog, t.tsum, 'jp'), t.tsum]
+    const hit = text && played.find(t => [tsumName(catalog, t.tsum, 'en'), tsumName(catalog, t.tsum, 'jp'), t.tsum]
       .some(n => n.toLowerCase() === text));
     if (!hit) return false;
     set({id: hit.tsum});
@@ -393,7 +394,7 @@
   </div>
 
   <!-- The global site: one click to each new Tsum, from any Tsum's page too (the tab keeps the last one picked). -->
-  {#if globalSite}<NewTsums build={filter.build || 'global'} current={filter.id} played={playedRounds} onpick={id => set({id})} />{/if}
+  {#if globalSite}<NewTsums current={filter.id} played={playedRounds} onpick={id => set({id})} />{/if}
 
   {#if !filter.id}
     <div class="panel">

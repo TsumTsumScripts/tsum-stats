@@ -2,6 +2,7 @@
 // the Tsum catalog and each Tsum's colour.
 import {globalApi, isGlobal} from './global/client.js';
 import {isSnapshot, snapshotApi} from './snapshot/client.js';
+import {names} from './names.svelte.js';
 
 export const IMAGE_URL = id => `https://tsum-assets.gapscripts.app/tsums/block_${encodeURIComponent(id)}_l.png`;
 
@@ -51,11 +52,14 @@ export function loadCatalog() {
   return catalogPromise;
 }
 
-/** A Tsum's name for a build, falling back to the other build's, then the id. */
-export function tsumName(catalog, id, build = 'global') {
+/**
+ * A Tsum's name in a language, 'en' or 'jp' (default: the page's, names.lang),
+ * falling back to the other language's, then the id. 'global' is 'en'.
+ */
+export function tsumName(catalog, id, lang = names.lang) {
   const t = catalog?.byId.get(id);
   if (!t) return id || 'Unknown';
-  return (build === 'jp' ? t.jp || t.global : t.global || t.jp) || id;
+  return (lang === 'jp' ? t.jp || t.global : t.global || t.jp) || id;
 }
 
 /** "Mickey Mouse" → "MM", for a portrait whose art is missing. */

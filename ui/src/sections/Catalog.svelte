@@ -12,6 +12,7 @@
   import Seg from '../components/Seg.svelte';
   import MaxOut from './catalog/MaxOut.svelte';
   import {maxOutTotals, toMax} from '../lib/boxes.js';
+  import {names} from '../lib/names.svelte.js';
   import {shared} from '../lib/ui.svelte.js';
   import {api, debounce, fmt, loadPref, savePref, tsumColor} from '../lib/util.js';
 
@@ -30,20 +31,21 @@
     skill: {label: 'Skill level', dir: 'desc'},
     left: {label: 'Boxes to max', dir: 'desc'},
   };
-  const NAME_MODES = ['en', 'jp', 'all'];
   const VIEWS = ['card', 'list'];
 
-  // Sort, view and name language are per-browser preferences, not part of the link.
+  // Sort, view and showing both names are per-browser preferences, not part of the link;
+  // the language comes first is the page's (names.lang, the top bar).
   const PREF_KEY = 'tsum-stats.catalog';
   function loadPrefs() {
-    const d = {sorts: [{key: 'name', dir: 'asc'}], view: 'card', names: 'all'};
+    const d = {sorts: [{key: 'name', dir: 'asc'}], view: 'card', both: true};
     const p = loadPref(PREF_KEY, {});
     const sorts = (Array.isArray(p.sorts) ? p.sorts : []).filter((s, i, all) =>
       s && s.key in SORTS && (s.dir === 'asc' || s.dir === 'desc') && all.findIndex(o => o.key === s.key) === i);
     return {
       sorts: sorts.length ? sorts : d.sorts,
       view: VIEWS.includes(p.view) ? p.view : d.view,
-      names: NAME_MODES.includes(p.names) ? p.names : d.names,
+      // Before the page-wide language, names was 'en', 'jp' or 'all' (both).
+      both: typeof p.both === 'boolean' ? p.both : p.names ? p.names === 'all' : d.both,
     };
   }
 
@@ -135,16 +137,16 @@
   });
 
   // This build's roster, plus anything owned that the roster has no name for.
-  // Names: en/jp show one language (falling back to the other); all shows this build's name with the other under it.
+  // Names: the page's language (falling back to the other); with both, the other under it.
   const view = $derived.by(() => {
     const build = filter.build;
     const owned = new Map((list?.items ?? []).filter(t => t.tsum).map(t => [t.tsum, t]));
-    const first = prefs.names === 'all' ? build : prefs.names === 'jp' ? 'jp' : 'global';
+    const first = names.lang === 'jp' ? 'jp' : 'global';
     const second = first === 'jp' ? 'global' : 'jp';
-    const named = (id, names, own) => {
-      const name = names[first] || names[second] || id;
-      const alt = prefs.names === 'all' && names[second] && names[second] !== names[first] ? names[second] : '';
-      return {id, name, alt, search: `${names.global} ${names.jp}`.toLowerCase(), own, color: tsumColor(catalog, id),
+    const named = (id, n, own) => {
+      const name = n[first] || n[second] || id;
+      const alt = prefs.both && n[second] && n[second] !== n[first] ? n[second] : '';
+      return {id, name, alt, search: `${n.global} ${n.jp}`.toLowerCase(), own, color: tsumColor(catalog, id),
         left: toMax(catalog.byId.get(id), own)};
     };
     const entries = catalog.tsums.filter(t => t[build] || owned.has(t.id)).map(t => named(t.id, t, owned.get(t.id) ?? null));
@@ -268,7 +270,8 @@
         <Seg label="Owned" value={filter.owned} onpick={v => set({owned: v})} options={[['all', 'All'], ['owned', 'Owned'], ['missing', 'Missing']]} />
       {/if}
       <input class="search" type="search" placeholder="Search Tsums" autocomplete="off" value={filter.q} oninput={e => setQuery(e.target.value)}>
-      <Seg label="Tsum names" value={prefs.names} onpick={v => setPrefs({names: v})} options={[['en', 'Eng'], ['jp', 'JP'], ['all', 'All']]} />
+      <Seg label="Names" value={prefs.both ? 'both' : 'one'} onpick={v => setPrefs({both: v === 'both'})}
+        options={[['one', 'One name'], ['both', 'Both names']]} />
       <Seg label="Layout" value={prefs.view} onpick={v => setPrefs({view: v})} options={[['card', 'Cards'], ['list', 'List']]} />
     </div>
     <!-- Every sort is always shown: grey when off, green ascending, gold descending. Shift-click adds one to the chain. -->
@@ -294,7 +297,7 @@
   </div>
 
   {#if globalSite && loaded}
-    <NewTsums build={prefs.names === 'all' ? filter.build : prefs.names === 'jp' ? 'jp' : 'global'} {played} />
+    <NewTsums {played} />
     <!-- The roster, with what every contributor has played of each Tsum. -->
     <div class="grid" class:list={prefs.view === 'list'}>
       {#if !view.shown.length}

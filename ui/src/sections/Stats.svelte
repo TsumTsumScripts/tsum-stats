@@ -124,7 +124,7 @@
   const legends = $state({compare: [], daily: [], share: [], hist: [], bonus: []});
 
   const catalog = shared.catalog;
-  const nameOf = id => (id ? tsumName(catalog, id, filter.build || 'global') : '');
+  const nameOf = id => (id ? tsumName(catalog, id) : '');
   const colorOf = id => tsumColor(catalog, id);
   const picked = $derived(listOf(filter.tsum));
   const pickedDevices = $derived(listOf(filter.device));
@@ -331,7 +331,7 @@
   /** The played Tsum whose English or JP name (or id) is text, or ''. */
   function matchTsum(text) {
     text = text.trim().toLowerCase();
-    return (text && played.find(t => [tsumName(catalog, t.tsum), tsumName(catalog, t.tsum, 'jp'), t.tsum]
+    return (text && played.find(t => [tsumName(catalog, t.tsum, 'en'), tsumName(catalog, t.tsum, 'jp'), t.tsum]
       .some(n => n.toLowerCase() === text))?.tsum) || '';
   }
 
@@ -537,7 +537,7 @@
   {#if fewPlayers(r)}<span class="sub few-flag" title="Too few players' rounds to stand for everyone's yet">few players</span>{/if}
 {/snippet}
 {#snippet roundTsumCell(r)}
-  <TsumCell id={r.tsum} name={r.tsum ? tsumName(catalog, r.tsum, r.build || filter.build || 'global') : 'Not identified'} color={colorOf(r.tsum)}
+  <TsumCell id={r.tsum} name={r.tsum ? tsumName(catalog, r.tsum) : 'Not identified'} color={colorOf(r.tsum)}
     onpick={r.tsum ? e => focusOn(r.tsum, e) : null} />
 {/snippet}
 {#snippet pickCell(r)}

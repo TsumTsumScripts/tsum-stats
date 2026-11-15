@@ -15,7 +15,7 @@
     if (!info || busy) return;
     busy = true;
     const i = info();
-    const nameOf = id => tsumName(shared.catalog, id, i.build || 'global');
+    const nameOf = id => tsumName(shared.catalog, id);
     await copyCard({title, sub, from: from?.(), root: root?.(), info: i, nameOf, file: title.toLowerCase().replace(/\W+/g, '-')});
     busy = false;
   }

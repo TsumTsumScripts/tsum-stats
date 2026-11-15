@@ -7,9 +7,9 @@
   import {shared} from '../lib/ui.svelte.js';
   import {buildLabel, fmt, tsumName} from '../lib/util.js';
 
-  // build: whose names to show; current: the Tsum on show, marked;
-  // played: id → rounds; onpick(id): instead of following the link.
-  let {build = 'global', current = '', played = new Map(), onpick = null} = $props();
+  // current: the Tsum on show, marked; played: id → rounds;
+  // onpick(id): instead of following the link. Names are in the page's language.
+  let {current = '', played = new Map(), onpick = null} = $props();
 
   const DAYS = 30;
   const isoDay = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -37,7 +37,7 @@
     <div class="panel-head"><div><h2>New Tsums</h2><span class="sub">added to the game in the last {DAYS} days, INTL and JP · click one to see its page</span></div></div>
     <div class="tsum-grid">
       {#each recent as t (t.id)}
-        {@const name = tsumName(shared.catalog, t.id, build)}
+        {@const name = tsumName(shared.catalog, t.id)}
         {@const rounds = played.get(t.id)}
         <a class="btn tsum-tile" href={tsumPage(t.id)} aria-current={t.id === current ? 'page' : undefined}
           title="{name} · out on {outText(t.out)} · {rounds ? `${fmt(rounds)} rounds` : 'no rounds yet'}" onclick={e => click(e, t.id)}>

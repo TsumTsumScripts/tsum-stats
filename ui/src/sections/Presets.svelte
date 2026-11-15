@@ -103,7 +103,8 @@
     unauthorized: 'The global site no longer knows this computer. Join again under Contribute.',
     budget: 'The global site is busy today. Try again tomorrow.', unreachable: 'The global site could not be reached.',
   };
-  const tsumIds = $derived(new Map((shared.catalog?.tsums ?? []).map(t => [tsumName(shared.catalog, t.id).toLowerCase(), t.id])));
+  // Either language's name finds the Tsum, whichever the page shows.
+  const tsumIds = $derived(new Map((shared.catalog?.tsums ?? []).flatMap(t => ['jp', 'en'].map(l => [tsumName(shared.catalog, t.id, l).toLowerCase(), t.id]))));
 
   async function post(path, body) {
     const res = await fetch(`/api/stats/${path}`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});

@@ -206,7 +206,7 @@ html { overflow-x: clip; }
   .topbar > .seg button { padding: 5px 10px; font-size: 14px; }
   .topbar .spacer { flex: 0 0 100%; height: 0; order: 4; }
   .topbar .live { flex: 1 1 0; order: 5; }
-  .topbar-actions, .topbar .theme-pick, .topbar #site-btn, .topbar #contribute-link { order: 7; }
+  .topbar-actions, .topbar .theme-pick, .topbar .names-pick, .topbar #site-btn, .topbar #contribute-link { order: 7; }
   .topbar-actions { gap: 6px; }
   .topbar-actions .btn, .topbar #site-btn, .topbar #contribute-link { padding: 3px 10px; }
   .topbar > .theme-pick .sub { display: none; }

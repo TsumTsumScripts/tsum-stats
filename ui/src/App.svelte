@@ -9,11 +9,13 @@
   import GlobalNote from './components/GlobalNote.svelte';
   import LivePills from './components/LivePills.svelte';
   import PublishDialog from './components/PublishDialog.svelte';
+  import Seg from './components/Seg.svelte';
   import ThemePicker from './components/ThemePicker.svelte';
   import SnapshotNote from './components/SnapshotNote.svelte';
   import Tip from './components/Tip.svelte';
   import Toasts from './components/Toasts.svelte';
   import {isGlobal} from './lib/global/client.js';
+  import {names, setNames} from './lib/names.svelte.js';
   import {onReconnect, restart, start, subscribe} from './lib/realtime.js';
   import {isSnapshot} from './lib/snapshot/client.js';
   import {expand, shared, toast} from './lib/ui.svelte.js';
@@ -179,6 +181,10 @@
       </nav>
       <div class="spacer"></div>
       {#if local && !readOnly}<LivePills />{/if}
+      <!-- Tsum names everywhere: English (JP where a Tsum has no English name) or JP. -->
+      <div class="names-pick" title="Name Tsums in English (JP where a Tsum has none yet) or in JP">
+        <Seg sm label="Tsum names" value={names.lang} onpick={setNames} options={[['en', 'EN'], ['jp', 'JP']]} />
+      </div>
       {#if readOnly}
         <ThemePicker />
         {#if globalSite}

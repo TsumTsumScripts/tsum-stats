@@ -382,7 +382,11 @@ generated from the Tsum script's portrait library (a tool that lives with the
 scripts, not here) and committed, so building the site needs nothing else.
 
 A blank name means that build does not have the Tsum. The INTL/JP toggle
-filters on this. 36 rows have neither name and are hidden.
+filters on this. The top bar's **EN/JP** toggle (a per-browser
+preference, on the local and global sites and in snapshots) picks the language
+every page names Tsums in: EN shows the English name, or the JP one where a
+Tsum has no English name yet; JP shows the JP name, or the English one for a
+Tsum JP never had. The Catalog's *Both names* adds the other language under each. 36 rows have neither name and are hidden.
 
 Tsum art comes from `https://tsum-assets.gapscripts.app/tsums/block_<id>_l.png`,
 where `<id>` is the catalog id (the CSVs' `tsum` column). While an image is
