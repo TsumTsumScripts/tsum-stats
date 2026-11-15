@@ -833,6 +833,8 @@ export function createEngine(loader) {
         case 'play-settings': return playSettings();
         case 'skill-levels': return skillLevels();
         case 'health': return health(params);
+        // A snapshot keeps each device's newest Tsum list only.
+        case 'owned-history': return [];
         case 'owned': return owned(params);
         case 'owned-sources': return ownedSources();
         case 'status': return status();

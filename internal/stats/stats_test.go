@@ -400,3 +400,34 @@ func TestAddSkillProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestTsumListHistory(t *testing.T) {
+	app := testApp(t)
+	i := func(v int64) *int64 { return &v }
+	for _, l := range []struct {
+		file, device, stamp string
+		rows                []OwnedTsum
+	}{
+		{"tsum_list_20261002-000000.csv", "a", "20261002-000000", []OwnedTsum{{Tsum: "elsa", Skill: i(3), SkillProgress: i(50)}, {Tsum: "abu", Skill: i(1)}}},
+		{"tsum_list_20261001-000000.csv", "a", "20261001-000000", []OwnedTsum{{Tsum: "elsa", Skill: i(2)}}},
+		{"tsum_list_20261003-000000.csv", "b", "20261003-000000", []OwnedTsum{{Tsum: "elsa", Skill: i(6)}}},
+	} {
+		if err := replaceTsumList(app.DB(), l.file, "global", l.device, l.stamp, l.rows); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h, err := TsumListHistory(app.DB(), "global", "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h) != 2 || h[0].Stamp != "20261001-000000" || h[1].Stamp != "20261002-000000" {
+		t.Fatalf("lists: %+v", h)
+	}
+	// With no order kept, a list's Tsums come by name: abu, then elsa.
+	if len(h[0].Items) != 1 || *h[0].Items[0].Skill != 2 || len(h[1].Items) != 2 || h[1].Items[1].Tsum != "elsa" || *h[1].Items[1].SkillProgress != 50 {
+		t.Fatalf("items: %+v", h)
+	}
+	if none, _ := TsumListHistory(app.DB(), "jp", "a"); len(none) != 0 {
+		t.Fatalf("jp: %+v", none)
+	}
+}

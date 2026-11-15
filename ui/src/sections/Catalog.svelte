@@ -11,6 +11,7 @@
   import NewTsums from '../components/NewTsums.svelte';
   import Seg from '../components/Seg.svelte';
   import MaxOut from './catalog/MaxOut.svelte';
+  import Progress from './catalog/Progress.svelte';
   import {maxOutTotals, toMax} from '../lib/boxes.js';
   import {names} from '../lib/names.svelte.js';
   import {shared} from '../lib/ui.svelte.js';
@@ -337,6 +338,7 @@
     </div>
   {:else if loaded}
     <MaxOut build={filter.build} totals={view.totals} shown={view.shown.length} />
+    <Progress build={filter.build} device={filter.device} />
     <div class="grid" class:list={prefs.view === 'list'}>
       {#if !list}{@render emptyState()}{/if}
       {#if !list && filter.owned !== 'all'}

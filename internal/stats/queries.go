@@ -26,8 +26,8 @@ type Filter struct {
 	// rounds that recorded none. The global site's skill filter.
 	Skills []string
 	Build  string
-	From  string // sqlTime, inclusive, UTC
-	To    string // sqlTime, exclusive, UTC
+	From   string // sqlTime, inclusive, UTC
+	To     string // sqlTime, exclusive, UTC
 	// The outlier ranges, each bound inclusive. Coins are base or final coins
 	// (never medals); the medal range only judges medal Tsums' rounds.
 	MinCoins, MaxCoins   *int64
@@ -152,9 +152,9 @@ var PlaySettings = []PlaySetting{
 	{"scan", "maxChainsPerScan", true}, {"chain", "maxChain", true}, {"bubble", "bubbleStrategy", false},
 }
 
-// skillLevelSQL is a round's skill level as text, a whole number 1-10, or ''
+// skillLevelSQL is a round's skill level as text, a whole number 1-10, or ”
 // when not recorded or anything else: the global site's skill level, read as
-// global/src/records.ts reads it (-1 there for ''). The skill_level column
+// global/src/records.ts reads it (-1 there for ”). The skill_level column
 // (addItemsColumn) holds skillLevelOf(settings).
 const skillLevelSQL = "skill_level"
 
@@ -531,6 +531,51 @@ func LatestTsumList(db dbx.Builder, build, device string) (*TsumList, error) {
 		l.Items = []OwnedTsum{}
 	}
 	return l, err
+}
+
+// ListStep is one of a device's Tsum lists, oldest first: what it held of
+// each Tsum's skill, for the Catalog's skill progress.
+type ListStep struct {
+	Stamp string     `db:"stamp" json:"stamp"`
+	Items []ListTsum `db:"-" json:"items"`
+}
+
+// ListTsum is a Tsum's skill in one list.
+type ListTsum struct {
+	ListID        int64  `db:"list_id" json:"-"`
+	Tsum          string `db:"tsum" json:"tsum"`
+	Skill         *int64 `db:"skill" json:"skill"`
+	SkillMax      *int64 `db:"skill_max" json:"skillMax"`
+	SkillProgress *int64 `db:"skill_progress" json:"skillProgress"`
+}
+
+// TsumListHistory is every Tsum list one device sent for a build, oldest
+// first. A device is exactly that name; "" is the lists that came with none.
+func TsumListHistory(db dbx.Builder, build, device string) ([]ListStep, error) {
+	var lists []struct {
+		ID    int64  `db:"id"`
+		Stamp string `db:"stamp"`
+	}
+	p := dbx.Params{"b": build, "d": device}
+	if err := db.NewQuery(`SELECT id, stamp FROM ts_tsum_lists WHERE build = {:b} AND device = {:d} ORDER BY stamp, id`).Bind(p).All(&lists); err != nil {
+		return nil, err
+	}
+	var rows []ListTsum
+	if err := db.NewQuery(`SELECT o.list_id, o.tsum, o.skill, o.skill_max, o.skill_progress FROM ts_owned o JOIN ts_tsum_lists l ON l.id = o.list_id
+		WHERE l.build = {:b} AND l.device = {:d} ORDER BY o.list_id, o.ord, o.tsum`).Bind(p).All(&rows); err != nil {
+		return nil, err
+	}
+	at := map[int64]int{}
+	out := make([]ListStep, len(lists))
+	for i, l := range lists {
+		at[l.ID] = i
+		out[i] = ListStep{Stamp: l.Stamp, Items: []ListTsum{}}
+	}
+	for _, r := range rows {
+		i := at[r.ListID]
+		out[i].Items = append(out[i].Items, r)
+	}
+	return out, nil
 }
 
 // ListSource is one device's newest Tsum list for a build.

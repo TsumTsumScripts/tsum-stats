@@ -501,6 +501,16 @@ playing other accounts make the pace look too fast. The chart draws each Tsum's
 share still to earn down to its finish date. Pace window and on-hand figures
 are saved in the browser.
 
+**Skill progress**, under it on the local site, reads every Tsum list the
+picked device sent (`/api/stats/owned-history`), oldest first. Between one
+list and the next: the boxes opened (each Tsum's boxes left before, less
+after), their coins and medals, the Tsums new in the list, and the skill-ups;
+above them, the coins and medals a day that went on boxes, to set beside the
+pace. Only Tsums in both lists count, so a list cut short does not read as
+boxes opened, and progress within a level counts only when both lists keep
+it (lists from before `skill_progress` was read do not). A snapshot keeps only
+the newest list, so it has no such panel.
+
 ## Publishing a snapshot
 
 `tsum-stats snapshot DIR` writes the site and its data as plain files, for a

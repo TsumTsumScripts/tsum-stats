@@ -742,7 +742,7 @@ export function createGlobalEngine(loader) {
         case 'skill-levels': return (await getManifest()).skills.map(s => ({value: String(s), rounds: null}));
         case 'status': return status();
         case 'themes': return THEMES.map(t => ({...t}));
-        case 'devices': case 'round-devices': case 'owned-sources': return [];
+        case 'devices': case 'round-devices': case 'owned-sources': case 'owned-history': return [];
         case 'owned': return {list: null};
         default: throw new Error(`${path}: not available on the global site`);
       }

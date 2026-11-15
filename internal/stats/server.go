@@ -241,6 +241,19 @@ func registerRoutes(se *core.ServeEvent, events *Events, importer *Importer, pul
 		return e.JSON(http.StatusOK, map[string]any{"list": l})
 	})
 
+	// Every Tsum list one device sent for a build, oldest first: the Catalog's skill progress.
+	g.GET("/owned-history", func(e *core.RequestEvent) error {
+		build := e.Request.URL.Query().Get("build")
+		if build != "jp" {
+			build = "global"
+		}
+		h, err := TsumListHistory(e.App.DB(), build, e.Request.URL.Query().Get("device"))
+		if err != nil {
+			return e.InternalServerError("", err)
+		}
+		return e.JSON(http.StatusOK, h)
+	})
+
 	// Which devices have a Tsum list, and for which build: the Catalog's picker.
 	g.GET("/owned-sources", func(e *core.RequestEvent) error {
 		s, err := TsumListSources(e.App.DB())
