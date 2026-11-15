@@ -153,6 +153,18 @@ the old entry stays until its lists are deleted.
 
 ## The Stats page
 
+**Expected coins an hour leads.** It is what an hour of play earns you with
+the luck taken out: each round's base coins, times 1.39 when it used +Coin
+(the coin bonus at its average, 39 % of base coins over 29,289 +Coin rounds;
+the commonly cited odds give 41 %), less what its items cost, over the
+rounds' play time (`Expected` and `ExpectedBonus` in `summary.go`). The
+multiplier a round happened to draw does not move it, so it is four or five
+times steadier than final coins, and it is the same figure whatever the
+primary stat. It is the first tile, the Tsums table's *Expected/h* column and
+default sort, the first measure of the efficiency, items, chain and Head to
+head charts, and what the Tsum page ranks by. Rounds whose items were never
+recorded have none.
+
 **Coin efficiency is coins per second of play:** total coins over total
 round time, counting only rounds that have both. The rail's **Primary stat**
 switch picks what every figure and chart count:
@@ -332,8 +344,8 @@ charts and *Do the items pay?* (a jackpot is what +Coin pays out), the best roun
 second that box times are worked out from. Base coins and medals never take the bonus, so
 nothing is left out of them. Stats keeps every round.
 
-- **Header:** where the Tsum ranks by rate among the Tsums in the same filter,
-  its rate against all of them together, its share of your rounds, and, from the
+- **Header:** where the Tsum ranks by expected coins an hour (medals a second
+  in Medals) among the Tsums in the same filter, that against all of them together, its share of your rounds, and, from the
   newest Tsum list for the build, its level, skill and boxes to max.
 - **Recent form:** the newest 50 rounds' rate against all the rounds in the
   filter and against the 50 before them.

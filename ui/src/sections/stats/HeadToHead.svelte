@@ -3,6 +3,7 @@
 <script>
   import Avatar from '../../components/Avatar.svelte';
   import {cap, fmt, fmtDuration, fmtRate, pct} from '../../lib/util.js';
+  import {expHour} from '../../lib/expected.js';
 
   // rows: the Tsum table's rows (each with .m, its medal figures). approx marks
   // the median and 90th percentile as estimates (the global site's).
@@ -16,6 +17,7 @@
     // [label, value(row), format, which end wins: 'high', 'low' or none, class]
     const figures = [
       ['Rounds', r => r.rounds, fmt],
+      ['Expected coins per hour', expHour, fmt, 'high', 'coin'],
       [`${U} per second`, r => r.coinsPerSec, fmtRate, 'high'],
       [`${U} per hour`, perHour, fmt, 'high'],
       [`Average ${u}`, r => r.avgCoins, fmt, 'high'],

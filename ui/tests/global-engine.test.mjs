@@ -458,6 +458,10 @@ function aboutOnly(v, primary = true, medals = true) {
       }
     }
   }
+  // Expected coins' sum of squares comes from base coins' (null in a cut cell), in every group.
+  for (const r of [v.totals, ...v.tsums, ...v.daily, ...v.dailyTsums, ...v.mix, ...v.chains, v.medals.totals, ...v.medals.tsums]) {
+    if ('expSq' in r) r.expSq = 'about';
+  }
 }
 
 // ---- The cases ----

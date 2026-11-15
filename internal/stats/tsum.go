@@ -74,6 +74,7 @@ type GroupStat struct {
 	AvgScore    *float64 `db:"avg_score" json:"avgScore"`
 	First       string   `db:"first" json:"first"`
 	Last        string   `db:"last" json:"last"`
+	Expected
 }
 
 // SettingStat is a GroupStat for one value (Key) of one script setting.
@@ -98,6 +99,7 @@ type FieldStat struct {
 	RateCoins   *int64   `db:"rate_coins" json:"rateCoins"`
 	RateSecs    *float64 `db:"rate_secs" json:"rateSeconds"`
 	CoinsPerSec *float64 `db:"coins_per_sec" json:"coinsPerSec"`
+	Expected
 }
 
 // settingsSQL is a round's settings when they are a JSON object, else an empty
@@ -111,9 +113,12 @@ const settingValueSQL = `(CASE j.type WHEN 'true' THEN 'true' WHEN 'false' THEN 
 	ELSE CAST(j.value AS TEXT) END)`
 
 // groupStats are GroupStat's columns for the primary stat c.
-func groupStats(c string) string {
+func groupStats(c string) string { return groupStatsWith(c, expCols) }
+
+// groupStatsWith are groupStats with exp as the Expected columns (expColsOf).
+func groupStatsWith(c, exp string) string {
 	return `COUNT(*) AS rounds, AVG(` + c + `) AS avg_coins, MAX(` + c + `) AS max_coins, ` + rateExpr(c) + ` AS coins_per_sec,
-		AVG(score) AS avg_score, MIN(played_at) AS first, MAX(played_at) AS last`
+		AVG(score) AS avg_score, MIN(played_at) AS first, MAX(played_at) AS last, ` + exp
 }
 
 // skillSQL joins a round to its skillLevel setting as k (settingValueSQL).
@@ -140,13 +145,14 @@ func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *
 	f.noJackpots, all.noJackpots = jackpots, jackpots
 	c := f.col()
 	where, p := f.where()
-	pairs, pp := f.whereAnd("j.type NOT IN ('object', 'array')")
 	err := runAll([]func() error{
 		func() (err error) { d.Summary, err = Summarize(db, f, tzMinutes); return err },
 		func() error {
-			return db.NewQuery(`SELECT j.key AS setting, ` + settingValueSQL + ` AS k, ` + groupStats(c) + `
-				FROM ts_rounds, json_each(` + settingsSQL + `) AS j` + pairs + `
-				GROUP BY setting, k ORDER BY setting, k`).Bind(pp).All(&d.Settings)
+			// Each round's expected coins once, before json_each makes a row per setting of it.
+			return db.NewQuery(`WITH r AS MATERIALIZED (SELECT *, ` + expSQL + ` AS ev FROM ts_rounds` + where + `)
+				SELECT j.key AS setting, ` + settingValueSQL + ` AS k, ` + groupStatsWith(c, expColsOf("ev", "ev IS NOT NULL")) + `
+				FROM r, json_each(` + settingsSQL + `) AS j WHERE j.type NOT IN ('object', 'array')
+				GROUP BY setting, k ORDER BY setting, k`).Bind(p).All(&d.Settings)
 		},
 		func() error {
 			return db.NewQuery(`SELECT scan, chain, scan || ',' || chain AS k, ` + groupStats(c) + `
@@ -197,7 +203,7 @@ func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *
 		func() error {
 			w, ap := all.where()
 			return db.NewQuery(`SELECT tsum, COUNT(*) AS rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs, ` +
-				rateExpr(c) + ` AS coins_per_sec FROM ts_rounds` + w + ` GROUP BY tsum ORDER BY tsum`).Bind(ap).All(&d.Field)
+				rateExpr(c) + ` AS coins_per_sec, ` + expCols + ` FROM ts_rounds` + w + ` GROUP BY tsum ORDER BY tsum`).Bind(ap).All(&d.Field)
 		},
 	})
 	if err != nil {

@@ -60,6 +60,7 @@ type Totals struct {
 	First  *string `db:"first" json:"first"`
 	Last   *string `db:"last" json:"last"`
 	Spread
+	Expected
 }
 
 // Spread is where a set of rounds' coins fall; nil with no coin figures.
@@ -82,6 +83,7 @@ type DayStat struct {
 	MinCoins    *int64   `db:"min_coins" json:"minCoins"`
 	MaxCoins    *int64   `db:"max_coins" json:"maxCoins"`
 	CoinsPerSec *float64 `db:"coins_per_sec" json:"coinsPerSec"`
+	Expected
 }
 
 type TsumStat struct {
@@ -101,6 +103,7 @@ type TsumStat struct {
 	CoinsPerSec *float64 `db:"coins_per_sec" json:"coinsPerSec"`
 	Earned      int64    `db:"earned" json:"earnedRounds"`
 	Spread
+	Expected
 }
 
 // DayTsumStat is one Tsum on one day, for the per-day charts split by Tsum.
@@ -111,6 +114,7 @@ type DayTsumStat struct {
 	Coins       *int64   `db:"coins" json:"coins"`
 	AvgCoins    *float64 `db:"avg_coins" json:"avgCoins"`
 	CoinsPerSec *float64 `db:"coins_per_sec" json:"coinsPerSec"`
+	Expected
 }
 
 // MixStat is one build × Tsum × boost-item combination. The page folds it
@@ -124,6 +128,7 @@ type MixStat struct {
 	CoinRounds int64    `db:"coin_rounds" json:"coinRounds"`
 	RateCoin   *int64   `db:"rate_coins" json:"rateCoins"`
 	RateSecs   *float64 `db:"rate_secs" json:"rateSeconds"`
+	Expected
 }
 
 // ChainStat is one build × Tsum × chains-per-scan × max-chain pair: the two
@@ -139,6 +144,7 @@ type ChainStat struct {
 	CoinRounds int64    `db:"coin_rounds" json:"coinRounds"`
 	RateCoin   *int64   `db:"rate_coins" json:"rateCoins"`
 	RateSecs   *float64 `db:"rate_secs" json:"rateSeconds"`
+	Expected
 }
 
 // CoinHistogram counts rounds per coin bucket, split by Tsum. Rounds at
@@ -215,24 +221,69 @@ var itemBits = []struct {
 }
 
 // itemsKnownSQL is true when a round's settings record its items.
-const itemsKnownSQL = "json_valid(settings) AND json_type(settings, '$.bonusCoin') IS NOT NULL"
+const itemsKnownSQL = "items IS NOT NULL"
 
-// itemsSQL is a round's item bitmask, or -1 when its settings predate the items.
-var itemsSQL = itemSum(func(bit, _ int) int { return bit }, "-1")
+// ExpectedBonus is what the +Coin item's coin bonus adds on average, as a
+// share of base coins: 39.3 % over 29,289 +Coin rounds (November 2026); the
+// commonly cited odds give 40.6 %. A fixed figure, so expected coins carry
+// none of a round's bonus luck and every engine gives the same answer. The
+// engines' EXPECTED_BONUS is the same number.
+const ExpectedBonus = 0.39
 
-// costSQL is what a round's items cost, or NULL when its settings predate the items.
-var costSQL = "(" + itemSum(func(_, cost int) int { return cost }, "NULL") + ")"
-
-// itemSum adds up v of each item a round used, or is unknown when it predates the items.
-func itemSum(v func(bit, cost int) int, unknown string) string {
-	parts := make([]string, len(itemBits))
-	for i, b := range itemBits {
-		parts[i] = "(CASE WHEN json_extract(settings, '$." + b.key + "') THEN " + strconv.Itoa(v(b.bit, b.cost)) + " ELSE 0 END)"
-	}
-	return "CASE WHEN " + itemsKnownSQL + " THEN " + strings.Join(parts, " + ") + " ELSE " + unknown + " END"
+// Expected is the sums behind expected net coins: a round's base coins, times
+// 1 + ExpectedBonus when it used +Coin, less what its items cost. Only rounds
+// with base coins, a time and known items count (expCondSQL). The page divides:
+// expCoins / expSeconds is the rate, expCoins / expRounds the average, and
+// expSq gives the spread.
+type Expected struct {
+	ExpCoins  *float64 `db:"exp_coins" json:"expCoins"`
+	ExpSecs   *float64 `db:"exp_secs" json:"expSeconds"`
+	ExpRounds int64    `db:"exp_rounds" json:"expRounds"`
+	ExpSq     *float64 `db:"exp_sq" json:"expSq"`
 }
 
-// itemsOf is itemsSQL for one round's settings JSON.
+// expCondSQL keeps the rounds expected coins can be worked out for.
+const expCondSQL = "base_coins IS NOT NULL AND duration_seconds > 0 AND " + itemsKnownSQL
+
+// expSQL is a round's expected net coins, NULL outside expCondSQL.
+var expSQL = "(CASE WHEN " + expCondSQL + " THEN base_coins * (CASE WHEN items & 1 THEN " +
+	strconv.FormatFloat(1+ExpectedBonus, 'f', -1, 64) + " ELSE 1 END) - " + costSQL + " END)"
+
+// expCols are Expected's columns.
+var expCols = expColsOf(expSQL, expCondSQL)
+
+// expColsOf are Expected's columns from ev, a round's expected net coins, and
+// cond, true when it has them: expSQL and expCondSQL, or a column holding expSQL
+// already worked out and "ev IS NOT NULL".
+func expColsOf(ev, cond string) string {
+	return "SUM(" + ev + ") AS exp_coins, SUM(CASE WHEN " + cond + " THEN duration_seconds END) AS exp_secs, COUNT(" +
+		ev + ") AS exp_rounds, SUM(" + ev + " * " + ev + ") AS exp_sq"
+}
+
+// itemsSQL is a round's item bitmask, or -1 when its settings predate the items.
+const itemsSQL = "COALESCE(items, -1)"
+
+// costSQL is what a round's items cost, or NULL when its settings predate the items.
+var costSQL = func() string {
+	parts := make([]string, len(itemBits))
+	for i, b := range itemBits {
+		parts[i] = "(items & " + strconv.Itoa(b.bit) + " > 0) * " + strconv.Itoa(b.cost)
+	}
+	return "(" + strings.Join(parts, " + ") + ")"
+}()
+
+// itemsMaskSQL is the items column's value for the settings JSON in col: the
+// bitmask of the items it turns on, NULL when it predates the items (has no
+// bonusCoin). A true setting is one SQL takes as true, as it always was.
+func itemsMaskSQL(col string) string {
+	parts := make([]string, len(itemBits))
+	for i, b := range itemBits {
+		parts[i] = "(CASE WHEN json_extract(" + col + ", '$." + b.key + "') THEN " + strconv.Itoa(b.bit) + " ELSE 0 END)"
+	}
+	return "(CASE WHEN json_valid(" + col + ") AND json_type(" + col + ", '$.bonusCoin') IS NOT NULL THEN " + strings.Join(parts, " + ") + " END)"
+}
+
+// itemsOf is itemsMaskSQL for one round's settings JSON, -1 as nil.
 func itemsOf(settings string) *int {
 	var s map[string]any
 	if json.Unmarshal([]byte(settings), &s) != nil {
@@ -283,18 +334,18 @@ func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
 		func() error {
 			return db.NewQuery(`SELECT ` + day + ` AS day, COUNT(*) AS rounds, AVG(score) AS avg_score,
 				MIN(score) AS min_score, MAX(score) AS max_score, SUM(` + c + `) AS coins, AVG(` + c + `) AS avg_coins,
-				MIN(` + c + `) AS min_coins, MAX(` + c + `) AS max_coins, ` + rateExpr(c) + ` AS coins_per_sec
+				MIN(` + c + `) AS min_coins, MAX(` + c + `) AS max_coins, ` + rateExpr(c) + ` AS coins_per_sec, ` + expCols + `
 				FROM ts_rounds` + where + ` GROUP BY day ORDER BY day`).Bind(p).All(&s.Daily)
 		},
 		func() error {
 			return db.NewQuery(`SELECT ` + day + ` AS day, tsum, COUNT(*) AS rounds, SUM(` + c + `) AS coins,
-				AVG(` + c + `) AS avg_coins, ` + rateExpr(c) + ` AS coins_per_sec FROM ts_rounds` + where + ` GROUP BY day, tsum ORDER BY day`).Bind(p).All(&s.DailyTsums)
+				AVG(` + c + `) AS avg_coins, ` + rateExpr(c) + ` AS coins_per_sec, ` + expCols + ` FROM ts_rounds` + where + ` GROUP BY day, tsum ORDER BY day`).Bind(p).All(&s.DailyTsums)
 		},
 		func() (err error) { s.Mix, err = mixStats(db, f); return err },
 		func() (err error) { s.Bonus, err = coinBonus(db, f, tzMinutes); return err },
 		func() error {
 			return db.NewQuery(`SELECT build, tsum, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` + playSettingSQL(PlaySettings[1]) + ` AS chain,
-				COUNT(*) AS rounds, SUM(` + c + `) AS coins, COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs
+				COUNT(*) AS rounds, SUM(` + c + `) AS coins, COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs, ` + expCols + `
 				FROM ts_rounds` + where + ` GROUP BY build, tsum, scan, chain ORDER BY rounds DESC, build, tsum, scan, chain`).Bind(p).All(&s.Chains)
 		},
 	}
@@ -317,7 +368,7 @@ func mixStats(db dbx.Builder, f Filter) ([]MixStat, error) {
 	where, p := f.where()
 	mix := []MixStat{}
 	err := db.NewQuery(`SELECT build, tsum, ` + itemsSQL + ` AS items, COUNT(*) AS rounds, SUM(` + c + `) AS coins,
-		COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs
+		COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs, ` + expCols + `
 		FROM ts_rounds` + where + ` GROUP BY build, tsum, items ORDER BY rounds DESC`).Bind(p).All(&mix)
 	return mix, err
 }
@@ -399,12 +450,12 @@ func statSet(db dbx.Builder, f Filter) (StatSet, error) {
 		func() error {
 			return db.NewQuery(`SELECT COUNT(*) AS rounds, AVG(score) AS avg_score, MAX(score) AS max_score, ` + coinStats(c) + `,
 				COUNT(` + c + `) AS coin_rounds, SUM(` + c + `) AS total_coins, SUM(duration_seconds) AS total_secs,
-				AVG(duration_seconds) AS avg_secs, SUM(medals) AS total_medals, ` + earnedSQL + `, MIN(played_at) AS first, MAX(played_at) AS last
+				AVG(duration_seconds) AS avg_secs, SUM(medals) AS total_medals, ` + earnedSQL + `, MIN(played_at) AS first, MAX(played_at) AS last, ` + expCols + `
 				FROM ts_rounds` + where).Bind(p).One(&set.Totals)
 		},
 		func() error {
 			return db.NewQuery(`SELECT tsum, COUNT(*) AS rounds, AVG(score) AS avg_score, MAX(score) AS max_score, ` + coinStats(c) + `,
-				SUM(` + c + `) AS coins, SUM(duration_seconds) AS total_secs, AVG(duration_seconds) AS avg_secs, ` + earnedSQL + `
+				SUM(` + c + `) AS coins, SUM(duration_seconds) AS total_secs, AVG(duration_seconds) AS avg_secs, ` + earnedSQL + `, ` + expCols + `
 				FROM ts_rounds` + where + ` GROUP BY tsum ORDER BY rounds DESC`).Bind(p).All(&set.Tsums)
 		},
 		func() (err error) { spreads, err = coinSpreads(db, f, "tsum"); return err },

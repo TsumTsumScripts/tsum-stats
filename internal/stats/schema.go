@@ -122,7 +122,40 @@ func migrate(app core.App) error {
 	if err := addListColumn(app, "ts_tsum_lists", "device", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := addItemsColumn(app); err != nil {
+		return err
+	}
 	return rereadListsOnce(app, "device-from-folder")
+}
+
+// addItemsColumn gives ts_rounds its items column: a round's boost-item
+// bitmask (itemBits), NULL when its settings predate the items, worked out
+// from settings once instead of in every query (itemsMaskSQL). Triggers keep
+// it in step with settings whoever writes the row, and rows from before it are
+// filled in here.
+func addItemsColumn(app core.App) error {
+	var n int
+	err := app.DB().NewQuery(`SELECT COUNT(*) FROM pragma_table_info('ts_rounds') WHERE name = 'items'`).Row(&n)
+	if err != nil {
+		return err
+	}
+	set := "UPDATE ts_rounds SET items = " + itemsMaskSQL("NEW.settings") + " WHERE rowid = NEW.rowid;"
+	qs := []string{
+		`CREATE TRIGGER IF NOT EXISTS ts_rounds_items_insert AFTER INSERT ON ts_rounds BEGIN ` + set + ` END`,
+		`CREATE TRIGGER IF NOT EXISTS ts_rounds_items_update AFTER UPDATE OF settings ON ts_rounds BEGIN ` + set + ` END`,
+	}
+	if n == 0 {
+		qs = append([]string{
+			`ALTER TABLE ts_rounds ADD COLUMN items INTEGER`,
+			`UPDATE ts_rounds SET items = ` + itemsMaskSQL("settings"),
+		}, qs...)
+	}
+	for _, q := range qs {
+		if _, err := app.DB().NewQuery(q).Execute(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // rereadListsOnce forgets which Tsum lists were read, once per marker, so a

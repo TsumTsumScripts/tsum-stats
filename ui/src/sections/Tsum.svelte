@@ -28,6 +28,7 @@
     PLAY, playValueName, skillTypeName, skillTypeValue, tsumColor, tsumName,
   } from '../lib/util.js';
   import Kpis from './stats/Kpis.svelte';
+  import {EXP_WHAT, expRate, sumExp} from '../lib/expected.js';
   import Legend from '../components/Legend.svelte';
   import Breakdown from './tsum/Breakdown.svelte';
   import Insights from './tsum/Insights.svelte';
@@ -200,19 +201,26 @@
 
   const s = $derived(detail?.summary);
 
-  /** Where it ranks by rate among the Tsums in the same filter, and how it compares with all of them together. */
+  /**
+   * Where it ranks among the Tsums in the same filter, and how it compares with
+   * all of them together: by expected net coins an hour (lib/expected.js), or
+   * in medals by medals a second.
+   */
   const standing = $derived.by(() => {
     if (!detail) return null;
-    const rated = detail.field.filter(t => t.tsum && t.coinsPerSec !== null).sort((a, b) => b.coinsPerSec - a.coinsPerSec);
+    const medals = filter.coins === 'medals';
+    const rateOf = t => (medals ? t.coinsPerSec : expRate(t));
+    const rated = detail.field.filter(t => t.tsum && rateOf(t) !== null).sort((a, b) => rateOf(b) - rateOf(a));
     const i = rated.findIndex(t => t.tsum === filter.id);
-    const coins = detail.field.reduce((n, t) => n + (t.rateCoins ?? 0), 0);
-    const secs = detail.field.reduce((n, t) => n + (t.rateSeconds ?? 0), 0);
     const rounds = detail.field.reduce((n, t) => n + t.rounds, 0);
     const mine = detail.field.find(t => t.tsum === filter.id);
-    const all = secs ? coins / secs : null;
+    const coins = detail.field.reduce((n, t) => n + (t.rateCoins ?? 0), 0);
+    const secs = detail.field.reduce((n, t) => n + (t.rateSeconds ?? 0), 0);
+    const all = medals ? (secs ? coins / secs : null) : expRate(sumExp(detail.field));
+    const own = mine ? rateOf(mine) : null;
     return {
-      rank: i < 0 ? null : i + 1, of: rated.length, all,
-      vsAll: all && mine?.coinsPerSec != null ? mine.coinsPerSec / all - 1 : null,
+      rank: i < 0 ? null : i + 1, of: rated.length, all, medals,
+      vsAll: all && own != null ? own / all - 1 : null,
       share: rounds && mine ? mine.rounds / rounds : null,
     };
   });
@@ -326,13 +334,13 @@
         {#if altName}<div class="sub">{altName}</div>{/if}
         <div class="tsum-facts">
           {#if standing?.rank}
-            <span class="fact" title="Among the Tsums with rounds in this filter, by {basis} per second">
-              <b>#{standing.rank}</b> of {fmt(standing.of)} Tsums by {U.toLowerCase()}/s
+            <span class="fact" title="Among the Tsums with rounds in this filter, by {standing.medals ? 'medals per second' : `expected net coins an hour: ${EXP_WHAT}`}">
+              <b>#{standing.rank}</b> of {fmt(standing.of)} Tsums by {standing.medals ? 'medals/s' : 'expected coins/h'}
             </span>
           {/if}
           {#if standing?.vsAll !== null && standing?.vsAll !== undefined}
             <span class="fact" class:up={standing.vsAll > 0} class:down={standing.vsAll < 0}
-              title="Against all {whose === 'your' ? 'your ' : ''}Tsums together, {fmtRate(standing.all)} {unit}/s">
+              title="Against all {whose === 'your' ? 'your ' : ''}Tsums together, {standing.medals ? `${fmtRate(standing.all)} medals/s` : `${fmt(standing.all * 3600)} expected coins/h`}">
               <b>{standing.vsAll > 0 ? '+' : ''}{pct(standing.vsAll)}</b> vs all Tsums
             </span>
           {/if}

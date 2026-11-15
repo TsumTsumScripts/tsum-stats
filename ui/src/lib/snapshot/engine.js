@@ -20,6 +20,27 @@ export function itemCost(mask) {
   return ITEM_COSTS.reduce((sum, [bit, cost]) => (mask & bit ? sum + cost : sum), 0);
 }
 
+/**
+ * What the +Coin item's coin bonus adds on average, as a share of base coins
+ * (summary.go: ExpectedBonus): a fixed figure, so expected coins carry none of
+ * a round's bonus luck.
+ */
+export const EXPECTED_BONUS = 0.39;
+
+/**
+ * A round's expected net coins (summary.go: expSQL): its base coins, times
+ * 1 + EXPECTED_BONUS with +Coin, less its items' cost; null without base
+ * coins, a time over 0 or known items.
+ */
+export function expectedCoins(base, secs, mask) {
+  const cost = itemCost(mask);
+  if (base === null || base === undefined || secs === null || !(secs > 0) || cost === null) return null;
+  return base * (mask & 1 ? 1 + EXPECTED_BONUS : 1) - cost;
+}
+
+/** The expected sums of a group's running figures (summary.go: Expected), null where SQL's SUM is. */
+export const expectedOf = a => ({expCoins: a.expN ? a.expSum : null, expSeconds: a.expN ? a.expSecs : null, expRounds: a.expN, expSq: a.expN ? a.expSq : null});
+
 /** Turns a month file's columns into rows' worth of typed columns. */
 function decodeMonth(m) {
   const at = new Float64Array(m.n);
@@ -265,6 +286,7 @@ export function createEngine(loader) {
     baseN: 0, baseSum: 0, finalN: 0, finalSum: 0,
     secsN: 0, secsSum: 0, rateCoins: 0, rateSecs: 0, rateN: 0,
     medalsN: 0, medalsSum: 0, earned: 0, first: null, last: null,
+    expN: 0, expSum: 0, expSecs: 0, expSq: 0,
   });
 
   function add(a, sh, i, c) {
@@ -289,6 +311,8 @@ export function createEngine(loader) {
     if (d !== null) { a.secsN++; a.secsSum += d; }
     // Rate: coins and seconds over the rounds that have both.
     if (v !== null && d !== null && d > 0) { a.rateN++; a.rateCoins += v; a.rateSecs += d; }
+    const e = expectedCoins(b, d, sh.items[i]);
+    if (e !== null) { a.expN++; a.expSum += e; a.expSecs += d; a.expSq += e * e; }
     const m = sh.medals[i];
     if (m !== null) { a.medalsN++; a.medalsSum += m; if (m > 0) a.earned++; }
     const at = sh.at[i];
@@ -310,6 +334,7 @@ export function createEngine(loader) {
     totalSeconds: a.secsN ? a.secsSum : null, avgSeconds: avg(a.secsSum, a.secsN),
     coinsPerSec: rate(a), totalMedals: a.medalsN ? a.medalsSum : null, earnedRounds: a.earned,
     first: a.first === null ? null : sqlTime(a.first), last: a.last === null ? null : sqlTime(a.last),
+    ...expectedOf(a),
   });
 
   const tsumOf = (tsum, a) => ({
@@ -317,7 +342,7 @@ export function createEngine(loader) {
     avgCoins: avg(a.sum, a.n), minCoins: a.min, maxCoins: a.max,
     avgBaseCoins: avg(a.baseSum, a.baseN), avgFinalCoins: avg(a.finalSum, a.finalN),
     coins: a.n ? a.sum : null, totalSeconds: a.secsN ? a.secsSum : null, avgSeconds: avg(a.secsSum, a.secsN),
-    coinsPerSec: rate(a), earnedRounds: a.earned,
+    coinsPerSec: rate(a), earnedRounds: a.earned, ...expectedOf(a),
   });
 
   /**
@@ -465,19 +490,19 @@ export function createEngine(loader) {
       totals: main.totals,
       daily: [...daily.values()].sort((a, b) => byKey(a, b, 'day')).map(({a, day}) => ({
         day, rounds: a.rounds, avgScore: avg(a.scoreSum, a.scoreN), minScore: a.scoreMin, maxScore: a.scoreMax,
-        coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), minCoins: a.min, maxCoins: a.max, coinsPerSec: rate(a),
+        coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), minCoins: a.min, maxCoins: a.max, coinsPerSec: rate(a), ...expectedOf(a),
       })),
       tsums: main.tsums,
       dailyTsums: [...dailyTsums.values()].sort((a, b) => byKey(a, b, 'day')).map(({a, day, tsum}) => ({
-        day, tsum, rounds: a.rounds, coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), coinsPerSec: rate(a),
+        day, tsum, rounds: a.rounds, coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), coinsPerSec: rate(a), ...expectedOf(a),
       })),
       mix: [...mix.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, items}) => ({
         build, tsum, items, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
-        rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null,
+        rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, ...expectedOf(a),
       })),
       chains: [...chains.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, scan, chain}) => ({
         build, tsum, scan, chain, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
-        rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null,
+        rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, ...expectedOf(a),
       })),
       histogram: histogram(sel, c, main.totals),
       bonus: await coinBonus(sel, dayOf),
@@ -588,7 +613,7 @@ export function createEngine(loader) {
 
     const group = ({a, key}) => ({
       key, rounds: a.rounds, avgCoins: avg(a.sum, a.n), maxCoins: a.max, coinsPerSec: rate(a),
-      avgScore: avg(a.scoreSum, a.scoreN), first: sqlTime(a.first), last: sqlTime(a.last),
+      avgScore: avg(a.scoreSum, a.scoreN), first: sqlTime(a.first), last: sqlTime(a.last), ...expectedOf(a),
     });
     const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
     return {
@@ -601,7 +626,7 @@ export function createEngine(loader) {
       versions: [...versions.values()].map(group).sort((x, y) => cmp(y.last, x.last) || cmp(x.key, y.key)),
       devices: [...devices.values()].map(group).sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),
       field: [...field.values()].sort((x, y) => cmp(x.tsum, y.tsum)).map(({a, tsum: t}) => ({
-        tsum: t, rounds: a.rounds, rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, coinsPerSec: rate(a),
+        tsum: t, rounds: a.rounds, rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, coinsPerSec: rate(a), ...expectedOf(a),
       })),
       form: [...form.values()].map(group).sort((x, y) => cmp(y.key, x.key)),
       skillBins: [...skillBins.values()].sort((x, y) => cmp(x.skill, y.skill) || x.from - y.from),

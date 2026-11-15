@@ -18,7 +18,7 @@
 // where fresh asks past any cache, and a missing file rejects with an error
 // whose `status` is 404.
 
-import {PLAY_SETTINGS, bucketOf, histBounds, itemCost, parseFilter, parseTime, sqlTime} from '../snapshot/engine.js';
+import {EXPECTED_BONUS, PLAY_SETTINGS, bucketOf, expectedOf, histBounds, itemCost, parseFilter, parseTime, sqlTime} from '../snapshot/engine.js';
 
 const DAY = 86400;
 
@@ -312,6 +312,7 @@ export function createGlobalEngine(loader) {
     rounds: 0, n: 0, sum: 0, sumSq: 0, sqKnown: true, min: null, max: null,
     scoreSum: 0, scoreMin: null, scoreMax: null, baseSum: 0, finalSum: 0, secs: 0,
     rateCoins: 0, rateSecs: 0, rateN: 0, medalsN: 0, medalsSum: 0, earned: 0, first: null, last: null,
+    expN: 0, expSum: 0, expSecs: 0, expSq: 0,
   });
 
   function add(a, c, i, s) {
@@ -330,6 +331,15 @@ export function createGlobalEngine(loader) {
     if (a.scoreMin === null || c.scoreMin[i] < a.scoreMin) a.scoreMin = c.scoreMin[i];
     if (a.scoreMax === null || c.scoreMax[i] > a.scoreMax) a.scoreMax = c.scoreMax[i];
     a.baseSum += c.baseSum[i]; a.finalSum += c.finalSum[i]; a.secs += c.secs[i];
+    // Expected net coins (summary.go: Expected): every round in a cell used the
+    // same items, so its base coins' sums give them exactly. A cut cell's
+    // unknown sum of squares leaves the group's unknown (null), as the spread's.
+    const cost = itemCost(c.items[i]);
+    if (cost !== null && c.rounds[i]) {
+      const m = c.items[i] & 1 ? 1 + EXPECTED_BONUS : 1, k = c.rounds[i];
+      a.expN += k; a.expSum += m * c.baseSum[i] - cost * k; a.expSecs += c.secs[i];
+      a.expSq = a.expSq === null || c.baseSq[i] === null ? null : a.expSq + m * m * c.baseSq[i] - 2 * m * cost * c.baseSum[i] + k * cost * cost;
+    }
     a.medalsN += c.medalsN[i]; a.medalsSum += c.medalsSum[i];
     if (c.medal[i]) a.earned += c.rounds[i];
     if (a.first === null || c.first[i] < a.first) a.first = c.first[i];
@@ -351,6 +361,7 @@ export function createGlobalEngine(loader) {
     totalSeconds: a.rounds ? a.secs : null, avgSeconds: avg(a.secs, a.rounds),
     coinsPerSec: rate(a), totalMedals: a.medalsN ? a.medalsSum : null, earnedRounds: a.earned,
     first: a.first === null ? null : sqlTime(a.first), last: a.last === null ? null : sqlTime(a.last),
+    ...expectedOf(a),
   });
 
   const tsumOf = (tsum, a) => ({
@@ -358,7 +369,7 @@ export function createGlobalEngine(loader) {
     avgCoins: avg(a.sum, a.n), minCoins: a.min, maxCoins: a.max,
     avgBaseCoins: avg(a.baseSum, a.rounds), avgFinalCoins: avg(a.finalSum, a.rounds),
     coins: a.n ? a.sum : null, totalSeconds: a.rounds ? a.secs : null, avgSeconds: avg(a.secs, a.rounds),
-    coinsPerSec: rate(a), earnedRounds: a.earned,
+    coinsPerSec: rate(a), earnedRounds: a.earned, ...expectedOf(a),
   });
 
   /**
@@ -521,19 +532,19 @@ export function createGlobalEngine(loader) {
       totals: main.totals,
       daily: [...daily.values()].sort((a, b) => byKey(a, b, 'day')).map(({a, day}) => ({
         day, rounds: a.rounds, avgScore: avg(a.scoreSum, a.rounds), minScore: a.scoreMin, maxScore: a.scoreMax,
-        coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), minCoins: a.min, maxCoins: a.max, coinsPerSec: rate(a),
+        coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), minCoins: a.min, maxCoins: a.max, coinsPerSec: rate(a), ...expectedOf(a),
       })),
       tsums: main.tsums,
       dailyTsums: [...dailyTsums.values()].sort((a, b) => byKey(a, b, 'day')).map(({a, day, tsum}) => ({
-        day, tsum, rounds: a.rounds, coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), coinsPerSec: rate(a),
+        day, tsum, rounds: a.rounds, coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), coinsPerSec: rate(a), ...expectedOf(a),
       })),
       mix: [...mix.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, items}) => ({
         build, tsum, items, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
-        rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null,
+        rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, ...expectedOf(a),
       })),
       chains: [...chains.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, scan, chain}) => ({
         build, tsum, scan, chain, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
-        rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null,
+        rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, ...expectedOf(a),
       })),
       histogram: main.spreads ? histogram(sel, k, main) : {width: 0, cap: null, bins: []},
       // The cells keep no coin-bonus multipliers, only whether a round was a jackpot.
@@ -578,7 +589,7 @@ export function createGlobalEngine(loader) {
 
     const group = (a, key) => ({
       key, rounds: a.rounds, avgCoins: avg(a.sum, a.n), maxCoins: a.max, coinsPerSec: rate(a),
-      avgScore: avg(a.scoreSum, a.rounds), first: sqlTime(a.first), last: sqlTime(a.last),
+      avgScore: avg(a.scoreSum, a.rounds), first: sqlTime(a.first), last: sqlTime(a.last), ...expectedOf(a),
     });
     const bySkill = new Map(), byType = new Map();
     // The play settings, by value, not recorded left out (as the skill level's -1 is).
@@ -670,7 +681,7 @@ export function createGlobalEngine(loader) {
       versions: [],
       devices: [],
       field: [...field].sort((x, y) => cmp(x[0], y[0])).map(([t, a]) => ({
-        tsum: t, rounds: a.rounds, rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, coinsPerSec: rate(a),
+        tsum: t, rounds: a.rounds, rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, coinsPerSec: rate(a), ...expectedOf(a),
       })),
       form: [],
       skillBins: [...skillBins.values()].sort((x, y) => cmp(x.skill, y.skill) || x.from - y.from),

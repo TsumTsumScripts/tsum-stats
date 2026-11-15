@@ -29,6 +29,7 @@
   import FocusBar from './stats/FocusBar.svelte';
   import HeadToHead from './stats/HeadToHead.svelte';
   import Kpis from './stats/Kpis.svelte';
+  import {EXP_WHAT, expHour} from '../lib/expected.js';
 
   // initial: the link's params; onStateChange(filter, {push}) writes the link.
   let {hidden, initial, onStateChange} = $props();
@@ -89,7 +90,7 @@
 
   // Chart views are a per-browser preference, not part of the link.
   const VIEW_KEY = 'tsum-stats.views';
-  const defaultViews = {compare: 'rate', eff: 'rate', effMetric: 'rate', daily: 'stack', share: 'donut', shareMetric: 'coins', items: 'rate', chains: 'rate', chainsView: 'all', bonus: 'rounds', bonusView: 'tiers'};
+  const defaultViews = {compare: 'exp', eff: 'rate', effMetric: 'exp', daily: 'stack', share: 'donut', shareMetric: 'coins', items: 'exp', chains: 'exp', chainsView: 'all', bonus: 'rounds', bonusView: 'tiers'};
   const views = $state({...defaultViews, ...loadPref(VIEW_KEY, {})});
   function setView(key, v) {
     views[key] = v;
@@ -352,7 +353,7 @@
   });
 
   const effSub = $derived(summary && {
-    rate: `${fmt(byRounds.length)} Tsums · click one to focus, Ctrl/⌘-click to compare`,
+    rate: `${fmt(byRounds.length)} Tsums · click one to focus, Ctrl/⌘-click to compare${views.effMetric === 'exp' ? ` · expected: ${EXP_WHAT}` : ''}`,
     box: 'the 12 most played · box: middle half · bar: median · dot: average · whiskers: lowest to 90th percentile · ring: highest',
     bubble: 'every Tsum · across: average coins · up: coins per second · size: rounds',
   }[views.eff] + (minRounds ? ` · Tsums with ${fmt(minRounds)} rounds or more` : ''));
@@ -386,10 +387,12 @@
   // Shares are of every Tsum in the filter, ranked or not; the table lists the ranked ones.
   const tableRows = $derived(tsumRows.filter(ranked));
   // A card's efficiency chart keeps the 10 best by its measure.
-  const effKey = {rate: 'coinsPerSec', avg: 'avgCoins', median: 'medianCoins', max: 'maxCoins'};
-  const effTop = $derived(views.eff === 'rate'
-    ? byRounds.filter(t => t[effKey[views.effMetric]] != null).sort((a, c) => c[effKey[views.effMetric]] - a[effKey[views.effMetric]]).slice(0, 10)
-    : byRounds.slice(0, 10));
+  const effGet = {exp: expHour, rate: t => t.coinsPerSec, avg: t => t.avgCoins, median: t => t.medianCoins, max: t => t.maxCoins};
+  const effTop = $derived.by(() => {
+    if (views.eff !== 'rate') return byRounds.slice(0, 10);
+    const get = effGet[views.effMetric] ?? effGet.rate;
+    return byRounds.filter(t => get(t) != null).sort((a, c) => get(c) - get(a)).slice(0, 10);
+  });
   const args = $derived(summary && {
     compare: picked.length > 1 ? [summary.dailyTsums, picked, ctx, views.compare] : null,
     eff: [views.eff, byRounds, spreadCtx, views.effMetric],
@@ -427,6 +430,7 @@
     num('rounds', 'Rounds', r => r.rounds),
     num('players', 'Players', r => r.players, fmt, {meta: {show: () => globalSite, title: 'Contributors who sent rounds of this Tsum in the last 30 days'}}),
     num('share', () => `${U.slice(0, -1)} share`, r => r.share, pct, {meta: {title: "This Tsum's part of the primary stat in the filter"}}),
+    num('expPerHour', 'Expected/h', r => expHour(r), fmt, {meta: {cls: 'coin', title: `Expected net coins an hour of play: ${EXP_WHAT}`}}),
     num('coins', () => `Total ${unit}`, r => r.coins, fmt, {meta: {cls: unitCls}}),
     num('coinsPerSec', () => `${U}/s`, r => r.coinsPerSec, fmtRate, {meta: {cls: unitCls, title: 'Per second of play'}}),
     num('coinsPerHour', () => `${U}/h`, r => (r.coinsPerSec === null ? null : r.coinsPerSec * 3600)),
@@ -579,7 +583,7 @@
       <div class="panel-head versus-head">
         <div><h3>Per day</h3></div>
         <Seg sm label="Measure" value={views.compare} onpick={v => setView('compare', v)}
-          options={[['rate', `${U}/s`], ['avg', 'Average'], ['total', 'Total'], ['rounds', 'Rounds']]} />
+          options={[['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average'], ['total', 'Total'], ['rounds', 'Rounds']]} />
       </div>
       <Chart draw={drawCompare} args={args?.compare} {unit} bind:legend={legends.compare} />
       <Legend items={legends.compare} />
@@ -589,7 +593,7 @@
       {#snippet tools()}
         <Seg sm label="Chart" value={views.eff} onpick={v => setView('eff', v)} options={[['rate', 'Ranked'], ['box', 'Spread'], ['bubble', 'Bubbles']]} />
         <Seg sm label="Measure" value={views.effMetric} onpick={v => setView('effMetric', v)} hidden={views.eff !== 'rate'}
-          options={[['rate', `${U}/s`], ['avg', 'Average'], ['median', 'Median'], ['max', 'Best']]} />
+          options={[['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average'], ['median', 'Median'], ['max', 'Best']]} />
       {/snippet}
       <Chart draw={drawEfficiency} args={args?.eff} cardArgs={args && [views.eff, effTop, spreadCtx, views.effMetric]} {unit} size="tall" />
     </Panel>
@@ -619,7 +623,7 @@
     <div class="charts anchor" id="s-when">
       <Panel class="wide" title="By items used" sub="every item set, best first">
         {#snippet tools()}
-          <Seg sm label="Measure" value={views.items} onpick={v => setView('items', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
+          <Seg sm label="Measure" value={views.items} onpick={v => setView('items', v)} options={[['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
         {/snippet}
         <Chart draw={drawItems} args={args?.items} {unit} size="square" />
       </Panel>
@@ -630,7 +634,7 @@
       {#snippet tools()}
         <Seg sm label="View" value={views.chainsView} onpick={v => setView('chainsView', v)} options={[['all', 'Every pair'], ['best', 'Best per Tsum']]} />
         {#if views.chainsView !== 'best'}
-          <Seg sm label="Measure" value={views.chains} onpick={v => setView('chains', v)} options={[['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
+          <Seg sm label="Measure" value={views.chains} onpick={v => setView('chains', v)} options={[['exp', 'Expected/h'], ['rate', `${U}/s`], ['avg', 'Average'], ['rounds', 'Rounds']]} />
         {/if}
       {/snippet}
       {#if views.chainsView === 'best'}
@@ -676,7 +680,7 @@
         </button>
       {/snippet}
       <DataTable columns={tsumColumns} rows={tableRows} key="tsums" search="Search Tsums" pageSize={25} pageSizes={[10, 25, 50, 100]}
-        sorting={[{id: 'coinsPerSec', desc: true}]} countLabel={n => `${fmt(n)} Tsums`} rowClass={r => (fewPlayers(r) ? 'few' : null)}>
+        sorting={[{id: 'expPerHour', desc: true}]} countLabel={n => `${fmt(n)} Tsums`} rowClass={r => (fewPlayers(r) ? 'few' : null)}>
         {#snippet empty()}No Tsums match these filters.{/snippet}
       </DataTable>
     </Panel>

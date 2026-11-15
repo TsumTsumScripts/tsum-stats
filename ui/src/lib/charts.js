@@ -7,6 +7,7 @@
 import * as d3 from 'd3';
 import {IMAGE_URL, chainsLabel, css, fmt, fmtRate, initials, itemsLabel, otherColor, pct} from './util.js';
 import {b, dim, hideTip, showTip, sw} from './ui.svelte.js';
+import {expHour} from './expected.js';
 
 const parseDay = d3.timeParse('%Y-%m-%d');
 const dayLabel = new Intl.DateTimeFormat(undefined, {weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'});
@@ -183,6 +184,7 @@ export function drawDaily(container, daily, dailyTsums, ctx, mode) {
 // ---- Head to head: one line per compared Tsum, per day ----
 
 const COMPARE = {
+  exp: {get: r => expHour(r), fmt: v => fmt(v), name: () => 'expected coins per hour'},
   rate: {get: r => r.coinsPerSec, fmt: v => fmtRate(v), name: () => `${U} per second`},
   avg: {get: r => r.avgCoins, fmt: v => fmt(v), name: () => `average ${U}`},
   total: {get: r => r.coins, fmt: v => fmt(v), name: () => `total ${U}`},
@@ -213,6 +215,7 @@ export function drawCompare(container, dailyTsums, ids, ctx, metric) {
 // ---- Coin efficiency per Tsum: ranked bars, box plot, bubbles ----
 
 const METRICS = {
+  exp: {get: t => expHour(t), fmt, name: () => 'expected coins per hour'},
   rate: {get: t => t.coinsPerSec, fmt: fmtRate, name: () => `${U} per second`},
   avg: {get: t => t.avgCoins, fmt, name: () => `average ${U}`},
   median: {get: t => t.medianCoins, fmt, name: () => `median ${U}`},
@@ -225,6 +228,7 @@ const ap = ctx => (ctx?.approx ? '≈ ' : '');
 const tsumTip = (t, ctx) => [
   [sw(ctx.colorOf(t.tsum)), b(ctx.nameOf(t.tsum) || 'Not identified')],
   [`${fmt(t.rounds)} rounds`],
+  ...(expHour(t) === null ? [] : [[b(fmt(expHour(t))), ' expected coins/h']]),
   [b(fmtRate(t.coinsPerSec)), ` ${U}/s · ${fmt(t.coinsPerSec === null ? null : t.coinsPerSec * 3600)} ${U}/h`],
   ['Average ', b(fmt(t.avgCoins)), ` · median ${ap(ctx)}${fmt(t.medianCoins)}`],
   [`Lowest ${fmt(t.minCoins)} · highest ${fmt(t.maxCoins)}`],
@@ -444,6 +448,7 @@ export function drawShare(container, view, rows, ctx, metric) {
 // ---- Radial rings: coins by boost items used ----
 
 const ITEM_METRIC = {
+  exp: {get: s => (s.expSeconds ? (s.expCoins / s.expSeconds) * 3600 : null), fmt: v => `${fmt(v)}/h`},
   rate: {get: s => (s.secs ? s.rateCoins / s.secs : null), fmt: v => `${fmtRate(v)}/s`},
   avg: {get: s => (s.coinRounds ? s.coins / s.coinRounds : null), fmt: v => fmt(v)},
   rounds: {get: s => s.rounds, fmt: v => fmt(v)},
@@ -465,6 +470,7 @@ function drawRanked(container, data, keyOf, label, metric) {
   const groups = [...d3.rollup(data, rs => ({
     rounds: d3.sum(rs, r => r.rounds), coins: d3.sum(rs, r => r.coins ?? 0), coinRounds: d3.sum(rs, r => r.coinRounds),
     rateCoins: d3.sum(rs, r => r.rateCoins ?? 0), secs: d3.sum(rs, r => r.rateSeconds ?? 0), tsums: new Set(rs.map(r => r.tsum)).size,
+    expCoins: d3.sum(rs, r => r.expCoins ?? 0), expSeconds: d3.sum(rs, r => r.expSeconds ?? 0),
   }), keyOf)].map(([key, s]) => ({key, ...s})).filter(s => m.get(s) !== null)
     .sort((a, c) => m.get(c) - m.get(a));
   const left = Math.min(240, container.clientWidth * 0.45);
@@ -480,10 +486,11 @@ function drawRanked(container, data, keyOf, label, metric) {
   const rows = g.append('g').selectAll('g').data(groups).join('g').attr('transform', s => `translate(0,${y(s.key)})`);
   hoverable(rows, s => [[b(label(s.key))], [`${fmt(s.rounds)} rounds`, s.tsums > 1 ? ` of ${fmt(s.tsums)} Tsums` : ''],
     ['Average ', b(fmt(s.coinRounds ? s.coins / s.coinRounds : null)), ` ${U}`],
-    [b(fmtRate(s.secs ? s.rateCoins / s.secs : null)), ` ${U}/s`]]);
+    [b(fmtRate(s.secs ? s.rateCoins / s.secs : null)), ` ${U}/s`],
+    ...(s.expSeconds ? [[b(fmt((s.expCoins / s.expSeconds) * 3600)), ' expected coins/h']] : [])]);
   rows.append('rect').attr('x', -left).attr('width', inner.w + left + 60).attr('height', y.bandwidth()).attr('fill', 'transparent');
   rows.append('rect').attr('height', y.bandwidth()).attr('width', s => Math.max(2, x(m.get(s))))
-    .attr('rx', Math.min(4, y.bandwidth() / 2)).attr('fill', css(U === 'medals' ? '--medal' : '--coin'));
+    .attr('rx', Math.min(4, y.bandwidth() / 2)).attr('fill', css(U === 'medals' && metric !== 'exp' ? '--medal' : '--coin'));
   rows.append('text').attr('x', s => x(m.get(s)) + 6).attr('y', y.bandwidth() / 2).attr('dy', '0.35em').attr('class', 'value-label')
     .text(s => m.fmt(m.get(s)));
   const maxChars = Math.max(8, Math.floor((left - 12) / 7));

@@ -115,6 +115,12 @@ pages and aggregates:
   Item payback is worked out in the page from the summary's `mix`; the Stats
   page's best chain pair per Tsum from its `chains`.
 
+Every group in these answers also carries `Expected`'s sums (expected net
+coins, `summary.go`), which the global site gets exactly from its cells' base
+sums and items. A round's items are the `items` column, a bitmask that
+triggers keep in step with `settings` (`addItemsColumn`, `schema.go`), so no
+query parses the settings JSON to cost a round.
+
 The queries are in `queries.go` and `summary.go`, with their indexes declared
 in `schema.go`. Both are sized against a large synthetic history; if you add a
 query to the summary, check it the same way before shipping it, since they all
