@@ -117,7 +117,8 @@ export function itemsLabel(mask) {
 export const skillTypeValue = t => (t === '' ? '-' : t);
 // The Tsum script's English names for its skill types, by the id a round
 // records (SkillType in shared.d.ts, the names in uiEn.ts; 5.0 and 6.0, plus
-// ids since retired, so older rounds still read by name).
+// ids since retired, so older rounds still read by name). A skill missing here
+// shows as its raw id: add each new one when the script adds it.
 const SKILLS = {
   burst: 'Burst', burst_bubbles: 'Burst + clear bubbles', donald: 'Donald', donaldx: 'Holiday Donald',
   lukej: 'Jedi Luke', moana: 'Moana', marie: 'Marie', missbunny: 'Miss Bunny', rabbit: 'Rabbit',
@@ -125,7 +126,7 @@ const SKILLS = {
   cabbage_mickey: 'Cabbage Mickey', buzzl: 'Cpt. Lightyear', buzzl_120: 'Cpt. Lightyear 120',
   mcqueenplus: 'Lightning McQueen+', beastda: 'Formal Beast', minnie12thplus: 'Tiara Minnie+',
   elsa_coronation: 'Coronation Day Elsa', elsa_coronation_legacy: 'Coronation Day Elsa (legacy)',
-  rapunzelplus: 'Rapunzel+', gaston: 'Gaston', auroraink: 'Lorcana Aurora',
+  rapunzelplus: 'Rapunzel+', gaston: 'Gaston', auroraink: 'Lorcana Aurora', mickeysplus: 'Sorcerer Mickey+',
   nbc_set: 'Nightmare Before Christmas (Set)', villains_set: 'Disney Villains (Set)',
   colorful_mickey_set: 'Colorful Mickey (Set)', magic_wand_change: 'Magic Wand Change', cloud: 'KH2 Cloud',
   pair_tsum: 'Pair Tsum', nokill: 'No Skill', unknown_skill: 'Unknown skill',

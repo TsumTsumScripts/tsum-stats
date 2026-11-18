@@ -1,5 +1,5 @@
 {
- "script": "6.0b27",
+ "script": "6.0b30",
  "table": {
   "prefix": "TSUM4-",
   "otherPrefix": "TSUM[0-9]+-",
@@ -114,6 +114,7 @@
      "villains_set": "v",
      "pair_tsum": "p",
      "woody2": "w",
+     "mickeysplus": "S",
      "burst_bubbles": "B",
      "cinderella": "c",
      "snowwhite": "s",
@@ -141,6 +142,7 @@
      "villains_set": "Disney Villains (Set)",
      "pair_tsum": "Pair Tsum",
      "woody2": "Sheriff Woody",
+     "mickeysplus": "Sorcerer Mickey+",
      "burst_bubbles": "Burst + clear bubbles",
      "cinderella": "Cinderella",
      "snowwhite": "Snow White",
