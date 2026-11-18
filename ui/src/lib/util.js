@@ -54,13 +54,18 @@ export function loadCatalog() {
 
 /**
  * A Tsum's name in a language, 'en' or 'jp' (default: the page's, names.lang),
- * falling back to the other language's, then the id. 'global' is 'en'.
+ * falling back to the other language's, then the id. 'global' is 'en'. English
+ * is the global build's name, else the catalog's own (`en`, for a JP-only Tsum).
  */
 export function tsumName(catalog, id, lang = names.lang) {
   const t = catalog?.byId.get(id);
   if (!t) return id || 'Unknown';
-  return (lang === 'jp' ? t.jp || t.global : t.global || t.jp) || id;
+  const en = englishName(t);
+  return (lang === 'jp' ? t.jp || en : en || t.jp) || id;
 }
+
+/** A catalog Tsum's English name: the global build's, else our own (`en`); '' when neither. */
+export const englishName = t => t.global || t.en || '';
 
 /** "Mickey Mouse" → "MM", for a portrait whose art is missing. */
 export function initials(name) {

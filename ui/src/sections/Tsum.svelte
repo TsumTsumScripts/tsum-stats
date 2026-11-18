@@ -25,7 +25,7 @@
   import {shared} from '../lib/ui.svelte.js';
   import {
     MIN_ROUNDS, api, buildLabel, playersIn, playersWindow, cap, chainsLabel, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref,
-    PLAY, playValueName, skillTypeName, skillTypeValue, tsumColor, tsumName,
+    PLAY, englishName, playValueName, skillTypeName, skillTypeValue, tsumColor, tsumName,
   } from '../lib/util.js';
   import Kpis from './stats/Kpis.svelte';
   import {EXP_WHAT, expRate, sumExp} from '../lib/expected.js';
@@ -88,7 +88,7 @@
   const entry = $derived(catalog.byId.get(filter.id));
   const name = $derived(nameOf(filter.id));
   const altName = $derived.by(() => {
-    const other = entry && (names.lang === 'jp' ? entry.global : entry.jp);
+    const other = entry && (names.lang === 'jp' ? englishName(entry) : entry.jp);
     return other && other !== name ? other : '';
   });
 

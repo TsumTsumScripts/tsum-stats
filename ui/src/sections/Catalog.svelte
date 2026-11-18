@@ -16,7 +16,7 @@
   import {maxOutTotals, toMax, toNext} from '../lib/boxes.js';
   import {names} from '../lib/names.svelte.js';
   import {shared} from '../lib/ui.svelte.js';
-  import {api, debounce, fmt, loadPref, savePref, tsumColor} from '../lib/util.js';
+  import {api, debounce, englishName, fmt, loadPref, savePref, tsumColor} from '../lib/util.js';
 
   let {hidden, initial, onStateChange} = $props();
   const globalSite = isGlobal();
@@ -171,7 +171,9 @@
     const owned = new Map((list?.items ?? []).filter(t => t.tsum).map(t => [t.tsum, t]));
     const first = names.lang === 'jp' ? 'jp' : 'global';
     const second = first === 'jp' ? 'global' : 'jp';
-    const named = (id, n, own) => {
+    const named = (id, t, own) => {
+      // English is the global build's name, else our own (`en`); `t[build]` above still says which builds have it.
+      const n = {global: englishName(t), jp: t.jp};
       const name = n[first] || n[second] || id;
       const alt = prefs.both && n[second] && n[second] !== n[first] ? n[second] : '';
       return {id, name, alt, search: `${n.global} ${n.jp}`.toLowerCase(), own, color: tsumColor(catalog, id),
