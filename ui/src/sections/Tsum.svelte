@@ -559,7 +559,7 @@
                   <td class="dim">{i + 1}</td>
                   <td>{fmtWhen(r.playedAt)}</td>
                   <td class="num {unit === 'medals' ? 'medal' : 'coin'}">{fmt(roundCoins(r))}</td>
-                  <td class="num">{fmtRate(roundRate(r))}</td>
+                  <td class="num {unit === 'medals' ? 'medal' : 'coin'}">{fmtRate(roundRate(r))}</td>
                   <td class="num score">{fmt(r.score)}</td>
                   <td class="num">{fmtDuration(r.durationSeconds)}</td>
                   <td class="dim">{itemsLabel(r.items)}</td>

@@ -83,8 +83,8 @@
           {#if !medals}<td class="num dim">{errText(r)}</td>{/if}
           <td class="num" class:up={r.real && r.change > 0} class:down={r.real && r.change < 0}>{r.change === null ? '' : `${r.change > 0 ? '+' : ''}${pct(r.change)}`}</td>
           {#if paying}<td class="num dim">{r.payback === null ? '' : `${fmt(r.payback)} h`}</td>{/if}
-          <td class="num">{medals ? fmt(r.avgCoins) : fmtRate(r.coinsPerSec)}</td>
-          <td class="num">{medals ? fmt(r.maxCoins) : fmt(r.avgCoins)}</td>
+          <td class="num" class:medal={medals}>{medals ? fmt(r.avgCoins) : fmtRate(r.coinsPerSec)}</td>
+          <td class="num" class:medal={medals}>{medals ? fmt(r.maxCoins) : fmt(r.avgCoins)}</td>
           <td class="num score">{fmt(r.avgScore)}</td>
           <td class="dim">{span(r)}</td>
         </tr>

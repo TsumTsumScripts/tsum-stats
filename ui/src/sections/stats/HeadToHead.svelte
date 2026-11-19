@@ -17,15 +17,17 @@
   const card = $derived.by(() => {
     const byId = new Map(rows.map(r => [r.tsum, r]));
     const u = coins === 'medals' ? 'medals' : 'coins', U = cap(u);
+    // The primary stat's own rows: medals take their colour, coins stay plain.
+    const own = coins === 'medals' ? 'medal' : '';
     // One row per idea. [label, value(row), format, which end wins: 'high', 'low' or none, class, sure(winner, runner-up)].
     // Only the rows with a winner count towards "best in"; expected coins only when the gap is more than luck explains.
     const figures = [
       ['Rounds', r => r.rounds, fmt],
       ['Expected coins per hour', expHour, v => fmt(v), 'high', 'coin', differs],
       ['± (luck of the rounds played)', r => expErr(r), v => (v === null ? '' : `± ${pct(v)}`)],
-      [`${U} per second`, r => r.coinsPerSec, fmtRate],
-      [`Average ${u}`, r => r.avgCoins, fmt],
-      [`${approx ? '≈ ' : ''}Median ${u}`, r => r.medianCoins, fmt],
+      [`${U} per second`, r => r.coinsPerSec, fmtRate, '', own],
+      [`Average ${u}`, r => r.avgCoins, fmt, '', own],
+      [`${approx ? '≈ ' : ''}Median ${u}`, r => r.medianCoins, fmt, '', own],
       ['Consistency (lower is steadier)', steadiness, v => `± ${pct(v)}`, 'low'],
       ['Average round', r => r.avgSeconds, fmtDuration],
       ['Average score', r => r.avgScore, fmt],

@@ -432,6 +432,8 @@
 
   /** The class of a column of the primary stat: its figures take the coin or medal colour. */
   const unitCls = () => (filter.coins === 'medals' ? 'medal' : 'coin');
+  /** The class of a per-round column of the primary stat: medals take their colour, coins stay plain. */
+  const medalCls = () => (filter.coins === 'medals' ? 'medal' : '');
   /** Whether a rounds column is the primary stat itself (coins: '', 'final' or 'medals'), which a copied card keeps first. */
   const primaryIs = coins => filter.coins === coins && !net;
   const num = (id, header, get, format = fmt, extra = {}) => ({
@@ -463,17 +465,17 @@
     num('expErr', '±', r => expErr(r), v => (v === null || v === undefined ? '' : `± ${pct(v)}`), {meta: {cls: 'dim', title: 'How far Expected/h could be off by the luck of which rounds were played (one standard error)'}}),
     num('coins', () => `Total ${unit}`, r => r.coins, fmt, {meta: {cls: unitCls}}),
     num('coinsPerSec', () => `${U}/s`, r => r.coinsPerSec, fmtRate, {meta: {cls: unitCls, title: 'Per second of play'}}),
-    num('coinsPerHour', () => `${U}/h`, r => (r.coinsPerSec === null ? null : r.coinsPerSec * 3600)),
+    num('coinsPerHour', () => `${U}/h`, r => (r.coinsPerSec === null ? null : r.coinsPerSec * 3600), fmt, {meta: {cls: unitCls}}),
     num('medalsRun', () => approxName('Medals/h incl. between rounds'), r => runRateHour(r), fmt,
       {meta: {cls: 'medal', show: () => !coinMode(), title: `Medals/h over play time plus the time between rounds: an hour of the script running. It ${RUN_WHAT}`}}),
-    num('avgCoins', 'Average', r => r.avgCoins),
-    num('medianCoins', approxName('Median'), r => r.medianCoins, fmt, {meta: {title: approxTitle('')}}),
-    num('minCoins', 'Lowest', r => r.minCoins, fmt, {meta: {hidden: true}}),
-    num('maxCoins', 'Highest', r => r.maxCoins, fmt, {meta: {hidden: true}}),
-    num('stdCoins', 'Std dev', r => r.stdCoins, fmt, {meta: {hidden: true, title: 'How far rounds usually land from the average'}}),
-    num('q1Coins', approxName('Q1'), r => r.q1Coins, fmt, {meta: {hidden: true, title: approxTitle('A quarter of rounds made fewer coins')}}),
-    num('q3Coins', approxName('Q3'), r => r.q3Coins, fmt, {meta: {hidden: true, title: approxTitle('A quarter of rounds made more coins')}}),
-    num('p90Coins', approxName('P90'), r => r.p90Coins, fmt, {meta: {hidden: true, title: approxTitle('One round in ten made more coins')}}),
+    num('avgCoins', 'Average', r => r.avgCoins, fmt, {meta: {cls: medalCls}}),
+    num('medianCoins', approxName('Median'), r => r.medianCoins, fmt, {meta: {cls: medalCls, title: approxTitle('')}}),
+    num('minCoins', 'Lowest', r => r.minCoins, fmt, {meta: {cls: medalCls, hidden: true}}),
+    num('maxCoins', 'Highest', r => r.maxCoins, fmt, {meta: {cls: medalCls, hidden: true}}),
+    num('stdCoins', 'Std dev', r => r.stdCoins, fmt, {meta: {cls: medalCls, hidden: true, title: 'How far rounds usually land from the average'}}),
+    num('q1Coins', approxName('Q1'), r => r.q1Coins, fmt, {meta: {cls: medalCls, hidden: true, title: approxTitle('A quarter of rounds made fewer coins')}}),
+    num('q3Coins', approxName('Q3'), r => r.q3Coins, fmt, {meta: {cls: medalCls, hidden: true, title: approxTitle('A quarter of rounds made more coins')}}),
+    num('p90Coins', approxName('P90'), r => r.p90Coins, fmt, {meta: {cls: medalCls, hidden: true, title: approxTitle('One round in ten made more coins')}}),
     num('avgBaseCoins', 'Avg base coins', r => r.avgBaseCoins, fmt, {meta: {hidden: true, title: 'Before the coin bonus'}}),
     num('avgFinalCoins', 'Avg final coins', r => r.avgFinalCoins, fmt, {meta: {hidden: true, title: 'After the coin bonus'}}),
     num('avgSeconds', 'Avg time', r => r.avgSeconds, fmtDuration),
@@ -487,13 +489,13 @@
     medal('medalsPerHourRun', approxName('Medals/h incl. between rounds'), m => runRateHour(m), fmt,
       {cls: 'medal', hidden: true, title: `Medals/h over play time plus the time between rounds: an hour of the script running. It ${RUN_WHAT}`}),
     medal('avgMedals', 'Avg medals', m => m.avgCoins, fmt, {cls: 'medal', title: 'Average medals a round, a round that earned none counting as 0'}),
-    medal('medianMedals', approxName('Median medals'), m => m.medianCoins, fmt, {hidden: true, title: approxTitle('')}),
-    medal('minMedals', 'Lowest medals', m => m.minCoins, fmt, {hidden: true}),
-    medal('maxMedals', 'Highest medals', m => m.maxCoins, fmt, {hidden: true}),
-    medal('stdMedals', 'Medals std dev', m => m.stdCoins, fmt, {hidden: true}),
-    medal('q1Medals', approxName('Medals Q1'), m => m.q1Coins, fmt, {hidden: true, title: approxTitle('')}),
-    medal('q3Medals', approxName('Medals Q3'), m => m.q3Coins, fmt, {hidden: true, title: approxTitle('')}),
-    medal('p90Medals', approxName('Medals P90'), m => m.p90Coins, fmt, {hidden: true, title: approxTitle('')}),
+    medal('medianMedals', approxName('Median medals'), m => m.medianCoins, fmt, {cls: 'medal', hidden: true, title: approxTitle('')}),
+    medal('minMedals', 'Lowest medals', m => m.minCoins, fmt, {cls: 'medal', hidden: true}),
+    medal('maxMedals', 'Highest medals', m => m.maxCoins, fmt, {cls: 'medal', hidden: true}),
+    medal('stdMedals', 'Medals std dev', m => m.stdCoins, fmt, {cls: 'medal', hidden: true}),
+    medal('q1Medals', approxName('Medals Q1'), m => m.q1Coins, fmt, {cls: 'medal', hidden: true, title: approxTitle('')}),
+    medal('q3Medals', approxName('Medals Q3'), m => m.q3Coins, fmt, {cls: 'medal', hidden: true, title: approxTitle('')}),
+    medal('p90Medals', approxName('Medals P90'), m => m.p90Coins, fmt, {cls: 'medal', hidden: true, title: approxTitle('')}),
   ];
 
   /** A round's coins in the Primary stat, less its items' cost when net; null when unknown. */

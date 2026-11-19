@@ -71,7 +71,7 @@
 
 <div class="kpis insights">
   {#if form}
-    <div class="panel kpi" title="The newest {fmt(form.recent.rounds)} rounds in the filter. A change is coloured only when it is more than the luck of which rounds were played explains">
+    <div class="panel kpi" class:medal={medals} title="The newest {fmt(form.recent.rounds)} rounds in the filter. A change is coloured only when it is more than the luck of which rounds were played explains">
       <div class="label">Recent form · last {fmt(form.recent.rounds)} rounds</div>
       {#if medals}
         <div class="value">{fmt(form.value)} <span class="unit">medals/h</span></div>

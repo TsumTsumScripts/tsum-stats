@@ -784,7 +784,8 @@ export function drawSkillSpread(container, bins, hist, few = 20) {
   if (skills.length < 2) return empty(f, 'Needs two skill levels with 20 rounds or more');
   const froms = [...new Set(bins.map(bn => bn.from))].sort((a, c) => a - c);
   const steps = d3.range(froms[0], froms.at(-1) + w, w);
-  const shade = d3.interpolateLab(d3.interpolateLab(css('--chart-track'), css('--coin'))(0.35), css('--coin'));
+  const tone = css(U === 'medals' ? '--medal' : '--coin');
+  const shade = d3.interpolateLab(d3.interpolateLab(css('--chart-track'), tone)(0.35), tone);
   const colorOf = (s, i) => shade(skills.length === 1 ? 1 : i / (skills.length - 1));
   const lines = skills.map((s, i) => ({...s, color: colorOf(s, i), pts: steps.map(from => ({from, n: s.at.get(from) || 0, share: (s.at.get(from) || 0) / s.total}))}));
   const x = d3.scaleLinear().domain([steps[0], steps.at(-1) + w]).range([0, inner.w]);
