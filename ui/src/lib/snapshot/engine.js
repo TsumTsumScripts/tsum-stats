@@ -504,6 +504,20 @@ export function createEngine(loader) {
     };
   }
 
+  /** Column c per day (dayOf a round's time) and Tsum (summary.go: dayTsums). */
+  function dayTsums(sel, c, dayOf) {
+    const by = new Map();
+    each(sel, (sh, i) => {
+      const day = dayOf(sh.at[i]), tsum = sh.dict.tsum[sh.tsum[i]];
+      const key = day + '\u0000' + tsum;
+      if (!by.has(key)) by.set(key, {a: acc(), day, tsum});
+      add(by.get(key).a, sh, i, c);
+    });
+    return [...by.values()].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0)).map(({a, day, tsum}) => ({
+      day, tsum, rounds: a.rounds, coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), coinsPerSec: rate(a), ...expectedOf(a),
+    }));
+  }
+
   // ---- The routes ----
 
   /** /api/stats/summary (summary.go: Summarize). tz is the viewer's minutes east of UTC. */
@@ -513,20 +527,20 @@ export function createEngine(loader) {
     const c = f.medals ? 'medals' : coinCol(f);
     const sel = await select(f);
 
-    const main = statSet(sel, c);
-    // With medals as the primary stat the two sets are the same rounds and column.
-    const medals = f.medals ? main : statSet(await select(f, {onlyMedals: true}), 'medals', false);
-
-    const daily = new Map(), dailyTsums = new Map(), mix = new Map(), chains = new Map();
-    const [SCAN, CHAIN] = PLAY_SETTINGS;
     const dayOf = at => sqlTime(at + shift).slice(0, 10);
+    const main = statSet(sel, c);
+    const dailyTsums = dayTsums(sel, c, dayOf);
+    // With medals as the primary stat the two sets are the same rounds and column.
+    const medalSel = f.medals ? null : await select(f, {onlyMedals: true});
+    const medals = f.medals ? {...main, dailyTsums} : {...statSet(medalSel, 'medals', false), dailyTsums: dayTsums(medalSel, 'medals', dayOf)};
+
+    const daily = new Map(), mix = new Map(), chains = new Map();
+    const [SCAN, CHAIN] = PLAY_SETTINGS;
     each(sel, (sh, i) => {
       const day = dayOf(sh.at[i]);
       const tsum = sh.dict.tsum[sh.tsum[i]];
-      for (const [map, key] of [[daily, day], [dailyTsums, day + '\u0000' + tsum]]) {
-        if (!map.has(key)) map.set(key, {a: acc(), day, tsum});
-        add(map.get(key).a, sh, i, c);
-      }
+      if (!daily.has(day)) daily.set(day, {a: acc(), day});
+      add(daily.get(day).a, sh, i, c);
       const build = sh.dict.build[sh.build[i]];
       const items = itemsOf(sh, i);
       const o = sh.settings[i] === null ? null : sh.dict.settings[sh.settings[i]];
@@ -548,9 +562,7 @@ export function createEngine(loader) {
         coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), minCoins: a.min, maxCoins: a.max, coinsPerSec: rate(a), ...expectedOf(a),
       })),
       tsums: main.tsums,
-      dailyTsums: [...dailyTsums.values()].sort((a, b) => byKey(a, b, 'day')).map(({a, day, tsum}) => ({
-        day, tsum, rounds: a.rounds, coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), coinsPerSec: rate(a), ...expectedOf(a),
-      })),
+      dailyTsums,
       mix: [...mix.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, skill, items}) => ({
         build, tsum, skill, items, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
         rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, ...expectedOf(a),

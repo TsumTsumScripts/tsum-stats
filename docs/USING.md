@@ -320,12 +320,17 @@ out:
   idea. Three rows are scored, a bar under each scaled to the row's largest
   and a ★ on the best: expected coins an hour (only when the gap is more than
   luck explains), consistency (lower wins) and medals an hour. The header
-  counts each Tsum's wins of those.
+  counts each Tsum's wins of those. In Medals mode medals an hour takes the
+  place of medals per second.
 - A line per Tsum per day shows expected coins an hour, the primary stat per
-  second, the average, the total or the number of rounds.
+  second, medals an hour (with coins as the primary stat, once a medal Tsum is
+  among those compared), the average, the total or the number of rounds. In
+  Medals mode the first two are medals an hour.
 
 To compare Tsums from the Tsum table, tick them and press *Compare ticked*. The
-summary's `dailyTsums` rows carry `avgCoins` and `coinsPerSec` for the chart.
+summary's `dailyTsums` rows carry `avgCoins` and `coinsPerSec` for the chart;
+`medals.dailyTsums` are the same for medals, over medal Tsums' rounds, a round
+that earned none counting as 0.
 
 Each chart and table panel's ⤢ button blows it up to fill the window; Esc
 closes it. A table's pager sticks to the bottom of the window while the table is

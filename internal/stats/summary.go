@@ -37,6 +37,10 @@ type Summary struct {
 type StatSet struct {
 	Totals Totals     `json:"totals"`
 	Tsums  []TsumStat `json:"tsums"`
+	// DailyTsums is the stat per day and Tsum: Head to head's medals an hour
+	// per day. Only the medal set's is sent (the primary stat's is
+	// Summary.DailyTsums); statSet leaves it nil.
+	DailyTsums []DayTsumStat `json:"dailyTsums"`
 }
 
 // Totals are the KPI cards. Coin rate figures only count rounds that have both
@@ -412,6 +416,7 @@ func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
 	day := "date(played_at, {:shift})"
 
 	var main StatSet
+	var medalDays []DayTsumStat
 	steps := []func() error{
 		func() (err error) { main, err = statSet(db, f); return err },
 		func() (err error) {
@@ -422,16 +427,20 @@ func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
 			s.Medals, err = statSet(db, f.medalView())
 			return err
 		},
+		func() (err error) {
+			if f.Medals {
+				return nil
+			}
+			medalDays, err = dayTsums(db, f.medalView(), tzMinutes)
+			return err
+		},
 		func() error {
 			return db.NewQuery(`SELECT ` + day + ` AS day, COUNT(*) AS rounds, AVG(score) AS avg_score,
 				MIN(score) AS min_score, MAX(score) AS max_score, SUM(` + c + `) AS coins, AVG(` + c + `) AS avg_coins,
 				MIN(` + c + `) AS min_coins, MAX(` + c + `) AS max_coins, ` + rateExpr(c) + ` AS coins_per_sec, ` + expCols + `
 				FROM ts_rounds` + where + ` GROUP BY day ORDER BY day`).Bind(p).All(&s.Daily)
 		},
-		func() error {
-			return db.NewQuery(`SELECT ` + day + ` AS day, tsum, COUNT(*) AS rounds, SUM(` + c + `) AS coins,
-				AVG(` + c + `) AS avg_coins, ` + rateExpr(c) + ` AS coins_per_sec, ` + expCols + ` FROM ts_rounds` + where + ` GROUP BY day, tsum ORDER BY day`).Bind(p).All(&s.DailyTsums)
-		},
+		func() (err error) { s.DailyTsums, err = dayTsums(db, f, tzMinutes); return err },
 		func() (err error) { s.Mix, err = mixStats(db, f); return err },
 		func() error {
 			if !f.Complete {
@@ -455,12 +464,24 @@ func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
 	}
 	s.Totals, s.Tsums = main.Totals, main.Tsums
 	if f.Medals {
-		s.Medals = main
+		s.Medals, medalDays = main, s.DailyTsums
 	}
+	s.Medals.DailyTsums = medalDays
 
 	var err error
 	s.Histogram, err = coinHistogram(db, f, s.Totals)
 	return s, err
+}
+
+// dayTsums is f.col() per day and Tsum, its days shifted as Summarize's are.
+func dayTsums(db dbx.Builder, f Filter, tzMinutes int) ([]DayTsumStat, error) {
+	c := f.col()
+	where, p := f.where()
+	p["shift"] = strconv.Itoa(tzMinutes) + " minutes"
+	out := []DayTsumStat{}
+	err := db.NewQuery(`SELECT date(played_at, {:shift}) AS day, tsum, COUNT(*) AS rounds, SUM(` + c + `) AS coins,
+		AVG(` + c + `) AS avg_coins, ` + rateExpr(c) + ` AS coins_per_sec, ` + expCols + ` FROM ts_rounds` + where + ` GROUP BY day, tsum ORDER BY day`).Bind(p).All(&out)
+	return out, err
 }
 
 // mixStats is the summary's Mix: the primary stat per build × Tsum × item set.

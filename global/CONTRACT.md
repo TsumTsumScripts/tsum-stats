@@ -1030,7 +1030,8 @@ cells' rounds.
   `stdCoins` (population variance from `Σsq/n − (Σ/n)²`), `first`, `last`,
   `daily`, `dailyTsums`, `mix` and `chains` (each by the cells' `skill` as
   text, `''` for -1; chains from the cells' `scan` and `chain`), and the
-  `medals` set's totals and Tsums. Every group's expected net coins
+  `medals` set's totals, Tsums and `dailyTsums` (its medals per day and
+  Tsum, for Head to head). Every group's expected net coins
   (`summary.go: Expected`): a cell's `expCoins` is `baseSum × (1 + 0.39 when
   its items have +Coin) − cost × rounds`, `expSeconds` its `secs`,
   `expRounds` its rounds, and `expSq` the square expanded from `baseSq` and
@@ -1067,7 +1068,8 @@ becomes the sums of its kept bins:
 
 - **Exact** (given the range snapped to whole bins): its rounds, `secs`,
   score, base, final and medals sums, so every count, sum, average and
-  `coinsPerSec`, `daily`, `dailyTsums`, `mix` and `chains`.
+  `coinsPerSec`, `daily`, `dailyTsums` (the `medals` set's too), `mix` and
+  `chains`.
 - **Approximate**: the range's own figure's min and max (the cell's own where
   its lowest or highest bin is kept, else that bin's average) and its sum of
   squares (from the bins' averages), so its `stdCoins`.

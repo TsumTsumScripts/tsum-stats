@@ -24,7 +24,7 @@ function normalize(route, v) {
     const sortTsums = t => [...t].sort(by('tsum'));
     return {
       ...v,
-      tsums: sortTsums(v.tsums), medals: {...v.medals, tsums: sortTsums(v.medals.tsums)},
+      tsums: sortTsums(v.tsums), medals: {...v.medals, tsums: sortTsums(v.medals.tsums), dailyTsums: [...v.medals.dailyTsums].sort(by('day', 'tsum'))},
       dailyTsums: [...v.dailyTsums].sort(by('day', 'tsum')),
       mix: [...v.mix].sort(by('build', 'tsum', 'skill', 'items')),
       chains: [...v.chains].sort(by('build', 'tsum', 'skill', 'scan', 'chain')),

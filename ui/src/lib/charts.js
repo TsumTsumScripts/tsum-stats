@@ -194,6 +194,8 @@ const COMPARE = {
   exp: {get: r => expHour(r), fmt: v => fmt(v), name: () => 'expected coins per hour'},
   rate: {get: r => r.coinsPerSec, fmt: v => fmtRate(v), name: () => `${U} per second`},
   hour: {get: r => (r.coinsPerSec == null ? null : r.coinsPerSec * 3600), fmt: v => fmt(v), name: () => `${U} per hour`},
+  // Medals an hour beside coins: drawn from the medal set's days (summary.medals.dailyTsums).
+  medals: {get: r => (r.coinsPerSec == null ? null : r.coinsPerSec * 3600), fmt: v => fmt(v), name: () => 'medals per hour'},
   avg: {get: r => r.avgCoins, fmt: v => fmt(v), name: () => `average ${U}`},
   total: {get: r => r.coins, fmt: v => fmt(v), name: () => `total ${U}`},
   rounds: {get: r => r.rounds, fmt: v => fmt(v), name: () => 'rounds'},

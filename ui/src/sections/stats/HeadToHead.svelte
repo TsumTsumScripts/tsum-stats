@@ -25,16 +25,15 @@
       ['Rounds', r => r.rounds, fmt],
       ['Expected coins per hour', expHour, v => fmt(v), 'high', 'coin', differs],
       ['± (luck of the rounds played)', r => expErr(r), v => (v === null ? '' : `± ${pct(v)}`)],
-      [`${U} per second`, r => r.coinsPerSec, fmtRate, '', own],
+      // In Medals mode medals an hour, below, stands for the per-second rate, as on the charts (Stats.svelte: mv).
+      ...(coins !== 'medals' ? [[`${U} per second`, r => r.coinsPerSec, fmtRate, '', own]] : []),
       [`Average ${u}`, r => r.avgCoins, fmt, '', own],
       [`${approx ? '≈ ' : ''}Median ${u}`, r => r.medianCoins, fmt, '', own],
       ['Consistency (lower is steadier)', steadiness, v => `± ${pct(v)}`, 'low'],
       ['Average round', r => r.avgSeconds, fmtDuration],
       ['Average score', r => r.avgScore, fmt],
-      ...(coins !== 'medals' ? [
-        ['Medals per hour', r => perHour(r.m), fmt, 'high', 'medal'],
-        ['Rounds that earn medals', r => (r.m?.rounds ? r.m.earnedRounds / r.m.rounds : null), pct, '', 'medal'],
-      ] : []),
+      ['Medals per hour', r => perHour(r.m), fmt, 'high', 'medal'],
+      ['Rounds that earn medals', r => (r.m?.rounds ? r.m.earnedRounds / r.m.rounds : null), pct, '', 'medal'],
     ];
     const wins = new Map(picked.map(id => [id, 0]));
     let contests = 0;

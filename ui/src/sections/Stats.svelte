@@ -98,14 +98,15 @@
     savePref(VIEW_KEY, {...views});
   }
   /**
-   * A chart's measure as drawn. In Medals mode expected coins and the per-second
-   * rate both stand for medals an hour ('hour'), so no chart under a medal title
-   * ranks by coins; in coin modes 'hour' is expected coins an hour again. The
-   * stored choice is left as it was, so switching back restores it.
+   * A chart's measure as drawn. In Medals mode expected coins, the per-second
+   * rate and Head to head's medals an hour ('medals') all stand for medals an
+   * hour ('hour'), so no chart under a medal title ranks by coins; in coin
+   * modes 'hour' is expected coins an hour again. The stored choice is left as
+   * it was, so switching back restores it.
    */
   const mv = key => {
     const v = views[key];
-    if (filter.coins === 'medals') return v === 'exp' || v === 'rate' ? 'hour' : v;
+    if (filter.coins === 'medals') return v === 'exp' || v === 'rate' || v === 'medals' ? 'hour' : v;
     return v === 'hour' ? 'exp' : v;
   };
   /** The rate measures a chart offers: Medals/h in Medals mode, else expected coins an hour and the coin rate. */
@@ -417,8 +418,12 @@
     const get = effGet[mv('effMetric')] ?? effGet.rate;
     return byRounds.filter(t => get(t) != null).sort((a, c) => get(c) - get(a)).slice(0, 10);
   });
+  /** Whether any compared Tsum has medal figures, for Head to head's Medals/h beside coins. */
+  const comparesMedals = $derived(Boolean(summary?.medals.tsums.length));
+  /** Head to head's measure as drawn: Medals/h needs a medal Tsum among those compared, else expected coins an hour. */
+  const compareMv = $derived(mv('compare') === 'medals' && !comparesMedals ? 'exp' : mv('compare'));
   const args = $derived(summary && {
-    compare: picked.length > 1 ? [summary.dailyTsums, picked, ctx, mv('compare')] : null,
+    compare: picked.length > 1 ? [compareMv === 'medals' ? summary.medals.dailyTsums : summary.dailyTsums, picked, ctx, compareMv] : null,
     eff: [views.eff, byRounds, spreadCtx, mv('effMetric')],
     daily: [summary.daily, summary.dailyTsums, ctx, mv('daily')],
     share: [views.share, views.share === 'sunburst' ? summary.mix : summary.tsums, ctx, views.shareMetric],
@@ -619,8 +624,8 @@
       {/if}
       <div class="panel-head versus-head">
         <div><h3>Per day</h3></div>
-        <Seg sm label="Measure" value={mv('compare')} onpick={v => setView('compare', v)}
-          options={[...rateOpts(), ['avg', 'Average'], ['total', 'Total'], ['rounds', 'Rounds']]} />
+        <Seg sm label="Measure" value={compareMv} onpick={v => setView('compare', v)}
+          options={[...rateOpts(), ...(coinMode() && comparesMedals ? [['medals', 'Medals/h']] : []), ['avg', 'Average'], ['total', 'Total'], ['rounds', 'Rounds']]} />
       </div>
       <Chart draw={drawCompare} args={args?.compare} {unit} bind:legend={legends.compare} />
       <Legend items={legends.compare} />

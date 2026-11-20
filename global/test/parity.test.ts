@@ -130,11 +130,12 @@ function compareSummary(c: Case, want: any, got: any): string[] {
     v.tsums = sortTsums(v.tsums);
     v.medals.tsums = sortTsums(v.medals.tsums);
     v.dailyTsums = [...v.dailyTsums].sort(by("day", "tsum"));
+    v.medals.dailyTsums = [...v.medals.dailyTsums].sort(by("day", "tsum"));
     if (v.mix) v.mix = [...v.mix].sort(by("build", "tsum", "skill", "items"));
     if (v.chains) v.chains = [...v.chains].sort(by("build", "tsum", "skill", "scan", "chain"));
     if (c.cut) dropAbout([v.totals, ...v.tsums, ...v.daily, v.medals.totals, ...v.medals.tsums]);
     // Expected coins' sum of squares comes from base coins' (unknown in a cut cell), in every group.
-    if (c.cut) for (const r of [v.totals, ...v.tsums, ...v.daily, ...v.dailyTsums, ...(v.mix ?? []), ...(v.chains ?? []), v.medals.totals, ...v.medals.tsums]) delete r.expSq;
+    if (c.cut) for (const r of [v.totals, ...v.tsums, ...v.daily, ...v.dailyTsums, ...(v.mix ?? []), ...(v.chains ?? []), v.medals.totals, ...v.medals.tsums, ...v.medals.dailyTsums]) delete r.expSq;
   }
   for (const [set, on] of [["", primary], [".medals", medals]] as const) {
     const w = set ? want.medals : want, g = set ? got.medals : got;

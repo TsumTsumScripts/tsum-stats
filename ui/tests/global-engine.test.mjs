@@ -274,7 +274,7 @@ function normalize(v) {
   const sortTsums = t => [...t].sort(by('tsum'));
   return {
     ...v,
-    tsums: sortTsums(v.tsums), medals: {...v.medals, tsums: sortTsums(v.medals.tsums)},
+    tsums: sortTsums(v.tsums), medals: {...v.medals, tsums: sortTsums(v.medals.tsums), dailyTsums: [...v.medals.dailyTsums].sort(by('day', 'tsum'))},
     dailyTsums: [...v.dailyTsums].sort(by('day', 'tsum')),
     mix: [...v.mix].sort(by('build', 'tsum', 'skill', 'items')),
     chains: [...v.chains].sort(by('build', 'tsum', 'skill', 'scan', 'chain')),
@@ -468,7 +468,7 @@ function aboutOnly(v, primary = true, medals = true) {
     }
   }
   // Expected coins' sum of squares comes from base coins' (null in a cut cell), in every group.
-  for (const r of [v.totals, ...v.tsums, ...v.daily, ...v.dailyTsums, ...v.mix, ...v.chains, v.medals.totals, ...v.medals.tsums]) {
+  for (const r of [v.totals, ...v.tsums, ...v.daily, ...v.dailyTsums, ...v.mix, ...v.chains, v.medals.totals, ...v.medals.tsums, ...v.medals.dailyTsums]) {
     if ('expSq' in r) r.expSq = 'about';
   }
 }

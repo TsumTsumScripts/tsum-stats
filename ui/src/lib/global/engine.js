@@ -522,6 +522,19 @@ export function createGlobalEngine(loader) {
     return h;
   }
 
+  /** Stat key k per UTC day and Tsum (summary.go: dayTsums). */
+  function dayTsums(sel, k) {
+    const by = new Map();
+    each(sel, (c, i) => {
+      const day = c.day[i], tsum = c.tsum[i], key = day + '\u0000' + tsum;
+      if (!by.has(key)) by.set(key, {a: acc(), day, tsum});
+      add(by.get(key).a, c, i, c.stat[k]);
+    });
+    return [...by.values()].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0)).map(({a, day, tsum}) => ({
+      day, tsum, rounds: a.rounds, coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), coinsPerSec: rate(a), ...expectedOf(a),
+    }));
+  }
+
   // ---- The routes ----
 
   /**
@@ -536,17 +549,17 @@ export function createGlobalEngine(loader) {
     const fits = kind => !f.range || f.range.kind === kind;
 
     const main = statSet(sel, k, fits(kindOf[k]));
+    const dailyTsums = dayTsums(sel, k);
     // With medals as the primary stat the two sets are the same cells and stat.
-    const medals = f.medals ? main : statSet(await select(f, {onlyMedals: true}), 'medals', fits('medals'), false);
+    const medalSel = f.medals ? null : await select(f, {onlyMedals: true});
+    const medals = f.medals ? main : statSet(medalSel, 'medals', fits('medals'), false);
 
-    const daily = new Map(), dailyTsums = new Map(), mix = new Map(), chains = new Map();
+    const daily = new Map(), mix = new Map(), chains = new Map();
     each(sel, (c, i) => {
       const s = c.stat[k];
       const day = c.day[i], tsum = c.tsum[i];
-      for (const [map, key] of [[daily, day], [dailyTsums, day + '\u0000' + tsum]]) {
-        if (!map.has(key)) map.set(key, {a: acc(), day, tsum});
-        add(map.get(key).a, c, i, s);
-      }
+      if (!daily.has(day)) daily.set(day, {a: acc(), day});
+      add(daily.get(day).a, c, i, s);
       const build = c.build[i], items = c.items[i], skill = playText(c.skill[i]);
       const mk = `${build}\u0000${tsum}\u0000${skill}\u0000${items}`;
       if (!mix.has(mk)) mix.set(mk, {build, tsum, skill, items, a: acc()});
@@ -558,7 +571,7 @@ export function createGlobalEngine(loader) {
     });
 
     const byKey = (a, b, key) => (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0);
-    const plain = ({totals, tsums}) => ({totals, tsums});
+    const plain = ({totals, tsums}, days) => ({totals, tsums, dailyTsums: days});
     return {
       totals: main.totals,
       daily: [...daily.values()].sort((a, b) => byKey(a, b, 'day')).map(({a, day}) => ({
@@ -566,9 +579,7 @@ export function createGlobalEngine(loader) {
         coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), minCoins: a.min, maxCoins: a.max, coinsPerSec: rate(a), ...expectedOf(a),
       })),
       tsums: main.tsums,
-      dailyTsums: [...dailyTsums.values()].sort((a, b) => byKey(a, b, 'day')).map(({a, day, tsum}) => ({
-        day, tsum, rounds: a.rounds, coins: a.n ? a.sum : null, avgCoins: avg(a.sum, a.n), coinsPerSec: rate(a), ...expectedOf(a),
-      })),
+      dailyTsums,
       mix: [...mix.values()].sort((a, b) => b.a.rounds - a.a.rounds).map(({a, build, tsum, skill, items}) => ({
         build, tsum, skill, items, rounds: a.rounds, coins: a.n ? a.sum : null, coinRounds: a.n,
         rateCoins: a.rateN ? a.rateCoins : null, rateSeconds: a.rateN ? a.rateSecs : null, ...expectedOf(a),
@@ -580,7 +591,7 @@ export function createGlobalEngine(loader) {
       histogram: main.spreads ? histogram(sel, k, main) : {width: 0, cap: null, bins: []},
       // The cells keep no coin-bonus multipliers, only whether a round was a jackpot.
       bonus: {tsums: [], daily: [], all: []},
-      medals: plain(medals),
+      medals: plain(medals, f.medals ? dailyTsums : dayTsums(medalSel, 'medals')),
       // Only complete rounds are sent here: none is left out for an unread figure.
       incompleteRounds: 0,
       // spreads: whether the primary stat's quartiles, P90 and histogram are there.

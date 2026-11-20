@@ -521,7 +521,7 @@ func TestGlobalParity(t *testing.T) {
 		}
 		s := summarizeRounds(picked, f)
 		days := summarizeRounds(byStart, f)
-		s.Daily, s.DailyTsums = days.Daily, days.DailyTsums
+		s.Daily, s.DailyTsums, s.Medals.DailyTsums = days.Daily, days.DailyTsums, days.Medals.DailyTsums
 		// Under an outlier range only the range's own figure has spreads: the
 		// bins of one figure are not cut by another's range. The coin range
 		// is applied when both are set.
