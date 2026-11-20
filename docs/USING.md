@@ -301,9 +301,13 @@ totals and per-Tsum figures for medals, over the same medal Tsums' rounds,
 fill the medal KPI tiles and the Tsum table's medal columns, which drop out in
 Medals mode because the coin columns already show medals.
 
-**The time range** opens on the last 7 days. `days` in the link is `7` or
-`30` (rolling windows that end today), `all`, or absent when fixed From/To
-dates are set. A link with dates but no `days` keeps its dates.
+**The time range** opens on the last 7 days. *Time range* in the rail has
+7 days, 30 days and All time, and a *Last N days* box for any number of days
+up to 3650 (1 is today alone); typing takes a moment to apply, or press Enter.
+Editing From or To turns it into fixed dates. `days` in the link is that
+number (a rolling window that ends today), `all`, or absent when fixed From/To
+dates are set. A link with dates but no `days` keeps its dates; one whose
+`days` is not a number of days opens on the last 7.
 
 **Picking Tsums.** `tsum` in the link is a comma list. Clicking a Tsum in a
 chart or table focuses on it. Ctrl, ⌘ or Shift with the click adds it to the
@@ -402,7 +406,8 @@ tooltip everywhere else.
 **Tsum** in the top bar (`#/tsum?id=<tsum>`) is everything about one Tsum. Open
 it from there, or with **Tsum page →** in the Stats focus bar, which carries the
 range, primary stat, game and a single device across. It has its own time range
-(7, 30 or 90 days, or all time, the default), the same primary stat and *Less
+(7, 30 or 90 days, any number in its *Last N days* box, or all time, the
+default), the same primary stat and *Less
 item costs* switches, and game, skill type and device pickers when there is more
 than one.
 Incomplete rounds are left out, as on Stats.
@@ -752,9 +757,9 @@ everyone's rounds, and in the *Winter Village* theme until you pick another:
   coin range the medal spreads go, and with a medal range the coin ones
   (except in Medals mode).
 - **Players.** The Tsums table's Players column (and the Tsum page's) counts
-  the contributors who sent rounds of that Tsum over the time range: the last
-  7 or 30 days, else every day. Under 3, the row is dimmed and marked *few
-  players*.
+  the contributors who sent rounds of that Tsum over the time range, whatever
+  its length, when it runs to today; over every day when it ends earlier. Under
+  3, the row is dimmed and marked *few players*.
 - **The Tsum page** is there, over everyone's rounds of the Tsum: its rank by
   rate among every Tsum, its share of all rounds and its players, the KPI
   tiles, consistency and rounds under a target (≈, from the bins), by skill

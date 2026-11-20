@@ -12,6 +12,7 @@
   import {isGlobal} from '../lib/global/client.js';
   import Avatar from '../components/Avatar.svelte';
   import Chart from '../components/Chart.svelte';
+  import DaysBox from '../components/DaysBox.svelte';
   import TsumCombo from '../components/TsumCombo.svelte';
   import NewTsums from '../components/NewTsums.svelte';
   import Panel from '../components/Panel.svelte';
@@ -24,7 +25,7 @@
   import {names} from '../lib/names.svelte.js';
   import {shared} from '../lib/ui.svelte.js';
   import {
-    MIN_ROUNDS, api, buildLabel, playersIn, playersWindow, cap, chainsLabel, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref,
+    MIN_ROUNDS, api, buildLabel, cleanDays, daysLabel, playersIn, cap, chainsLabel, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsLabel, loadPref, pct, savePref,
     PLAY, englishName, playValueName, skillTypeName, skillTypeValue, tsumColor, tsumName,
   } from '../lib/util.js';
   import Kpis from './stats/Kpis.svelte';
@@ -109,14 +110,19 @@
   // ---- Loading ----
 
   const isoDay = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  /** The UTC day a rolling range begins on ('' for all time): the global site's days are UTC ones, the day each round began. */
+  function utcFrom(days) {
+    const n = Number(days);
+    if (!n) return '';
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - n + 1);
+    return d.toISOString().slice(0, 10);
+  }
   function filterParams() {
     let from = '';
     const n = Number(filter.days);
-    // The global site's days are UTC ones, the day each round began.
     if (n && globalSite) {
-      const d = new Date();
-      d.setUTCDate(d.getUTCDate() - n + 1);
-      from = `${d.toISOString().slice(0, 10)}T00:00:00.000Z`;
+      from = `${utcFrom(filter.days)}T00:00:00.000Z`;
     } else if (n) {
       const d = new Date();
       d.setDate(d.getDate() - n + 1);
@@ -295,8 +301,8 @@
   });
 
   // The global site: how many players sent rounds of it lately, and whether that is too few to stand for everyone.
-  const players = $derived(globalSite ? playersIn(played.find(t => t.tsum === filter.id), filter.days) : null);
-  const fewPlayers = $derived(players !== null && status !== null && players < status.minContributors);
+  const players = $derived(globalSite ? playersIn(played.find(t => t.tsum === filter.id), {days: filter.days, from: utcFrom(filter.days)}) : null);
+  const fewPlayers = $derived(players !== null && status !== null && players.n < status.minContributors);
   const whose = globalSite ? 'all' : 'your';
 
   const args = $derived(s && {
@@ -315,12 +321,11 @@
   const roundRate = r => (roundCoins(r) !== null && r.durationSeconds ? roundCoins(r) / r.durationSeconds : null);
 
   // A copied card shows this Tsum, the time range, the primary stat and the game and device when picked.
-  const daysLabel = {7: 'Last 7 days', 30: 'Last 30 days', 90: 'Last 90 days', all: 'All time'};
   cardContext(() => ({
     tsum: filter.id,
     build: filter.build,
     unit,
-    filters: [`${daysLabel[filter.days] ?? 'All time'}${globalSite && filter.days !== 'all' ? ' UTC' : ''}`, cap(basis),
+    filters: [`${daysLabel(filter.days)}${globalSite && filter.days !== 'all' ? ' UTC' : ''}`, cap(basis),
       filter.build ? buildLabel(filter.build) : '', filter.device, filter.skillType ? skillTypeName(filter.skillType) : ''],
     rounds: s?.totals.rounds ?? 0,
   }));
@@ -332,6 +337,7 @@
 
   onMount(() => {
     Object.assign(filter, blank(), initial);
+    filter.days = cleanDays(filter.days, 'all') || 'all';
     onStateChange({...filter}, {});
     loadOptions();
     load();
@@ -340,6 +346,7 @@
   /** The link changed (Back or Forward): show what it says. */
   export function shown(params) {
     const next = {...blank(), ...params};
+    next.days = cleanDays(next.days, 'all') || 'all';
     if (Object.keys(blank()).every(k => next[k] === filter[k])) return;
     Object.assign(filter, next);
     load();
@@ -369,8 +376,8 @@
           {/if}
           {#if standing?.share}<span class="fact"><b>{pct(standing.share)}</b> of {whose} rounds</span>{/if}
           {#if players !== null}
-            <span class="fact" class:dim={fewPlayers} title="Contributors who sent rounds of it over {playersWindow(filter.days)}{fewPlayers ? '. Too few players\' rounds to stand for everyone\'s yet' : ''}">
-              <b>{fmt(players)}</b> {players === 1 ? 'player' : 'players'}{fewPlayers ? ' · few' : ''}
+            <span class="fact" class:dim={fewPlayers} title="Contributors who sent rounds of it over {players.over}{fewPlayers ? '. Too few players\' rounds to stand for everyone\'s yet' : ''}">
+              <b>{fmt(players.n)}</b> {players.n === 1 ? 'player' : 'players'}{fewPlayers ? ' · few' : ''}
             </span>
           {/if}
           {#if ownLine}
@@ -399,6 +406,7 @@
       <div class="tsum-bar">
         <Seg sm label="Time range" value={filter.days} onpick={v => set({days: v})}
           options={[['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['all', 'All time']]} />
+        <DaysBox sm days={filter.days} onpick={v => { if (v !== filter.days) set({days: v}); }} />
         <Seg sm label="Primary stat" value={filter.coins} onpick={v => set({coins: v})}
           options={[['', 'Base', 'coin'], ['final', 'Final', 'coin'], ['medals', '', 'medal', 'Medals']]} />
         {#if filter.coins !== 'medals'}

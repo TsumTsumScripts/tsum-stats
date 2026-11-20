@@ -171,20 +171,42 @@ export const fmtRate = v => (v === null || v === undefined ? '—' : (Math.abs(v
  */
 export const MIN_ROUNDS = 50;
 
+/** The longest rolling time range, in days (about ten years). */
+export const MAX_DAYS = 3650;
 /**
- * A Tsum's players on the global site (the manifest's tsums row) over the
- * time range `days` ('7', '30', else every day): contributors7, contributors
- * (30 days) or contributorsAll; a manifest from before the windows has the
- * 30 days' only. Null without a row.
+ * A time range's `days` as a link or a typed box gives it, made one the filter
+ * keeps: a whole number of days from 1 to MAX_DAYS (the rolling range that
+ * ends today; more is MAX_DAYS), 'all', or '' (fixed From/To dates). Anything
+ * else is `fallback`.
  */
-export const playersIn = (row, days) => {
+export function cleanDays(v, fallback) {
+  if (v === 'all' || v === '') return v;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 1 ? String(Math.min(n, MAX_DAYS)) : fallback;
+}
+/** A rolling range's name ('Today', 'Last 14 days'), or 'All time'. */
+export const daysLabel = days => (days === 'all' || !Number(days) ? 'All time' : Number(days) === 1 ? 'Today' : `Last ${days} days`);
+
+/**
+ * A Tsum's players on the global site (the manifest's tsums row) over a time
+ * range: `days` the filter's, `from` and `to` its first and last UTC days ('',
+ * open). A range that runs to today counts the contributors whose newest day
+ * with the Tsum is on or after `from` (the row's `newest`, CONTRACT §4.1),
+ * whatever its length; any other counts every day's. A manifest from before
+ * `newest` has the last 7 and 30 days' and every day's only, and one older
+ * still the 30 days'. {n, over}, `over` what it counted over, for titles;
+ * null without a row.
+ */
+export function playersIn(row, {days = '', from = '', to = ''} = {}) {
   if (!row || row.contributors == null) return null;
   // Every day's count can never be under the 30 days': under it, the manifest's counts predate the windows.
-  if (days === '7') return row.contributors7 ?? row.contributors;
-  return days === '30' || !(row.contributorsAll >= row.contributors) ? row.contributors : row.contributorsAll;
-};
-/** What playersIn counts over, for titles. */
-export const playersWindow = days => (days === '7' ? 'the last 7 days' : days === '30' ? 'the last 30 days' : 'every day');
+  const everyDay = {n: row.contributorsAll >= row.contributors ? row.contributorsAll : row.contributors, over: 'every day'};
+  if (!from || (to && to < new Date().toISOString().slice(0, 10))) return everyDay;
+  const over = Number(days) === 1 ? 'today' : Number(days) ? `the last ${days} days` : `${from} to today`;
+  if (row.newest) return {n: Object.entries(row.newest).reduce((n, [day, c]) => (day >= from ? n + c : n), 0), over};
+  if (days === '7') return {n: row.contributors7 ?? row.contributors, over};
+  return days === '30' ? {n: row.contributors, over} : everyDay;
+}
 
 export const pct = v => (v === null || v === undefined ? '—' : `${nf1.format(v * 100)}%`);
 

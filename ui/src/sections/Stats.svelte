@@ -22,7 +22,7 @@
   import {expand, shared, toast} from '../lib/ui.svelte.js';
   import {
     api, buildLabel, cap, debounce, fmt, fmtDuration, fmtRate, fmtWhen, itemsCost, itemsLabel, loadPref, pct, savePref,
-    MIN_ROUNDS, PLAY, playValueName, playersIn, skillTypeName, tsumColor, tsumName,
+    MIN_ROUNDS, PLAY, cleanDays, daysLabel, playValueName, playersIn, skillTypeName, tsumColor, tsumName,
   } from '../lib/util.js';
   import ChainBest from './stats/ChainBest.svelte';
   import FilterRail from './stats/FilterRail.svelte';
@@ -43,7 +43,7 @@
   // device is a comma list of device names; empty is every device.
   // skillType is a comma list of the script's skill types, '-' the rounds sent without one; empty is every one.
   // scan, chain and bubble (PLAY) are comma lists of those script settings' values, '-' where not recorded.
-  // days is the time range: '7' or '30' (rolling, up to today), 'all', or '' for the from/to dates.
+  // days is the time range: a number of days (rolling, up to today; util.js: cleanDays), 'all', or '' for the from/to dates.
   // min/max Score, Coins and Medals are the outlier ranges (OUTLIERS); incomplete '1' keeps rounds with an unread figure.
   // skill is a comma list of skill levels (-1: not recorded); on the global site items is one of item masks (-1: not recorded).
   // minRounds leaves Tsums with fewer rounds in the filter out of the rankings (the Tsum table and efficiency chart);
@@ -62,6 +62,7 @@
     // Every global round is complete and has no device, and there are no score bins, so those filters do not apply.
     if (globalSite) Object.assign(s, {device: '', incomplete: '', minScore: '', maxScore: ''});
     if ((p.from || p.to) && !p.days) s.days = '';
+    s.days = cleanDays(s.days, blank().days);
     s.page = Number(s.page) || 1;
     s.perPage = Number(s.perPage) || 50;
     return s;
@@ -225,7 +226,7 @@
     if (pickedItems.length) {
       out.push({label: pickedItems.length > 2 ? `${pickedItems.length} item sets` : pickedItems.map(m => itemsLabel(Number(m))).join(', '), clear: () => set({items: ''})});
     }
-    if (Number(filter.days)) out.push({label: `Last ${filter.days} days${utc}`, kind: 'time', clear: () => set({days: 'all'})});
+    if (Number(filter.days)) out.push({label: `${daysLabel(filter.days)}${utc}`, kind: 'time', clear: () => set({days: 'all'})});
     else if (filter.days !== 'all' && (filter.from || filter.to)) {
       out.push({label: `${filter.from || '…'} → ${filter.to || 'today'}${utc}`, kind: 'time', clear: () => set({days: 'all', from: '', to: ''})});
     }
@@ -340,7 +341,7 @@
   const itemChoices = $derived([...itemSets,
     ...pickedItems.filter(m => !itemSets.some(s => String(s.items) === m)).map(m => ({items: Number(m), rounds: null}))]);
   // Contributors per Tsum; one with fewer than status.minContributors is flagged "few players".
-  const playersOf = $derived(new Map(played.map(t => [t.tsum, playersIn(t, filter.days)])));
+  const playersOf = $derived(new Map(played.map(t => [t.tsum, playersIn(t, {days: filter.days, ...range})?.n ?? null])));
   const fewPlayers = r => globalSite && status && r.players !== null && r.players < status.minContributors;
   /**
    * Why the global site's spreads are missing, when they are: a range cuts the
@@ -459,7 +460,7 @@
     {id: 'pick', header: '', enableSorting: false, enableHiding: false, meta: {cls: 'pick'}, snippet: pickCell},
     {id: 'tsum', header: 'Tsum', accessorFn: r => r.name, snippet: tsumCell, sortDescFirst: false, enableHiding: false, meta: {search: true}},
     num('rounds', 'Rounds', r => r.rounds),
-    num('players', 'Players', r => r.players, fmt, {meta: {show: () => globalSite, title: 'Contributors who sent rounds of this Tsum over the time range: the last 7 or 30 days, else every day'}}),
+    num('players', 'Players', r => r.players, fmt, {meta: {show: () => globalSite, title: 'Contributors who sent rounds of this Tsum over the time range; over every day when the range ends before today'}}),
     num('share', () => `${U.slice(0, -1)} share`, r => r.share, pct, {meta: {title: "This Tsum's part of the primary stat in the filter"}}),
     num('expPerHour', 'Expected/h', r => expHour(r), fmt, {meta: {cls: 'coin', title: `Expected net coins an hour of play: ${EXP_WHAT}`}}),
     num('expRun', () => (globalSite ? '≈ Expected/h incl. between rounds' : 'Expected/h incl. between rounds'), r => runHour(r), fmt,

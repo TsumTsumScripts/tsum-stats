@@ -3,6 +3,7 @@
      site, skill levels and item sets take the place of devices, and the
      outlier ranges are coins and medals, one at a time. -->
 <script>
+  import DaysBox from '../../components/DaysBox.svelte';
   import Seg from '../../components/Seg.svelte';
   import TsumChip from '../../components/TsumChip.svelte';
   import TsumCombo from '../../components/TsumCombo.svelte';
@@ -42,6 +43,10 @@
   // Editing a date turns the rolling range into fixed dates; clearing both is all time.
   function dates(from, to) {
     set(from || to ? {days: '', from, to} : {days: 'all', from: '', to: ''});
+  }
+  // A rolling range in place of the dates.
+  function rolling(days) {
+    if (days !== filter.days || filter.from || filter.to) set({days, from: '', to: ''});
   }
   // Ticking devices narrows the stats to them; none ticked is every device. Skill types, skill levels and item sets likewise.
   const toggleIn = (key, list, v, on) => set({[key]: (on ? [...list, v] : list.filter(x => x !== v)).join(',')});
@@ -212,6 +217,14 @@
             </details>
           </div>
         {/if}
+        <!-- The time range: the usual ones, or any number of days up to today; editing From or To makes it fixed dates. -->
+        <div class="field span-all days-field">Time range{globalSite ? ' (UTC)' : ''}
+          <div class="days-row">
+            <Seg label="Time range" value={filter.days} onpick={days => set({days, from: '', to: ''})}
+              options={[['7', '7 days'], ['30', '30 days'], ['all', 'All time']]} />
+            <DaysBox days={filter.days} onpick={rolling} />
+          </div>
+        </div>
         <!-- On the global site a round counts on the UTC day it began, however long it lasted. -->
         <label class="field" title={globalSite ? 'A round counts on the UTC day it began' : undefined}>From{globalSite ? ' (UTC)' : ''} <input type="date" value={range.from} onchange={e => dates(e.target.value, range.to)}></label>
         <label class="field" title={globalSite ? 'A round counts on the UTC day it began' : undefined}>To{globalSite ? ' (UTC)' : ''} <input type="date" value={range.to} onchange={e => dates(range.from, e.target.value)}></label>
@@ -261,9 +274,6 @@
         </div>
       </div>
       <div class="filter-actions">
-        {#each [['7', '7 days'], ['30', '30 days'], ['all', 'All time']] as [days, label] (days)}
-          <button type="button" class="btn" aria-pressed={String(filter.days === days)} onclick={() => set({days, from: '', to: ''})}>{label}</button>
-        {/each}
         <button type="button" class="btn" onclick={reset}>Reset</button>
       </div>
     </div>

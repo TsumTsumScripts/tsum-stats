@@ -340,6 +340,14 @@ section[hidden] { display: none !important; }
 /* Phone: Devices takes its own row so From and To pair up. */
 @media (max-width: 559px) { .filters .devices-field { grid-column: 1 / -1; } }
 .filter-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* The time range: the usual ranges and a box for any number of days, side by side while they fit. */
+.days-row { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.days-row > .seg { flex: 1 1 auto; }
+.days-box { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-weight: 700; }
+.days-box input { width: 4.6em; padding: 5px 8px; text-align: center; }
+.days-box.sm { font-size: 13px; color: var(--muted); }
+.days-box.sm input { width: 4em; padding: 3px 6px; border-radius: 999px; border: 2px solid var(--panel-edge);
+  background: var(--well); box-shadow: var(--inset); font-weight: 700; }
 
 /* KPI cards */
 /* A wrapping row rather than a grid: a tile grows to fit its figure (a theme's wide font included)
