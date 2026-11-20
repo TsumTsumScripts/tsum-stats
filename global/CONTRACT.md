@@ -782,7 +782,8 @@ first, last, tsums: {tsum: rounds}, skills: {skill: rounds}, skillTypes:
 sha, rounds, bytes}]}`, each count leaving out what is not recorded; a
 pointer from before 0003 has no `skillTypes` or play settings), `parts_at`,
 `totals` (`{tsums, skills, skillTypes, scan, chain, bubble}`),
-`people` (`{contributors, devices, tsums: {tsum: contributors}, catalog}`),
+`people` (`{contributors, devices, tsums, tsums7, tsumsAll: {tsum: contributors},
+newest: {tsum: {day: contributors}}, catalog}`),
 `trash` (`[[R2 key, ms]]`), `archived_through`, `dropped_through`, `held`
 (`[[day, rounds]]`), `archive` (the day in progress), `restored` (`[[day,
 rounds]]`), `restore:<day>`, `settings_archived`, `span:<id>`,
@@ -854,7 +855,8 @@ into it; 0 for a contributor being unlinked or no longer there; never for one
   "rounds": 123456, "contributors": 12, "devices": 40,
   "first": "2026-08-20 00:01:02", "last": "2026-10-14 18:59:59",
   "parts": [{"from": "2026-10-14", "to": "2026-10-15", "file": "day-2026-10-14.1a2b3c4d.json", "rounds": 9000, "sha": "1a2b3c4d"}],
-  "tsums": [{"tsum": "beastda", "rounds": 5000, "contributors": 4, "contributors7": 2, "contributorsAll": 9}],
+  "tsums": [{"tsum": "beastda", "rounds": 5000, "contributors": 4, "contributors7": 2, "contributorsAll": 9,
+             "newest": {"2026-10-14": 2, "2026-10-02": 2, "2026-09-11": 5}}],
   "medalTsums": ["…"],
   "skills": [2, 3, 4, 5, 6],
   "skillTypes": [{"skillType": "burst", "rounds": 80000}, {"skillType": "beastda", "rounds": 5000}],
@@ -877,7 +879,12 @@ into it; 0 for a contributor being unlinked or no longer there; never for one
 - `tsums`: every Tsum in the public cells, most rounds first; `contributors`
   as above but per Tsum, `contributors7` the same over the last 7 days and
   `contributorsAll` over every day (`recent` keeps each contributor's newest
-  day with each Tsum). The page counts a Tsum's players over its time range.
+  day with each Tsum). `newest` is the same contributors as `contributorsAll`
+  counted under the newest day each sent the Tsum, newest first, so a range
+  that runs to today has as players those counted on or after its first day,
+  whatever its length. The page counts a Tsum's players over its time range:
+  from `newest` when it runs to today, else every day's; from a manifest
+  without `newest`, the last 7 or 30 days, else every day.
 - `medalTsums`: the catalog's `medal: true` ids. `skills`: the distinct
   skill levels (not -1) in the cells, ascending. `skillTypes`: every skill
   type (not `''`) in the cells, most rounds first; the rest of `rounds` have

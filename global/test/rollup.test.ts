@@ -5,7 +5,7 @@ import { sha256Hex } from "../src/crypto";
 import { dayOf, keyDay } from "../src/days";
 import { runJob } from "../src/job";
 import {
-  DAY_MS, NOW, admin, call, env, joinNew, one, r2json, r2keys, record, rollup, rows, series, upload, wipe,
+  DAY_MS, NOW, TAG_B, admin, call, env, joinNew, one, r2json, r2keys, record, rollup, rows, series, upload, wipe,
 } from "./helpers";
 import { CELL_KEY, BIN_KEY, checkAgainstReference, counted, dataset, sameRows, tables } from "./reference";
 import { createGlobalEngine } from "../../ui/src/lib/global/engine.js";
@@ -15,7 +15,7 @@ beforeEach(wipe);
 interface Manifest {
   kind: string; format: number; generatedAt: string; rounds: number; contributors: number; devices: number;
   first: string | null; last: string | null; parts: { from: string; to: string; file: string; rounds: number; sha: string }[];
-  tsums: { tsum: string; rounds: number; contributors: number }[]; medalTsums: string[]; skills: number[]; minContributors: number;
+  tsums: { tsum: string; rounds: number; contributors: number; newest?: Record<string, number> }[]; medalTsums: string[]; skills: number[]; minContributors: number;
   playSettings: Record<"scan" | "chain" | "bubble", { value: string; rounds: number }[]>;
 }
 type Columns = Record<string, unknown[]> & { n: number };
@@ -63,8 +63,23 @@ describe("recompute", () => {
     const perTsum = new Map<string, number>();
     for (const c of want.cells) perTsum.set(c.tsum, (perTsum.get(c.tsum) ?? 0) + c.rounds);
     // Every round here is from the last 7 days: the same two players in each window, the banned one in none.
-    expect(m.tsums).toEqual([...perTsum].map(([tsum, rounds]) => ({ tsum, rounds, contributors: 2, contributors7: 2, contributorsAll: 2 }))
+    // newest counts them under the newest day each played the Tsum, from their own cells.
+    const newestOf = new Map<string, number>();
+    for (const c of want.contrib) {
+      if (c.contributor === people[2].id) continue;
+      const k = JSON.stringify([c.tsum, c.contributor]);
+      if (!(newestOf.get(k)! >= c.day)) newestOf.set(k, c.day);
+    }
+    const newest = new Map<string, Record<string, number>>();
+    for (const [k, day] of newestOf) {
+      const by = newest.get(JSON.parse(k)[0]) ?? {};
+      by[day] = (by[day] ?? 0) + 1;
+      newest.set(JSON.parse(k)[0], by);
+    }
+    expect(m.tsums).toEqual([...perTsum].map(([tsum, rounds]) => ({ tsum, rounds, contributors: 2, contributors7: 2, contributorsAll: 2, newest: newest.get(tsum) }))
       .sort((a, b) => b.rounds - a.rounds || (a.tsum < b.tsum ? -1 : 1)));
+    // Newest day first, so a reader can stop at its range's first day.
+    for (const t of m.tsums) expect(Object.keys(t.newest!)).toEqual(Object.keys(t.newest!).sort().reverse());
     // Each play setting's values, by rounds, not recorded left out.
     const values = (col: "scan" | "chain" | "bubble", known: (v: number | string) => boolean) => {
       const n = new Map<string, number>();
@@ -80,16 +95,30 @@ describe("recompute", () => {
     ]);
   });
 
-  it("makes the counts of people again when they were made before the 7-day and every-day ones were kept", async () => {
+  it("makes the counts of people again when they were made before the counts by newest day were kept", async () => {
     const c = await joinNew();
     await upload(c.key, [record({})]);
     await rollup();
-    // As a Worker before the windows left them: the same counts, without tsums7 and tsumsAll.
-    await env.DB.prepare("UPDATE state SET value = json_remove(value, '$.tsums7', '$.tsumsAll') WHERE key = 'people'").run();
+    // As a Worker before newest (or before the windows) left them: the same counts, without it.
+    await env.DB.prepare("UPDATE state SET value = json_remove(value, '$.tsums7', '$.tsumsAll', '$.newest') WHERE key = 'people'").run();
     await env.DB.prepare("INSERT OR REPLACE INTO state (key, value) VALUES ('parts_at', '0')").run();
     await rollup();
     const people = await one<{ v: string }>("SELECT value AS v FROM state WHERE key = 'people'");
-    expect(JSON.parse(people!.v)).toMatchObject({ tsums: { mickey: 1 }, tsums7: { mickey: 1 }, tsumsAll: { mickey: 1 } });
+    const day = (await one<{ day: string }>("SELECT day FROM recent"))!.day;
+    expect(JSON.parse(people!.v)).toMatchObject({ tsums: { mickey: 1 }, tsums7: { mickey: 1 }, tsumsAll: { mickey: 1 }, newest: { mickey: { [day]: 1 } } });
+    expect((await manifest()).tsums).toEqual([expect.objectContaining({ tsum: "mickey", contributorsAll: 1, newest: { [day]: 1 } })]);
+  });
+
+  it("counts each contributor once under the newest day they played a Tsum", async () => {
+    const [a, b] = [await joinNew(), await joinNew()];
+    const day = (n: number) => Date.UTC(2026, 9, 14 - n, 12);
+    // a played mickey 9 and 2 days ago, b only 9 days ago; a played minnie 30 days ago.
+    await upload(a.key, [record({ at: day(9) }), record({ at: day(2) }), record({ at: day(30), tsum: "minnie" })]);
+    await upload(b.key, [record({ at: day(9), tag: TAG_B })]);
+    await rollup();
+    const iso = (n: number) => new Date(day(n)).toISOString().slice(0, 10);
+    const rows = Object.fromEntries((await manifest()).tsums.map(t => [t.tsum, t.newest]));
+    expect(rows).toEqual({ mickey: { [iso(2)]: 1, [iso(9)]: 1 }, minnie: { [iso(30)]: 1 } });
   });
 
   it("files a round under the day it started, however long it lasted", async () => {

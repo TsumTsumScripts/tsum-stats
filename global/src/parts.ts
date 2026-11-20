@@ -268,7 +268,8 @@ const MANIFEST_SQL = `WITH p AS (SELECT value AS v FROM state WHERE key >= 'part
     'tsums', json((SELECT json_group_array(json_object('tsum', key, 'rounds', value, 'contributors',
         coalesce((SELECT v FROM people) ->> ('$.tsums."' || key || '"'), 0),
         'contributors7', coalesce((SELECT v FROM people) ->> ('$.tsums7."' || key || '"'), 0),
-        'contributorsAll', coalesce((SELECT v FROM people) ->> ('$.tsumsAll."' || key || '"'), 0)))
+        'contributorsAll', coalesce((SELECT v FROM people) ->> ('$.tsumsAll."' || key || '"'), 0),
+        'newest', json(coalesce((SELECT v FROM people) -> ('$.newest."' || key || '"'), '{}'))))
       FROM (SELECT key, value FROM json_each((SELECT v FROM totals), '$.tsums') ORDER BY value DESC, key))),
     'medalTsums', json(?2),
     'skills', json((SELECT json_group_array(CAST(key AS INTEGER)) FROM (SELECT key FROM json_each((SELECT v FROM totals), '$.skills') ORDER BY CAST(key AS INTEGER)))),
@@ -282,7 +283,9 @@ const MANIFEST_SQL = `WITH p AS (SELECT value AS v FROM state WHERE key >= 'part
  * The manifest's counts of people, from `recent` (each contributor's newest
  * day with each Tsum): contributors (not 0, not banned) with rounds of the
  * catalog's Tsums ?3 since day ?1 (30 days), per Tsum and in all; per Tsum
- * also over the last 7 of those days and over every day; and devices seen
+ * also over the last 7 of those days and over every day, and by newest day
+ * (`newest`: its contributors counted under the newest day each sent it, so
+ * the page counts them over any range that runs to today); and devices seen
  * since ?2. Made again only when they can have moved, or under another
  * catalog (its id ?4, job.ts: open).
  */
@@ -295,6 +298,8 @@ const PEOPLE = `WITH a AS MATERIALIZED (SELECT contributor, tsum, day FROM recen
     'tsums', json((SELECT json_group_object(tsum, n) FROM (SELECT tsum, count(*) AS n FROM r GROUP BY tsum))),
     'tsums7', json((SELECT json_group_object(tsum, n) FROM (SELECT tsum, count(*) AS n FROM a WHERE day >= date(?1, '+23 days') GROUP BY tsum))),
     'tsumsAll', json((SELECT json_group_object(tsum, n) FROM (SELECT tsum, count(*) AS n FROM a GROUP BY tsum))),
+    'newest', json((SELECT json_group_object(tsum, json(d)) FROM (SELECT tsum, json_group_object(day, n) AS d
+      FROM (SELECT tsum, day, count(*) AS n FROM a GROUP BY tsum, day ORDER BY tsum, day DESC) GROUP BY tsum))),
     'catalog', ?4)`;
 
 /** A running total over the parts, at `path` of each summary: the old total, less what parts ?1 had, plus what the summaries ?2 have. */

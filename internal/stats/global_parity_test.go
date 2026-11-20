@@ -613,24 +613,28 @@ func TestGlobalParity(t *testing.T) {
 	// The manifest's per-Tsum and site-wide counts: contributors over the
 	// rounds begun in the last 30 days, first sender's; devices seen (a round
 	// ended) in the last 30 days.
-	// Per Tsum also over the last 7 days and every day.
+	// Per Tsum also over the last 7 days and every day, and by the newest day
+	// each contributor played it.
 	recent := now.AddDate(0, 0, -29).Format("2006-01-02")
 	week := now.AddDate(0, 0, -6).Format("2006-01-02")
 	type tsumRow struct {
-		Tsum            string `json:"tsum"`
-		Rounds          int    `json:"rounds"`
-		Contributors    int    `json:"contributors"`
-		Contributors7   int    `json:"contributors7"`
-		ContributorsAll int    `json:"contributorsAll"`
+		Tsum            string         `json:"tsum"`
+		Rounds          int            `json:"rounds"`
+		Contributors    int            `json:"contributors"`
+		Contributors7   int            `json:"contributors7"`
+		ContributorsAll int            `json:"contributorsAll"`
+		Newest          map[string]int `json:"newest"`
 	}
 	byTsum := map[string]*tsumRow{}
 	who, who7, whoAll := map[string]map[int]bool{}, map[string]map[int]bool{}, map[string]map[int]bool{}
+	newest := map[string]map[int]string{}
 	everyone := map[int]bool{}
 	skills := map[int]bool{}
 	devices := map[string]bool{}
 	for _, r := range final {
 		if byTsum[r.Tsum] == nil {
 			byTsum[r.Tsum], who[r.Tsum], who7[r.Tsum], whoAll[r.Tsum] = &tsumRow{Tsum: r.Tsum}, map[int]bool{}, map[int]bool{}, map[int]bool{}
+			newest[r.Tsum] = map[int]string{}
 		}
 		byTsum[r.Tsum].Rounds++
 		day := roundStart(r.ID).Format(time.DateOnly)
@@ -641,6 +645,9 @@ func TestGlobalParity(t *testing.T) {
 			who7[r.Tsum][owner[r.ID]] = true
 		}
 		whoAll[r.Tsum][owner[r.ID]] = true
+		if day > newest[r.Tsum][owner[r.ID]] {
+			newest[r.Tsum][owner[r.ID]] = day
+		}
 		if at, _ := time.Parse(sqlTime, r.PlayedAt); !at.Before(now.Add(-30 * 24 * time.Hour)) {
 			devices[r.ID[24:]] = true
 		}
@@ -651,6 +658,10 @@ func TestGlobalParity(t *testing.T) {
 	var tsums []tsumRow
 	for tsum, row := range byTsum {
 		row.Contributors, row.Contributors7, row.ContributorsAll = len(who[tsum]), len(who7[tsum]), len(whoAll[tsum])
+		row.Newest = map[string]int{}
+		for _, day := range newest[tsum] {
+			row.Newest[day]++
+		}
 		tsums = append(tsums, *row)
 	}
 	slices.SortFunc(tsums, func(a, b tsumRow) int {
