@@ -33,6 +33,7 @@ tsum-stats/
 │                      rollup); CONTRACT.md is the spec all three sides share
 ├── docs/              USING.md (the manual), INTERNALS.md (how it is built)
 ├── tools/             build.sh (binaries, pin, release), codemap-check.js,
+│                      sheet-sync.gs (the group sheet's weekly import),
 │                      sync-share-codes.js (the script's share-code table)
 ├── web/               build output of ui/, embedded by main.go; git-ignored
 └── build/             tools/build.sh output, build/<version>/; git-ignored
@@ -235,6 +236,7 @@ plain JS, counting D1), `env.d.ts`.
 | `cd global && npm run dev` | The Worker locally on 127.0.0.1:8788 (`global/README.md` § Running it locally) |
 | `tools/build.sh [--publish]` | Builds the page, vets and tests, five binaries, archives and the pin into `build/<version>/`, copies the pin to `tsum-stats.txt`; `--publish` makes the GitHub release |
 | `node tools/codemap-check.js` | Checks this file against the tree |
+| `tools/sheet-sync.gs` | Not run here: a Google Apps Script pasted into the group's "Tsum Stats Recording" sheet. Weekly, it adds up the global site's part files (CONTRACT.md §4) per Tsum and skill level and fills or raises the sheet's Rounds recorded; setup steps in its header. A change to the part format must keep `cells.tsum`, `skill`, `rounds`, `day` or update this script |
 | Releases | The GAP Devkit (`../tools/devkit`), cards **Tsum Tsum Stats** and **Tsum Tsum global stats**: read `../tools/DEPLOYMENTS.md` first. `tools/build.sh --publish` and `global/deploy.sh` only without the Devkit |
 
 ## Where a name lives

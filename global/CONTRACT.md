@@ -935,6 +935,12 @@ each. The files together hold the part's rows, each row once, and the page
 adds up every file the manifest lists (§6). Their `rounds` add up to the
 part's.
 
+The part files are also read outside the page, by `tools/sheet-sync.gs` (the
+group sheet's weekly import): it takes `cells.tsum`, `skill`, `rounds` and
+`day` from every file the manifest lists, and refuses a file whose rounds do
+not add up to its manifest `rounds`. A format change that renames or drops
+those four breaks it.
+
 ### 4.3 `presets.json`
 
 Written by the job's last step when `presets_dirty` is set; served with
