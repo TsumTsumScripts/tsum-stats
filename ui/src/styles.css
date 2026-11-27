@@ -774,6 +774,21 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 .new-tsums .tile-text .sub { font-family: var(--font-body); font-size: 12px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .new-tsums .tile-text .tag { margin-right: 4px; }
 .new-tsums .tsum-tile[aria-current] { border-color: var(--accent-a); }
+/* The list of Tsums' rankings (sections/tsum/Earners.svelte): a button a Tsum, its rank,
+   portrait, name over its rounds, and its rate an hour with a bar against the first. */
+.earners { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.earner { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; min-width: 0; padding: 6px 12px 6px 8px; }
+.earner-rank { flex: none; width: 2ch; text-align: right; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+.earner-name { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.earner-name .tile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.earner-name .sub { font-family: var(--font-body); font-size: 12px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.earner-rate { flex: none; display: inline-flex; align-items: baseline; gap: 2px; font-variant-numeric: tabular-nums; }
+.earner-rate .bd-bar { align-self: center; margin-right: 8px; width: 70px; }
+.earner-rate b { color: var(--coin); }
+.earners.medal .earner-rate b { color: var(--medal); }
+.earners.medal .bd-bar > span { background: color-mix(in srgb, var(--medal) 55%, var(--well)); }
+.earners.medal .bd-bar > span.best { background: var(--medal); }
+@media (max-width: 559px) { .earner-rate .bd-bar { display: none; } }
 .breakdown { table-layout: fixed; min-width: 760px; }
 .breakdown .bd-c-label { width: 22%; }
 .breakdown .bd-c-rate { width: 16%; }

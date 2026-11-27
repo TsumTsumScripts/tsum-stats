@@ -5,8 +5,9 @@
   On the global site it is every contributor's rounds of it: by skill level
   and items, ranked among every Tsum, by UTC day; no rounds, settings or
   Tsum lists, so no best rounds, recent form or boxes to max. Without a Tsum
-  picked it is the list of Tsums (most played; on the global site the Tsums
-  new in the last 30 days above it); with one, All Tsums goes back to it.
+  picked it is the list of Tsums over its time range and game: the best coin
+  and medal earners an hour, the most played, and on the global site the
+  Tsums new in the last 30 days above them; with one, All Tsums goes back to it.
 -->
 <script>
   import {onMount} from 'svelte';
@@ -30,9 +31,10 @@
     PLAY, englishName, playValueName, skillTypeName, skillTypeValue, tsumColor, tsumName,
   } from '../lib/util.js';
   import Kpis from './stats/Kpis.svelte';
-  import {EXP_WHAT, expRate, sumExp} from '../lib/expected.js';
+  import {EXP_WHAT, expHour, expRate, sumExp} from '../lib/expected.js';
   import Legend from '../components/Legend.svelte';
   import Breakdown from './tsum/Breakdown.svelte';
+  import Earners from './tsum/Earners.svelte';
   import Insights from './tsum/Insights.svelte';
   import ItemPayback from './tsum/ItemPayback.svelte';
 
@@ -77,11 +79,13 @@
   let best = $state.raw([]);
   let played = $state.raw([]);
   let devices = $state.raw([]);
+  /** The list of Tsums' summary (no Tsum picked): every Tsum over the time range, game and device, in base coins. */
+  let list = $state.raw(null);
   /** The Tsum's row in the newest Tsum list for its build, with where it came from; null when not owned. */
   let owned = $state.raw(undefined);
   let loading = $state(false);
   let error = $state('');
-  const seq = {detail: 0, best: 0, owned: 0};
+  const seq = {detail: 0, best: 0, owned: 0, list: 0};
 
   const unit = $derived(filter.coins === 'medals' ? 'medals' : 'coins');
   const U = $derived(cap(unit));
@@ -144,6 +148,7 @@
     if (!filter.id) {
       detail = null;
       best = [];
+      loadList();
       return;
     }
     loadDetail();
@@ -169,6 +174,25 @@
       if (mine === seq.detail) error = `Could not load: ${e.message}`;
     } finally {
       if (mine === seq.detail) loading = false;
+    }
+  }
+
+  /**
+   * The list of Tsums: one summary over the time range, game and device, in
+   * base coins, so every Tsum has its expected coins and the medal Tsums their
+   * medals (summary.medals). The skill level and type are one Tsum's, so not sent.
+   */
+  async function loadList() {
+    const mine = ++seq.list;
+    loading = true;
+    const {from, build, device} = filterParams();
+    try {
+      const d = await api('summary', {from, build, device, tz: -new Date().getTimezoneOffset()});
+      if (mine === seq.list) { list = d; error = ''; }
+    } catch (e) {
+      if (mine === seq.list) error = `Could not load: ${e.message}`;
+    } finally {
+      if (mine === seq.list) loading = false;
     }
   }
 
@@ -306,6 +330,35 @@
   const fewPlayers = $derived(players !== null && status !== null && players.n < status.minContributors);
   const whose = globalSite ? 'all' : 'your';
 
+  // ---- The list of Tsums ----
+
+  /** How many Tsums each ranking shows. */
+  const EARNERS = 10;
+  /** The global site's flag for a Tsum too few players sent rounds of over the range; '' when it has enough, and always on the local site. */
+  function fewFlag(id) {
+    if (!globalSite || !status) return '';
+    const n = playersIn(played.find(t => t.tsum === id), {days: filter.days, from: utcFrom(filter.days)})?.n;
+    return n != null && n < status.minContributors ? 'few players' : '';
+  }
+  /**
+   * The rankings, of Tsums with MIN_ROUNDS rounds or more in the range (as
+   * Stats ranks them): by expected net coins an hour, and the medal Tsums by
+   * medals an hour; and the most played, every Tsum by its rounds.
+   */
+  const earners = $derived.by(() => {
+    if (!list) return null;
+    const rank = (rows, value) => rows.filter(t => t.tsum && t.rounds >= MIN_ROUNDS && value(t) !== null)
+      .map(t => ({tsum: t.tsum, rounds: t.rounds, v: value(t), flag: fewFlag(t.tsum)}))
+      .sort((a, b) => b.v - a.v).slice(0, EARNERS);
+    return {
+      coins: rank(list.tsums, expHour),
+      medals: rank(list.medals.tsums, t => (t.coinsPerSec == null ? null : t.coinsPerSec * 3600)),
+      most: list.tsums.filter(t => t.tsum).sort((a, b) => b.rounds - a.rounds).slice(0, 24),
+    };
+  });
+  const listBuilds = $derived(new Set((list?.mix ?? []).map(m => m.build)).size > 1 || Boolean(filter.build));
+  const rangeNote = $derived(`${daysLabel(filter.days).toLowerCase()}${globalSite && filter.days !== 'all' ? ' UTC' : ''}`);
+
   const args = $derived(s && {
     skills: [detail.skillBins, s.histogram],
     hist: [s.histogram, s.totals, ctx],
@@ -322,9 +375,9 @@
     tsum: filter.id,
     build: filter.build,
     unit,
-    filters: [`${daysLabel(filter.days)}${globalSite && filter.days !== 'all' ? ' UTC' : ''}`, cap(basis),
-      filter.build ? buildLabel(filter.build) : '', filter.device, filter.skillType ? skillTypeName(filter.skillType) : ''],
-    rounds: s?.totals.rounds ?? 0,
+    filters: [`${daysLabel(filter.days)}${globalSite && filter.days !== 'all' ? ' UTC' : ''}`, filter.id ? cap(basis) : '',
+      filter.build ? buildLabel(filter.build) : '', filter.device, filter.id && filter.skillType ? skillTypeName(filter.skillType) : ''],
+    rounds: (filter.id ? s?.totals.rounds : list?.totals.rounds) ?? 0,
   }));
   let overview = $state();
   let page = $state();
@@ -433,6 +486,22 @@
         {/if}
         {#if error}<span class="sub">{error}</span>{/if}
       </div>
+    {:else}
+      <div class="tsum-bar">
+        <Seg sm label="Time range" value={filter.days} onpick={v => set({days: v})}
+          options={[['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['all', 'All time']]} />
+        <DaysBox sm days={filter.days} onpick={v => { if (v !== filter.days) set({days: v}); }} />
+        {#if listBuilds}
+          <Seg sm label="Game" value={filter.build} onpick={v => set({build: v})} options={[['', 'Both'], ['global', 'INTL'], ['jp', 'JP']]} />
+        {/if}
+        {#if devices.length > 1}
+          <select class="search" aria-label="Device" value={filter.device} onchange={e => set({device: e.target.value})}>
+            <option value="">All devices</option>
+            {#each devices as d (d.device)}<option value={d.device}>{d.device}</option>{/each}
+          </select>
+        {/if}
+        {#if error}<span class="sub">{error}</span>{/if}
+      </div>
     {/if}
   </div>
 
@@ -440,11 +509,25 @@
   {#if globalSite && !filter.id}<NewTsums current={filter.id} played={playedRounds} onpick={id => set({id})} />{/if}
 
   {#if !filter.id}
+    {#if earners && (earners.coins.length || earners.medals.length)}
+      <div class="charts">
+        <Panel title="Best coin earners" expandable={false}
+          sub="expected net coins an hour of play: {EXP_WHAT} · {rangeNote} · Tsums with {fmt(MIN_ROUNDS)}+ rounds, at the skill levels {whose === 'your' ? 'you' : 'players'} played them at">
+          <Earners rows={earners.coins} unit="coins" {nameOf} onpick={id => set({id})} />
+        </Panel>
+        <Panel title="Best medal earners" expandable={false}
+          sub="medals an hour of play, a round that earned none counting as 0 · {rangeNote} · medal Tsums with {fmt(MIN_ROUNDS)}+ rounds"
+>
+          <Earners rows={earners.medals} unit="medals" {nameOf} onpick={id => set({id})}
+            empty="No medal Tsum has {fmt(MIN_ROUNDS)} rounds {filter.days === 'all' ? 'yet' : 'in this range'}." />
+        </Panel>
+      </div>
+    {/if}
     <div class="panel">
-      <div class="panel-head"><div><h2>{globalSite ? 'Most played' : 'Your most played'}</h2><span class="sub">click one to see its page</span></div></div>
-      {#if played.length}
+      <div class="panel-head"><div><h2>{globalSite ? 'Most played' : 'Your most played'}</h2><span class="sub">{rangeNote} · click one to see its page</span></div></div>
+      {#if (earners?.most ?? played).length}
         <div class="tsum-grid">
-          {#each played.slice(0, 24) as t (t.tsum)}
+          {#each (earners?.most ?? played).slice(0, 24) as t (t.tsum)}
             <button type="button" class="btn tsum-tile" onclick={() => set({id: t.tsum})}>
               <Avatar id={t.tsum} name={nameOf(t.tsum)} />
               <span class="tile-name">{nameOf(t.tsum)}</span>
@@ -453,7 +536,10 @@
           {/each}
         </div>
       {:else}
-        <div class="empty-state">No rounds yet.</div>
+        <div class="empty-state">
+          <p>{filter.days === 'all' ? 'No rounds yet.' : 'No rounds in this time range.'}</p>
+          {#if filter.days !== 'all'}<button type="button" class="btn" onclick={() => set({days: 'all'})}>Show all time</button>{/if}
+        </div>
       {/if}
     </div>
   {:else}

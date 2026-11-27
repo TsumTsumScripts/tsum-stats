@@ -406,8 +406,20 @@ tooltip everywhere else.
 **Tsum** in the top bar (`#/tsum?id=<tsum>`) is everything about one Tsum. Open
 it from there, or with **Tsum page →** in the Stats focus bar, which carries the
 range, primary stat, game and a single device across. Without a Tsum picked
-(`#/tsum`) it is the list of Tsums: the most played, a click each to its page;
-on a Tsum's page, **← All Tsums** goes back to it, keeping the filters. It has its own time range
+(`#/tsum`) it is the list of Tsums, over its own time range and game (and
+device, with more than one), a click each to its page:
+
+- **Best coin earners:** the ten Tsums earning the most expected net coins an
+  hour of play (base coins with +Coin's bonus at its average, less what the
+  items cost), of those with 50 rounds or more in the range, at whatever skill
+  levels they were played at.
+- **Best medal earners:** the same for the medal Tsums, by medals an hour, a
+  round that earned none counting as 0.
+- **Most played:** by rounds in the range.
+
+On the global site a Tsum too few players sent rounds of over the range is
+marked *few players*, as on Stats. On a Tsum's page, **← All Tsums** goes back
+to the list, keeping the filters. It has its own time range
 (7, 30 or 90 days, any number in its *Last N days* box, or all time, the
 default), the same primary stat and *Less
 item costs* switches, and game, skill type and device pickers when there is more
