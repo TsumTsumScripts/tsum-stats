@@ -93,7 +93,7 @@ record as sent; only a change to the record sends it again.
 at deploy. A well-formed id it does not have (a Tsum newer than the deploy)
 is **accepted**: stored, archived, counted in `contrib_cells`, `recent` and
 the contributor's counters, but left out of every public table and file
-(`cells3`, `cell_bins3`, the parts, the manifest) until a deploy's catalog has it.
+(`cells4`, `cell_bins4`, the parts, the manifest) until a deploy's catalog has it.
 Then `POST /api/v1/admin/rebuild` brings in its days still in D1 (an archived
 day needs `restore` first). Its medals may be null: `incomplete` applies the
 medals rule only to the catalog's `medal: true` Tsums.
@@ -241,9 +241,10 @@ again), its quota (`429 quota`, on accepted rows) and today's budget
 - `rounds`: inserts, and this contributor's changed rows (one statement; the
   settings ids are looked up as one map for the batch's hashes);
 - `pending`: one row for the batch's newly inserted rounds, added up as the
-  day tables keep them (`ingest.ts: aggregate`): their `cells3` and `cell_bins3`
-  rows (the catalog's Tsums only), their `contrib_cells` rows by device,
-  their start days, and `{tsum: the newest of those days}`. The hourly job
+  day tables keep them (`ingest.ts: aggregate`): their `cells4` and `cell_bins4`
+  rows (the catalog's Tsums only, each at its recorded skill level), their
+  `contrib_cells` rows by device, their `skill_units` rows (§3.1), their start
+  days, and `{tsum: the newest of those days}`. The hourly job
   adds these in (§3.2, step 1a) without reading `rounds`;
 - `dirty_days`: the start days of this contributor's **changed** rows (a
   changed round is recomputed, never added on top: a minimum cannot be taken
@@ -360,7 +361,9 @@ counted in the day's budget (§2.6).
   an unknown id (404).
 - `rebuild {from?, to?}`: marks the days (default: from the oldest round in D1
   to today) dirty, at most 400 (else 400). A day whose rounds have left D1 is
-  left as it is when its turn comes. Reply `{from, to, days}`.
+  left as it is when its turn comes. Reply `{from, to, days}`. It is also how
+  the days from before `0008_skill_fix.sql` get their `skill_units`, and so
+  come into the skill level correction (§3.1).
 - `restore {day}`: for a day on or before `archived_through` only (else 400).
   A day archived but not yet dropped (its rounds still in D1) is only marked
   dirty: `{day, done: true, files: 0, left: 0, rounds: 0}`. Otherwise its
@@ -378,9 +381,10 @@ counted in the day's budget (§2.6).
   changed ones are recomputed as any change is. The window is the
   forwarder's 60 days, which is all §1.2 accepts: an archived day stays final.
 - `rollup {}`: runs the hourly job now (also how tests trigger it); the reply
-  is the run's report: `{folded, recomputed, rendered, unlinked, archived,
+  is the run's report: `{folded, refiled, recomputed, rendered, unlinked, archived,
   dropped, compacted, manifest, more, queries, r2, read, written, bytes,
-  errors}`. `folded` counts the rounds added in from `pending`;
+  errors}`. `folded` counts the rounds added in from `pending`; `refiled`
+  names the Tsums the skill level correction went over (§3.2, step 1c);
   `recomputed` the days recomputed in full; `rendered` the files published;
   `read`/`written` the rows D1 read and wrote; `bytes` what it put to R2;
   `errors` the steps that failed, as `"<step>: <message>"`; `more: true`
@@ -463,7 +467,7 @@ share slot or a skill). Only the code is stored, written again by the table
 
 ## 3. Storage
 
-### 3.1 D1 schema (`global/migrations/0001_init.sql`, `0002_cell_bins.sql`, `0003_skill_type.sql`, `0005_presets.sql`: the gallery's `presets`, `0006_preset_limits.sql`: its limits, §2.7, `0007_gaps.sql`: the time between rounds)
+### 3.1 D1 schema (`global/migrations/0001_init.sql`, `0002_cell_bins.sql`, `0003_skill_type.sql`, `0005_presets.sql`: the gallery's `presets`, `0006_preset_limits.sql`: its limits, §2.7, `0007_gaps.sql`: the time between rounds, `0008_skill_fix.sql`: the skill level correction)
 
 ```sql
 CREATE TABLE contributors (
@@ -496,7 +500,7 @@ CREATE TABLE rounds (
   played_at INTEGER NOT NULL,            -- epoch s, UTC, round end
   build INTEGER NOT NULL,                -- 0 global, 1 jp
   tsum TEXT NOT NULL,
-  skill INTEGER NOT NULL,                -- -1 unknown
+  skill INTEGER NOT NULL,                -- as recorded, never changed; -1 unknown
   items INTEGER NOT NULL,                -- -1 unknown
   version TEXT NOT NULL,
   settings INTEGER NOT NULL,
@@ -526,11 +530,13 @@ CREATE TABLE pending (
   n INTEGER NOT NULL,                    -- rounds
   days TEXT NOT NULL,                    -- the start days they fall on
   tsums TEXT NOT NULL,                   -- {tsum: the newest of those days with a round of it}
-  cells TEXT NOT NULL,                   -- the cells3 rows they add to (the catalog's Tsums only)
+  cells TEXT NOT NULL,                   -- the cells4 rows they add to (the catalog's Tsums only), without `stated`: it is their skill
   bins TEXT NOT NULL,                    -- '[]': the per-skill bins of before 0002, no longer written
-  cell_bins TEXT NOT NULL DEFAULT '[]',  -- the cell_bins3 rows they add to: [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, {base}, {final}, {medals}]
+  cell_bins TEXT NOT NULL DEFAULT '[]',  -- the cell_bins4 rows they add to (without `stated`, as cells): [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, {base}, {final}, {medals}]
   cc TEXT NOT NULL,                      -- [day, build, tsum, device, rounds, secs, base, final, medals]
-  format INTEGER NOT NULL DEFAULT 0      -- 0004: 1 when cells and cell_bins have the jackpot key; 0, summed before, is not folded (§3.2)
+  format INTEGER NOT NULL DEFAULT 0,     -- 0004: 1 when cells and cell_bins have the jackpot key; 0, summed before, is not folded (§3.2).
+                                         -- 0008: 2 when `units` is there too; 1 is folded, and its days recomputed for their units
+  units TEXT NOT NULL DEFAULT '[]'       -- 0008: the skill_units rows they add to: [day, build, tsum, device, skill, context, trusted, n, vn, vsum, first, last]
 );
 
 -- What D1 wrote (rows inserted, changed or deleted) and read per UTC day, for everything (§2.6).
@@ -546,12 +552,15 @@ CREATE TABLE join_limits (ip_hash TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NO
   PRIMARY KEY (ip_hash, day)) WITHOUT ROWID;
 CREATE TABLE state (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
 
--- Public: one row per day × build × Tsum × skill × skill type × items × scan × chain × bubble × (medals > 0) × jackpot (0004).
-CREATE TABLE cells3 (
-  day TEXT NOT NULL, build INTEGER NOT NULL, tsum TEXT NOT NULL, skill INTEGER NOT NULL, skill_type TEXT NOT NULL,
+-- Public: one row per day × build × Tsum × skill × skill type × items × scan × chain × bubble × (medals > 0) × jackpot × stated (0008).
+CREATE TABLE cells4 (
+  day TEXT NOT NULL, build INTEGER NOT NULL, tsum TEXT NOT NULL,
+  skill INTEGER NOT NULL,                                   -- the level the rounds count at (below); -1 unknown
+  skill_type TEXT NOT NULL,
   items INTEGER NOT NULL, scan INTEGER NOT NULL, chain INTEGER NOT NULL, bubble TEXT NOT NULL,
   medal INTEGER NOT NULL,                                   -- medal: 1 when medals > 0
   jackpot INTEGER NOT NULL,                                 -- jackpot: 1 when final > 10 × base (a coin-bonus jackpot)
+  stated INTEGER NOT NULL,                                  -- the level the rounds were recorded at (rounds.skill); = skill unless re-filed
   rounds INTEGER NOT NULL, secs REAL NOT NULL,
   score_sum INTEGER NOT NULL, score_min INTEGER NOT NULL, score_max INTEGER NOT NULL,
   first INTEGER NOT NULL, last INTEGER NOT NULL,            -- epoch s
@@ -560,17 +569,54 @@ CREATE TABLE cells3 (
   medals_n INTEGER NOT NULL, medals_sum INTEGER NOT NULL, medals_sq REAL NOT NULL,
   medals_min INTEGER, medals_max INTEGER, medals_secs REAL NOT NULL,
   gap_sum REAL NOT NULL DEFAULT 0, gap_n INTEGER NOT NULL DEFAULT 0, secs_max REAL,   -- 0007
-  PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot)
+  PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, stated)
 ) WITHOUT ROWID;
 
--- Public: one row per cells3 row (its key), each a JSON object {"<bin>": [rounds, secs, score, base, final, medals]}.
-CREATE TABLE cell_bins3 (
+-- Public: one row per cells4 row (its key), each a JSON object {"<bin>": [rounds, secs, score, base, final, medals]}.
+CREATE TABLE cell_bins4 (
   day TEXT NOT NULL, build INTEGER NOT NULL, tsum TEXT NOT NULL, skill INTEGER NOT NULL, skill_type TEXT NOT NULL,
   items INTEGER NOT NULL, scan INTEGER NOT NULL, chain INTEGER NOT NULL, bubble TEXT NOT NULL, medal INTEGER NOT NULL,
-  jackpot INTEGER NOT NULL,
+  jackpot INTEGER NOT NULL, stated INTEGER NOT NULL,
   base TEXT NOT NULL, final TEXT NOT NULL, medals TEXT NOT NULL,  -- medals: {} unless medal = 1
-  PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot)
+  PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, stated)
 ) WITHOUT ROWID;
+
+-- Private: what the skill level correction judges by (§3.2, step 1c). One row per day × build × Tsum ×
+-- device × recorded skill level × item context × trusted, over the rounds of the catalog's Tsums that
+-- have a level (1-10), of contributors who are not banned. Kept for good.
+CREATE TABLE skill_units (
+  build INTEGER NOT NULL, tsum TEXT NOT NULL,
+  device TEXT NOT NULL,                  -- the device hash (§1.1)
+  skill INTEGER NOT NULL,                -- as recorded
+  context INTEGER NOT NULL,              -- items less +Coin, +Exp and +Score (items & ~25); -1 unknown (skillFix.js: fixContext)
+  trusted INTEGER NOT NULL,              -- 1: the script version has Auto Set Skill Level, 6.0a19 and on (skillFix.js: trustedVersion)
+  day TEXT NOT NULL,                     -- the day the rounds started (§1.1)
+  n INTEGER NOT NULL,                    -- rounds
+  vn INTEGER NOT NULL, vsum INTEGER NOT NULL,   -- those with a value over 0, and the values' sum: medals for a medal Tsum, else base coins
+  first INTEGER NOT NULL, last INTEGER NOT NULL, -- epoch s (played_at)
+  PRIMARY KEY (tsum, build, device, skill, context, trusted, day)
+) WITHOUT ROWID;
+CREATE INDEX skill_units_day ON skill_units (day);   -- a day's recompute makes its rows again
+
+-- Private: the runs counted at another level than recorded. A day's full recompute files the rounds of
+-- `device` recorded at `stated`, of the days from_day to to_day, under `level` (the newest from_day
+-- when two cover a day).
+CREATE TABLE skill_fix (
+  build INTEGER NOT NULL, tsum TEXT NOT NULL, device TEXT NOT NULL,
+  stated INTEGER NOT NULL,
+  from_day TEXT NOT NULL, to_day TEXT NOT NULL,
+  level INTEGER NOT NULL,
+  rule TEXT NOT NULL,                    -- order | trusted (skillFix.js)
+  rounds INTEGER NOT NULL,               -- the run's rounds when it was last judged
+  days TEXT NOT NULL,                    -- {day: rounds}: the run's rounds on each past day, as of the pass that last asked for that day's recompute
+  at INTEGER NOT NULL,                   -- epoch s: when the fix was first made
+  PRIMARY KEY (tsum, build, device, stated, from_day)
+) WITHOUT ROWID;
+
+-- Before 0008: cells4 and cell_bins4 without stated (0004, with 0007's columns). Kept, no longer written
+-- or read, so a Worker rolled back to before 0008 still finds them.
+CREATE TABLE cells3 (… cells4's columns but stated …, PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot)) WITHOUT ROWID;
+CREATE TABLE cell_bins3 (… cell_bins4's columns but stated …, PRIMARY KEY (day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot)) WITHOUT ROWID;
 
 -- Before 0004: cells3 and cell_bins3 without jackpot (0003). Kept, no longer written or read, so a Worker
 -- rolled back to before 0004 still finds them.
@@ -634,7 +680,7 @@ device's first), or it starts before the latest one here (sent out of order).
 The round before is the upload's own, or the device's `devices.last_seen`
 (this contributor's). A re-sent round keeps its gap. Rounds stored before
 `0007` have none.
-A `cell_bins3` row holds the bins of the same cell's rounds: each of its
+A `cell_bins4` row holds the bins of the same cell's rounds: each of its
 rounds counted in the bin of its base coins, of its final coins and, when it
 earned any, of its medals. An object's keys are bin numbers (§5) as text, in
 any order; each value is that bin's figures (§5). `medals` is `{}` in a
@@ -642,7 +688,7 @@ any order; each value is that bin's figures (§5). `medals` is `{}` in a
 whose final coins are over 10 times their base coins (`JACKPOT_TIMES` in
 `ui/src/lib/snapshot/engine.js`, `records.ts: JACKPOT_SQL`, `queries.go:
 jackpotSQL`), the +Coin item's rare 11×, 21× and 51× bonuses, which the Tsum
-page leaves out of final coins (§6.3). `cells3` and `cell_bins3` hold the catalog's Tsums
+page leaves out of final coins (§6.3). `cells4`, `cell_bins4` and `skill_units` hold the catalog's Tsums
 only (§1.2); `contrib_cells` every Tsum. The day tables are kept for good,
 archived days' too.
 
@@ -677,6 +723,23 @@ migration and the deploy, are 0, and the fold does not add their cells and
 bins in but marks their days dirty to be made again from the rounds
 (`rollup.ts: FOLD_OLD`); their `contrib_cells` sums are added as before.
 
+`0008_skill_fix.sql` adds `cells4` and `cell_bins4` in place of `cells3` and
+`cell_bins3`, keyed by `stated` too, and `skill_units`, `skill_fix` and
+`pending.units` (§3.2, step 1c). **A cell's `skill` is the level its rounds
+count at; `stated` the level they were recorded at.** The two are the same
+unless the skill level correction re-filed the rounds, and a round's own
+`skill`, in `rounds` and in its archive file, is always the recorded one.
+Every `cells3` and `cell_bins3` row is copied in with `stated` = `skill`,
+which is exact, so no day is recomputed for the new key and no part is
+published again until its day changes. `skill_units` starts empty: a day has
+units once an upload folds into it or it is recomputed, so **the days from
+before the migration come into the correction only when they are recomputed**
+(admin `rebuild`, §2.5, a few hundred days at most a call; each is a full
+recompute, to be weighed against the day's budgets). An upload's sums made
+before it (`pending.format` 1) are folded as they are, each cell at its
+recorded level, and their days are marked dirty, whose recompute makes their
+units (`rollup.ts: FOLD_OLD`).
+
 `rounds` has no secondary index on purpose: one row written per round. Every
 scan of `rounds` is a key range (§1.1); none reads it by contributor.
 
@@ -702,31 +765,86 @@ still run; the next run tries it again.
 
 The steps:
 
-1. **The day tables** (`cells3`, `cell_bins3`, `contrib_cells`):
+1. **The day tables** (`cells4`, `cell_bins4`, `contrib_cells`, `skill_units`):
    1. **Fold** the `pending` sums in, oldest upload first, up to 25,000 rounds
       a run, in one batch. Who a round counts for is decided by its
       contributor's status at fold time: a banned one's (`banned`,
       `unlinking-banned`, or gone as `gone:<id>` = `"banned"`) stay out of
-      `cells3` and `cell_bins3`; those of contributor 0 or of one `unlinking`,
+      `cells4`, `cell_bins4` and `skill_units`; those of contributor 0 or of one `unlinking`,
       `unlinking-banned` or no longer there stay out of `contrib_cells`,
       `span:<id>` and `recent`. Bins objects are merged per upload without a
       sort; a `contrib_cells` row's `device_set` is merged only when a new
       device appears. A day's sums already read by a full recompute are not
       added again: `state` `skip` = `{day: seq}`. The fold may spend to the
       full `BUDGET_ROWS_PER_DAY`. An upload's sums of an older layout
-      (`pending.format` 0) add only their `contrib_cells`; their days are
-      marked dirty, and the run asks for another.
+      (`pending.format` 0) add only their `contrib_cells`, and those of
+      format 1 everything but `skill_units` rows, which they lack; their days
+      are marked dirty, and the run asks for another. **New rounds are always
+      folded at their recorded level** (`stated` = `skill`), whatever fix
+      covers their device. The upload's Tsums join `state` `refile_queue`.
    2. **Recompute** the claimed dirty days in full, oldest first, at most
       `ROLLUP_DAYS_PER_RUN` (8), within the run's queries and
       `READ_BUDGET_PER_DAY`. Only a ban, an unban, a changed round, a merge, a
       rebuild or a restore makes a day dirty. Over the day's key range (§1.1):
-      `cells3` and `cell_bins3` from rounds of the catalog's Tsums whose contributor
-      is not `banned`/`unlinking-banned`; `contrib_cells` from every round
+      `cells4`, `cell_bins4` and `skill_units` from rounds of the catalog's Tsums whose contributor
+      is not `banned`/`unlinking-banned`, **each round's cell at the level a
+      `skill_fix` row gives it** (its device hash, Tsum, build and recorded
+      level, the day within the fix's `from_day` to `to_day`; the newest
+      `from_day` when two cover it), else at its recorded level, and
+      `skill_units` always as recorded; `contrib_cells` from every round
       **except contributor 0's and those of contributors being unlinked**,
       with `devices` = distinct device hashes (`device_set`). It upserts only
       changed rows and deletes rows the day no longer has, in SQL, widens
-      spans and `recent`, and marks the day in `skip`. A day whose rounds have
+      spans and `recent`, and marks the day in `skip`. When a `skill_units`
+      row of the day was added or changed, the day's Tsums join `state`
+      `refile_queue` (so a recompute the correction itself asked for, which
+      leaves the units as they were, queues nothing). A day whose rounds have
       left D1 (and were not restored) keeps its tables as they are.
+   3. **The skill level correction** (`refile.ts`, run between the fold and
+      the recompute). Until the script's Auto Set Skill Level (6.0a19) the
+      level was typed in, so some runs of rounds are recorded at a wrong one.
+      The rules are the page's own, `ui/src/lib/skillFix.js` (`refile`: the
+      order rule and the trusted rule, with its thresholds `FIX`), which the
+      local server ports (`internal/stats/skillfix.go`); this step feeds them
+      and keeps their verdicts. Of the Tsums in `refile_queue` **not yet
+      corrected this UTC day** (`state` `refiled`), `REFILE_TSUMS_PER_RUN`
+      (40; 2 on Free) a run, in id order, each within the run's queries and
+      `READ_BUDGET_PER_DAY` (it asks for one and a half times the rows its
+      last pass read):
+      - One statement puts the Tsum's `skill_units` together into **runs**:
+        per build and device, its rows in the order of their first round, a
+        new run wherever the recorded level changes; one row back per run and
+        item context, with the run's rounds per day. So the Worker handles
+        runs, never days or rounds. A run's value in a context is the
+        **mean** of its rounds' values (`vsum / vn`; the local server, which
+        has the rounds, uses their median), its player `build|device`, its
+        trusted rounds those of trusted versions.
+      - `refile(runs, prev)` gives each run its level; `prev` is the level an
+        existing fix gave the run (the same device, build and recorded level,
+        days overlapping), which keeps a fix until the run's coins are 20 %
+        from what they matched (`FIX.KEEP`), where a new one needs 12 %
+        (`FIX.SAME`): a figure that drifts a little never flips a fix back
+        and forth.
+      - A run that moved is a `skill_fix` row: its recorded level, its first
+        and last day, the level it counts at, the rule, and `days`, its
+        rounds on each **past** day. The Tsum's rows are written again only
+        when they differ. **The days to recompute are the past days where
+        what a fix moves changed**: a day a fix newly covers or leaves, one
+        whose level changed, one with more rounds of the run than `days`
+        says (rounds sent late). Today is never among them, nor a day whose
+        rounds have left D1. Those days go into `dirty_days`, for the next
+        run's step 1b.
+      - Everything it writes is one batch at the step's end; the Tsums it
+        went over leave the queue.
+
+      So: **a Tsum is corrected at most once a UTC day**, however often its
+      units change; a day's new rounds are published at their recorded level
+      until the next day's pass (the first run after 00:00 UTC that reaches
+      the Tsum), which recomputes that day once, when it is over; and a fix
+      is as fine as a device's day of one Tsum at one recorded level, so two
+      stretches of one level on one day move together. A past day is
+      recomputed again only when a fix on it changes. A full recompute for
+      any other reason applies the fixes there are.
 2. **Render** the part (§4.2) of each day whose tables changed (`state`
    `render` keeps the days still to do), oldest first. A replaced file goes
    to `state` `trash` (step 6).
@@ -776,7 +894,10 @@ per skill type and per value of each play setting (`state` `totals`) move with t
 are made afresh with each day's first manifest.
 
 `state` keys the job keeps (`job.ts` lists them too): `recompute` (claimed
-days), `skip`, `render`, `part:<from>` (a part's pointer: `{from, to, rounds,
+days), `skip`, `render`, `refile_queue` (`{tsum: 1}`: Tsums whose
+`skill_units` changed since their last correction), `refiled` (`{tsum: [day,
+rows]}`: the UTC day each was last corrected on, and the rows that pass
+read), `part:<from>` (a part's pointer: `{from, to, rounds,
 first, last, tsums: {tsum: rounds}, skills: {skill: rounds}, skillTypes:
 {type: rounds}, scan, chain, bubble: {value: rounds}, bytes, files: [{file,
 sha, rounds, bytes}]}`, each count leaving out what is not recorded; a
@@ -886,7 +1007,8 @@ into it; 0 for a contributor being unlinked or no longer there; never for one
   from `newest` when it runs to today, else every day's; from a manifest
   without `newest`, the last 7 or 30 days, else every day.
 - `medalTsums`: the catalog's `medal: true` ids. `skills`: the distinct
-  skill levels (not -1) in the cells, ascending. `skillTypes`: every skill
+  skill levels (not -1) in the cells, ascending: the levels rounds count at
+  (the cells' `skill`), which the page lists for `levels=recorded` too. `skillTypes`: every skill
   type (not `''`) in the cells, most rounds first; the rest of `rounds` have
   none. `playSettings`: per play setting (§1.2), every value recorded in
   the cells, as text, most rounds first; the rest of `rounds` have it not
@@ -897,7 +1019,11 @@ into it; 0 for a contributor being unlinked or no longer there; never for one
 ### 4.2 Part files
 
 One day (`day-…`) or one month (`month-…`), columnar like the snapshot's
-month files. Format 6 (since `0007_gaps.sql`) adds each cell's `gapSum`,
+month files. Format 7 (since `0008_skill_fix.sql`) keys every cell and bins
+row by `stated` too, the skill level the rounds were recorded at, `skill`
+being the level they count at (§3.1); the page reads a part without it as
+every round counted at its recorded level (`stated` = `skill`). A part is
+published in format 7 the next time its day changes, not before. Format 6 (since `0007_gaps.sql`) adds each cell's `gapSum`,
 `gapN` and `secsMax`; the page reads a part without them as no gaps told and
 no longest round known. Format 5 (since `0004_jackpot.sql`) keys every cell and bins
 row by `jackpot` too; format 4 (since `0003_skill_type.sql`) by skill type
@@ -909,19 +1035,19 @@ cells but none of its bins:
 
 ```json
 {
-  "kind": "tsum-global-part", "format": 6, "from": "2026-10-14", "to": "2026-10-15",
+  "kind": "tsum-global-part", "format": 7, "from": "2026-10-14", "to": "2026-10-15",
   "cells": {"n": 2, "day": ["2026-10-14", "…"], "build": [0, 1], "tsum": ["beastda", "…"], "skill": [5, -1],
-            "skillType": ["beastda", ""], "items": [7, -1], "scan": [3, -1], "chain": [4, -1], "bubble": ["all_mid_chain", ""], "medal": [0, 1], "jackpot": [0, 0], "rounds": [], "secs": [], "scoreSum": [], "scoreMin": [], "scoreMax": [],
+            "skillType": ["beastda", ""], "items": [7, -1], "scan": [3, -1], "chain": [4, -1], "bubble": ["all_mid_chain", ""], "medal": [0, 1], "jackpot": [0, 0], "stated": [3, -1], "rounds": [], "secs": [], "scoreSum": [], "scoreMin": [], "scoreMax": [],
             "first": [], "last": [], "baseSum": [], "baseSq": [], "baseMin": [], "baseMax": [],
             "finalSum": [], "finalSq": [], "finalMin": [], "finalMax": [],
             "medalsN": [], "medalsSum": [], "medalsSq": [], "medalsMin": [], "medalsMax": [], "medalsSecs": [],
             "gapSum": [], "gapN": [], "secsMax": []},
   "bins": {"n": 1, "day": ["2026-10-14"], "build": [0], "tsum": ["beastda"], "skill": [5], "skillType": ["beastda"], "items": [7],
-           "scan": [3], "chain": [4], "bubble": ["all_mid_chain"], "medal": [0], "jackpot": [0], "base": [{"231": [4, 726.5, 48020000, 3801, 5702, 0]}], "final": [{"…": […]}], "medals": [{}]}
+           "scan": [3], "chain": [4], "bubble": ["all_mid_chain"], "medal": [0], "jackpot": [0], "stated": [3], "base": [{"231": [4, 726.5, 48020000, 3801, 5702, 0]}], "final": [{"…": […]}], "medals": [{}]}
 }
 ```
 
-Each array holds one value per row (`n` rows), in the `cells3` and `cell_bins3`
+Each array holds one value per row (`n` rows), in the `cells4` and `cell_bins4`
 tables' column meanings (§3.1). A bins row has the key of one cells row,
 which may be in another file of the same part. Rows are in no particular
 order, and a bins object may list its bins in any order. A file is built in one SQL statement (`json_object`
@@ -929,8 +1055,8 @@ over `json_group_array` of one ordered subquery), so its arrays line up.
 
 **A part too long for one value.** D1 first adds up how long the part's file
 would be. A part over `VALUE_MAX_BYTES` (1,500,000) is published as several
-files for the same `[from, to)`, each holding a share of the part's `cells3`
-rows and, apart from those, a share of its `cell_bins3` rows, about half the limit
+files for the same `[from, to)`, each holding a share of the part's `cells4`
+rows and, apart from those, a share of its `cell_bins4` rows, about half the limit
 each. The files together hold the part's rows, each row once, and the page
 adds up every file the manifest lists (§6). Their `rounds` add up to the
 part's.
@@ -939,7 +1065,9 @@ The part files are also read outside the page, by `tools/sheet-sync.gs` (the
 group sheet's weekly import): it takes `cells.tsum`, `skill`, `rounds` and
 `day` from every file the manifest lists, and refuses a file whose rounds do
 not add up to its manifest `rounds`. A format change that renames or drops
-those four breaks it.
+those four breaks it. Its counts per skill level are by `skill`, the level
+rounds count at, so a run the correction moves leaves its recorded level's
+count and joins the other's.
 
 ### 4.3 `presets.json`
 
@@ -970,7 +1098,7 @@ Values under 100 are exact; above, a bin is 2 % wide. The Worker computes
 bins at ingest (JavaScript `Math.log`; a restore the same in SQL), so the page
 only ever uses `low`/`mid`.
 
-**A bin's figures**, in a `cell_bins3` object: `[rounds, secs, score, base,
+**A bin's figures**, in a `cell_bins4` object: `[rounds, secs, score, base,
 final, medals]`, the count of the cell's rounds in the bin and the sums of
 their durations, scores, base coins, final coins and medals (null as 0).
 `secs` is a REAL; an upload's sums may write a whole one as an integer, which
@@ -999,7 +1127,8 @@ can touch, several for one part included, and adds them up.
 | `play-settings` | Per play setting, `manifest.playSettings`'s values, and `{value: "", rounds}` for the rest of `manifest.rounds`; most rounds first (`queries.go: PlayedPlaySettings`) |
 | `status` | `{global: true, rounds, contributors, devices, generatedAt, first, last, minContributors, skills}` |
 | `themes` | The built-in themes in `site.go: themeOrder` order, `[{file, name}]` |
-| `devices`, `round-devices`, `owned-sources` | `[]` |
+| `skill-levels` | `manifest.skills` as `{value, rounds: null}`, the same with `levels=recorded` |
+| `devices`, `round-devices`, `owned-sources`, `owned-history`, `skill-fixes` | `[]` (which device's run a fix moved, and why, is not published) |
 | `owned` | `{list: null}` |
 | `tsum` | The server's `TsumDetail` shape (`tsum.go`) as the cells can answer it, see §6.3 |
 | `rounds`, anything else | throws "not available on the global site" |
@@ -1016,9 +1145,11 @@ Parameters as `queries.go: ParseFilter`, plus two:
 - Kept: `tsum` (comma list), `skillType` (comma list; `-` = none), `scan`,
   `chain` and `bubble` (comma lists of the play settings' values as text;
   `-` = not recorded; a cell matches by its value, -1 and `''` as `-`), `build`,
-  `from`, `to`, `coins` (`final` / `medals`), `net=1`, and the coin and medal
-  outlier ranges (`minCoins`, `maxCoins`, `minMedals`, `maxMedals`), one at a
-  time (below).
+  `from`, `to`, `coins` (`final` / `medals`), `net=1`, `levels` (`recorded`:
+  every figure split or filtered by skill level goes by the cells' `stated`,
+  the level recorded, in place of `skill`, the level the rounds count at),
+  and the coin and medal outlier ranges (`minCoins`, `maxCoins`, `minMedals`,
+  `maxMedals`), one at a time (below).
 - New: `skill` (comma list of integers; `-1` = unknown) and `items` (comma
   list of item masks; `-1` = unknown).
 - Ignored: `device`, the score range (there are no score bins),
@@ -1044,7 +1175,10 @@ cells' rounds.
   `daily`, `dailyTsums`, `mix` and `chains` (each by the cells' `skill` as
   text, `''` for -1; chains from the cells' `scan` and `chain`), and the
   `medals` set's totals, Tsums and `dailyTsums` (its medals per day and
-  Tsum, for Head to head). Every group's expected net coins
+  Tsum, for Head to head). `refiled` (`skillfix.go: Refiled`): the kept
+  cells whose `stated` is not their `skill`, as `{tsum, from, to, rounds}`
+  with the levels as text, by Tsum, then `from`, then `to`; the same list
+  with and without `levels=recorded`. Every group's expected net coins
   (`summary.go: Expected`): a cell's `expCoins` is `baseSum × (1 + 0.39 when
   its items have +Coin) − cost × rounds`, `expSeconds` its `secs`,
   `expRounds` its rounds, and `expSq` the square expanded from `baseSq` and

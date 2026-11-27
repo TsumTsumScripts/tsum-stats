@@ -105,7 +105,7 @@ describe("what is stored", () => {
     expect(gaps).toEqual([[-1000, null], [-440, null], [-220, 38.5], [0, 38.5], [50, null], [400, 218.5], [1000, 0]]);
     // The cells add them up, with the rounds that tell one and the longest round.
     await rollup();
-    expect(await one("SELECT sum(gap_sum) AS s, sum(gap_n) AS n, max(secs_max) AS m FROM cells3")).toEqual({ s: 38.5 * 2 + 218.5, n: 4, m: 181.5 });
+    expect(await one("SELECT sum(gap_sum) AS s, sum(gap_n) AS n, max(secs_max) AS m FROM cells4")).toEqual({ s: 38.5 * 2 + 218.5, n: 4, m: 181.5 });
   });
 
   it("keeps each accepted round with its derived fields, keyed without the device tag", async () => {
@@ -207,12 +207,12 @@ describe("duplicates", () => {
     const recs = series(4);
     await upload(c.key, recs);
     await rollup();
-    expect(await rows("SELECT skill_type, sum(rounds) AS n FROM cells3 GROUP BY skill_type")).toEqual([{ skill_type: "", n: 4 }]);
+    expect(await rows("SELECT skill_type, sum(rounds) AS n FROM cells4 GROUP BY skill_type")).toEqual([{ skill_type: "", n: 4 }]);
     // The forwarder's one re-send after the Worker kept skill types (CONTRACT §7.2).
     const res = await upload(c.key, recs.map((r, i) => ({ ...r, skill_type: i < 3 ? "beastda" : "" })));
     expect(res.body).toEqual({ ok: true, accepted: 3, unchanged: 1, duplicates: 0, rejected: {}, retry: [], keeps: 2, resend: 0 });
     await rollup();
-    expect(await rows("SELECT skill_type, sum(rounds) AS n FROM cells3 GROUP BY skill_type ORDER BY skill_type"))
+    expect(await rows("SELECT skill_type, sum(rounds) AS n FROM cells4 GROUP BY skill_type ORDER BY skill_type"))
       .toEqual([{ skill_type: "", n: 1 }, { skill_type: "beastda", n: 3 }]);
   });
 
@@ -349,8 +349,8 @@ describe("limits", () => {
       { contributor: c.id, tsum: "brandnewtsum", rounds: 3 }, { contributor: c.id, tsum: "mickey", rounds: 2 },
       { contributor: only.id, tsum: "brandnewtsum", rounds: 2 },
     ]);
-    expect(await rows("SELECT DISTINCT tsum FROM cells3")).toEqual([{ tsum: "mickey" }]);
-    expect(await rows("SELECT DISTINCT tsum FROM cell_bins3")).toEqual([{ tsum: "mickey" }]);
+    expect(await rows("SELECT DISTINCT tsum FROM cells4")).toEqual([{ tsum: "mickey" }]);
+    expect(await rows("SELECT DISTINCT tsum FROM cell_bins4")).toEqual([{ tsum: "mickey" }]);
     const m = (await (await call("/data/global/manifest.json")).json()) as { rounds: number; tsums: { tsum: string }[]; parts: { file: string }[] };
     expect(m).toMatchObject({ rounds: 2, contributors: 1, tsums: [{ tsum: "mickey", rounds: 2, contributors: 1 }] });
     const part = await (await call("/data/global/" + m.parts[0].file)).text();
@@ -361,7 +361,7 @@ describe("limits", () => {
     try {
       await admin("rebuild", {});
       await rollup();
-      expect(await rows("SELECT tsum, sum(rounds) AS n FROM cells3 GROUP BY tsum ORDER BY tsum")).toEqual([{ tsum: "brandnewtsum", n: 5 }, { tsum: "mickey", n: 2 }]);
+      expect(await rows("SELECT tsum, sum(rounds) AS n FROM cells4 GROUP BY tsum ORDER BY tsum")).toEqual([{ tsum: "brandnewtsum", n: 5 }, { tsum: "mickey", n: 2 }]);
       const after = (await (await call("/data/global/manifest.json")).json()) as { rounds: number; tsums: { tsum: string }[] };
       // Counted under the new catalog, the same day.
       expect(after).toMatchObject({ rounds: 7, contributors: 2, tsums: [{ tsum: "brandnewtsum", rounds: 5, contributors: 2 }, { tsum: "mickey", rounds: 2, contributors: 1 }] });

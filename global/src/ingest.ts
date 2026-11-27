@@ -14,6 +14,8 @@ import { dayOf, keyDay } from "./days";
 import { limits, type Env } from "./env";
 import { HttpError, ok, readObject } from "./http";
 import { checkRecords, isJackpot, type Round } from "./records";
+import { fixContext, trustedVersion } from "../../ui/src/lib/skillFix.js";
+import { isMedalTsum } from "./catalog";
 
 export const SCHEMA = "gap.round-stats/1";
 export const MAX_RECORDS = 250;
@@ -81,8 +83,9 @@ const UPSERT_ROUNDS = `INSERT INTO rounds (key, contributor, ${FIGURES.join(", "
 const RACED = "INSERT OR IGNORE INTO dirty_days (day) SELECT value FROM json_each(?1) WHERE changes() < ?2";
 
 // `bins` is the old per-skill bins column, no longer written (migrations/0002_cell_bins.sql).
-// format 1: the cells and cell_bins rows are keyed by jackpot too (migrations/0004_jackpot.sql).
-const PENDING = "INSERT INTO pending (contributor, n, days, tsums, cells, bins, cell_bins, cc, format) VALUES (?1, ?2, ?3, ?4, ?5, '[]', ?6, ?7, 1)";
+// format 1: the cells and cell_bins rows are keyed by jackpot too (migrations/0004_jackpot.sql);
+// format 2: with the skill_units rows as well (migrations/0008_skill_fix.sql).
+const PENDING = "INSERT INTO pending (contributor, n, days, tsums, cells, bins, cell_bins, cc, units, format) VALUES (?1, ?2, ?3, ?4, ?5, '[]', ?6, ?7, ?8, 2)";
 
 const row = (r: Round, gaps: Map<string, number | null>) => [
   r.key, r.playedAt, r.build, r.tsum, r.skill, r.skillType, r.items, r.scan, r.chain, r.bubble, r.version, r.settingsHash,
@@ -125,13 +128,19 @@ export type BinFigures = [number, number, number, number, number, number];
 /**
  * New rounds added up as the day tables keep them (rollup.ts: CELLS), for
  * the hourly job: cells and cell_bins rows of the catalog's Tsums (a Tsum it
- * lacks stays out of the public figures), and contrib_cells rows by device. A
- * few rows a batch, so the job reads a few rows for a hundred rounds.
+ * lacks stays out of the public figures), contrib_cells rows by device, and
+ * the skill_units rows the skill level correction judges by (CONTRACT §3.1:
+ * [day, build, tsum, device, skill, context, trusted, n, vn, vsum, first,
+ * last], of the catalog's Tsums' rounds with a level). A few rows a batch, so
+ * the job reads a few rows for a hundred rounds. The cells are at each
+ * round's recorded level: the fold files them so (stated = skill), and a
+ * day's recompute moves the ones a fix covers.
  */
 export function aggregate(rounds: Round[], gaps: Map<string, number | null> = new Map()) {
   const cells = new Map<string, (string | number | null)[]>();
   const bins = new Map<string, (string | number | Record<string, BinFigures>)[]>();
   const cc = new Map<string, (string | number)[]>();
+  const units = new Map<string, (string | number)[]>();
   const min = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.min(a, b));
   const max = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.max(a, b));
   for (const r of rounds) {
@@ -175,6 +184,19 @@ export function aggregate(rounds: Round[], gaps: Map<string, number | null> = ne
         f[0]++; f[1] += r.duration; f[2] += r.score; f[3] += r.base; f[4] += r.final; f[5] += m ?? 0;
       }
     }
+    if (r.known && r.skill >= 1) {
+      // The value a run is judged on: medals for a medal Tsum, else base coins; one of 0 or none does not count.
+      const value = (isMedalTsum(r.tsum) ? r.medals : r.base) ?? 0;
+      const key = [day, r.build, r.tsum, r.device, r.skill, fixContext(r.items), trustedVersion(r.version) ? 1 : 0];
+      const uk = JSON.stringify(key);
+      const u = units.get(uk) as number[] | undefined;
+      if (!u) units.set(uk, [...key, 1, value > 0 ? 1 : 0, value > 0 ? value : 0, r.playedAt, r.playedAt]);
+      else {
+        u[7]++;
+        if (value > 0) { u[8]++; u[9] += value; }
+        u[10] = Math.min(u[10], r.playedAt); u[11] = Math.max(u[11], r.playedAt);
+      }
+    }
     const ck = JSON.stringify([day, r.build, r.tsum, r.device]);
     const e = cc.get(ck);
     if (!e) cc.set(ck, [day, r.build, r.tsum, r.device, 1, r.duration, r.base, r.final, r.medals ?? 0]);
@@ -183,7 +205,7 @@ export function aggregate(rounds: Round[], gaps: Map<string, number | null> = ne
       v[4]++; v[5] += r.duration; v[6] += r.base; v[7] += r.final; v[8] += r.medals ?? 0;
     }
   }
-  return { cells: [...cells.values()], bins: [...bins.values()], cc: [...cc.values()] };
+  return { cells: [...cells.values()], bins: [...bins.values()], cc: [...cc.values()], units: [...units.values()] };
 }
 
 function readBatch(body: Record<string, unknown>): Record<string, unknown>[] {
@@ -310,7 +332,7 @@ export async function ingest(records: Record<string, unknown>[], env: Env, c: Co
     if (freshRows.length) {
       const sums = aggregate(freshRows, gaps);
       stmts.push(db.prepare(PENDING).bind(c.id, freshRows.length, freshDays, JSON.stringify(freshTsums),
-        JSON.stringify(sums.cells), JSON.stringify(sums.bins), JSON.stringify(sums.cc)));
+        JSON.stringify(sums.cells), JSON.stringify(sums.bins), JSON.stringify(sums.cc), JSON.stringify(sums.units)));
     }
     if (changedDays.size) {
       stmts.push(db.prepare("INSERT OR IGNORE INTO dirty_days (day) SELECT value FROM json_each(?1)").bind(JSON.stringify([...changedDays])));

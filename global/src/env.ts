@@ -21,6 +21,7 @@ export interface Env {
   RUN_BYTES: string;
   VALUE_MAX_BYTES: string;
   MIN_CONTRIBUTORS: string;
+  REFILE_TSUMS_PER_RUN: string;
 }
 
 /** The vars as numbers (CONTRACT.md names each). */
@@ -44,6 +45,8 @@ export interface Limits {
   /** The largest value the Worker asks D1 to build (D1 refuses one over 2,000,000 bytes). */
   valueMax: number;
   minContributors: number;
+  /** Tsums one run's skill level correction goes over at most (refile.ts). */
+  refileTsums: number;
 }
 
 export function limits(env: Env): Limits {
@@ -65,5 +68,6 @@ export function limits(env: Env): Limits {
     runBytes: n(env.RUN_BYTES, 2_000_000),
     valueMax: n(env.VALUE_MAX_BYTES, 1_500_000),
     minContributors: n(env.MIN_CONTRIBUTORS, 3),
+    refileTsums: n(env.REFILE_TSUMS_PER_RUN, 2),
   };
 }

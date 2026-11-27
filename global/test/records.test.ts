@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { hmacHex, hmacKey, fromHex, sha256Hex } from "../src/crypto";
 import { bin } from "../src/days";
 import { PLAY_SETTINGS, playValue } from "../../ui/src/lib/snapshot/engine.js";
-import { SETTINGS_MAX, checkRecords, playSQL } from "../src/records";
+import { fixContext, trustedVersion } from "../../ui/src/lib/skillFix.js";
+import { SETTINGS_MAX, checkRecords, contextSQL, playSQL, trustedSQL } from "../src/records";
 import { DAY_MS, NOW, TAG_A, TAG_B, env, record, uuid7 } from "./helpers";
 
 const key = () => hmacKey("test-device-key");
@@ -151,6 +152,22 @@ describe("derived fields", () => {
       // The migration fills the rounds stored before it with these very words.
       const m = env.TEST_MIGRATIONS.find(x => x.name.startsWith("0003"))!;
       expect(m.queries.join("\n"), ps.key).toContain(`${ps.param} = ${playSQL(ps, "s.json")}`);
+    }
+  });
+
+  it("tells a trusted script version and an item context in SQL as skillFix.js does", async () => {
+    const versions = [
+      "6.0a19", "6.0a20", "6.0a18", "6.0a1", "6.0a", "6.0b", "6.0b1", "6.0b33", "6.0", "6.0.1", "6.0.1a5", "6.0.1a19", "6.0.a5", "6.0..1a5", "6.0.", "6.0a019",
+      "6.0A5", "6.0x", "6.00a18", "06.0a20", "6.1a1", "6.10", "7.0", "7", "10.2b3", "5.0", "5.0b3", "5.9a99", "0.11", "3.0b", "4.0a2", "", "dev", ".5", "6",
+      "6.", "6.a19", "-6.0", "6a.0", "v6.0", "6.0 a19", "66.0a1", "6.0a19junk", "6.0a1.9",
+    ];
+    for (const v of versions) {
+      const got = (await env.DB.prepare(`SELECT ${trustedSQL("?1")} AS t`).bind(v).first<{ t: number }>())!.t;
+      expect(got, `version "${v}"`).toBe(trustedVersion(v) ? 1 : 0);
+    }
+    for (const items of [-1, 0, 1, 2, 3, 8, 16, 25, 27, 64, 127]) {
+      const got = (await env.DB.prepare(`SELECT ${contextSQL("?1")} AS c`).bind(items).first<{ c: number }>())!.c;
+      expect(got, `items ${items}`).toBe(fixContext(items));
     }
   });
 

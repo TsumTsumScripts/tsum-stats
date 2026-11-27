@@ -201,7 +201,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 
 `global/README.md` § Layout is the file table, one row per `global/src/` file;
 this is its index. `migrations/0001_init.sql` is the D1 schema (CONTRACT §3.1),
-`migrations/0002_cell_bins.sql` its bins per cell, `migrations/0005_presets.sql` the preset gallery (`0006_preset_limits.sql` its limits), `migrations/0007_gaps.sql` the time between rounds,
+`migrations/0002_cell_bins.sql` its bins per cell, `migrations/0005_presets.sql` the preset gallery (`0006_preset_limits.sql` its limits), `migrations/0007_gaps.sql` the time between rounds, `migrations/0008_skill_fix.sql` the skill level correction's tables (`cells4`, `skill_units`, `skill_fix`),
 `wrangler.jsonc` the bindings, route, cron and tunables, `deploy.sh` the
 by-hand deploy when the Devkit is not available.
 
@@ -215,12 +215,13 @@ by-hand deploy when the Devkit is not available.
 | `global/src/contributors.ts`, `global/src/admin.ts` | Join (`makeContributor`, shared with keyless uploads), bearer check, `/me`, unlink; the admin routes |
 | `global/src/budget.ts`, `global/src/run.ts` | The day's write and read budget (§2.6); one invocation's D1/R2 share |
 | `global/src/job.ts` | The hourly job: claims dirty days, runs each step on its own |
-| `global/src/rollup.ts`, `global/src/parts.ts`, `global/src/unlink.ts`, `global/src/archive.ts` | Steps: `cells`/`cell_bins`/`contrib_cells`; part files, compaction and the manifest; finishing unlinks; archive, drop and restore |
+| `global/src/rollup.ts`, `global/src/parts.ts`, `global/src/unlink.ts`, `global/src/archive.ts` | Steps: `cells`/`cell_bins`/`contrib_cells`/`skill_units`; part files, compaction and the manifest; finishing unlinks; archive, drop and restore |
+| `global/src/refile.ts` | The skill level correction's step (CONTRACT §3.2, 1c): a Tsum's `skill_units` as runs, judged by `ui/src/lib/skillFix.js`, kept in `skill_fix`, at most once a day |
 | `global/src/data.ts` | `GET /data/global/*` from R2 through the edge cache |
 
 Tests (vitest in workerd; `vitest.config.ts` binds `test/tunables.json`, the
 Free numbers, in place of `wrangler.jsonc`'s): `admin.test.ts`,
-`archive.test.ts`, `data.test.ts`, `deploy.test.ts` (the token reaches wrangler
+`archive.test.ts`, `refile.test.ts` (the skill level correction), `data.test.ts`, `deploy.test.ts` (the token reaches wrangler
 only), `ingest.test.ts`, `presets.test.ts` (the gallery), `records.test.ts`, `rollup.test.ts`,
 `unlink.test.ts`, `tunables.test.ts`, `volume.test.ts` (a day of 80,000
 rounds), `parity.test.ts` (driven by Go's `TestGlobalParity`; skipped by `npm
@@ -262,7 +263,7 @@ plain JS, counting D1), `env.d.ts`.
 | `parseFilter`, `parseTime`, `sqlTime`, `itemCost`, `histBounds`, `bucketOf` (the global engine reuses them; the Worker imports `parseTime` and `sqlTime`) | `ui/src/lib/snapshot/engine.js` |
 | `decodePart`, `cutCell` (an outlier range on a cell's bins), `THEMES` (the global site's theme list) | `ui/src/lib/global/engine.js` |
 | `refile`, `runsOf`, `FIX`, `trustedVersion`; `Refile`, `SkillFixes`, `SkillFixVersion`, `Filter.AsRecorded` | `ui/src/lib/skillFix.js`; `internal/stats/skillfix.go`; `queries.go` |
-| `aggregate`; `CELLS`; `CELL_COLUMNS`; `Run`; `limits` | `global/src/ingest.ts`; `rollup.ts`; `parts.ts`; `run.ts`; `env.ts` |
+| `aggregate`; `CELLS`; `CELL_COLUMNS`; `Run`; `limits`; `refileStep`, `decide`, `unitRuns`; `trustedSQL` | `global/src/ingest.ts`; `rollup.ts`; `parts.ts`; `run.ts`; `env.ts`; `refile.ts`; `records.ts` |
 
 ## Adding something -- what a change has to touch
 

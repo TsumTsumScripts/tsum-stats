@@ -16,7 +16,12 @@
 //   - Adds up the global site's rounds per Tsum and skill level from its
 //     manifest and every part file the manifest lists (CONTRACT.md §4.1,
 //     §4.2), checking each file's total against the manifest before any of it
-//     is used.
+//     is used. A cell's skill level is the one its rounds count at: where
+//     the site's skill level correction moved a run recorded at a wrong
+//     level (CONTRACT.md §3.2, step 1c; its `stated` column keeps the level
+//     recorded), the rounds are counted at the level they were moved to. A
+//     row whose rounds moved away then shows as "the sheet is higher than
+//     the site", since a count here is only ever raised.
 //   - For each row the site has rounds for: an empty Rounds recorded gets the
 //     site's count, a smaller number is raised to it, and a larger one (the
 //     group's own count, ahead of what reached the site) is kept and listed.

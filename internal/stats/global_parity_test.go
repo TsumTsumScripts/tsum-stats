@@ -169,7 +169,41 @@ func globalParityRounds(now time.Time) []parityRound {
 	return out
 }
 
-// paritySkill is the round's skill level as the global site files it
+// parityRefiledTag is the device of parityRefiled's rounds: the second player's, and no other round's.
+const parityRefiledTag = "0b0b0b0b0b02"
+
+// parityRefiled is a run the skill level correction moves, the same on both
+// sides: one device's donald at level 5 for a day, then 30 rounds recorded at
+// level 3 with the same coins the day after, then level 5 again. Each stretch
+// is within one UTC day, as the global site judges whole days of a device
+// (CONTRACT §3.2 step 1c) where the server judges runs of rounds, and the
+// coins are close enough that its means and the server's medians agree.
+func parityRefiled() []parityRound {
+	var out []parityRound
+	n := 0
+	stretch := func(day, level, rounds int) {
+		for i := range rounds {
+			n++
+			start := time.Date(2026, 9, day, 10, 0, 0, 0, time.UTC).Add(time.Duration(i) * 5 * time.Minute)
+			dur := 150 + float64(n%9)
+			score, base, medals := int64(2_000_000+n*1000), int64(6000+(n%7)*10), int64(0)
+			final := base * 13 / 10
+			out = append(out, parityRound{Round: Round{
+				ID: uuid7(start, 5000+n, parityRefiledTag), PlayedAt: start.Add(time.Duration(dur+20) * time.Second).Format(sqlTime),
+				Tsum: "donald", Build: "global", SkillType: "burst", ScriptVersion: "5.0", Duration: &dur,
+				Score: &score, BaseCoins: &base, FinalCoins: &final, Medals: &medals, Device: "fold-6", Source: SourceCSV,
+				Settings: fmt.Sprintf(`{"skillLevel": %d, "jpVersion": false, "bonusCoin": true, "bonus5to4": true, "bonusTime": false, "bonusExp": false, `+
+					`"bonusScore": false, "bonusBubble": false, "bonusCombo": false, "maxChainsPerScan": 3, "maxChain": 4}`, level),
+			}, player: 1})
+		}
+	}
+	stretch(20, 5, 40)
+	stretch(21, 3, 30)
+	stretch(22, 5, 40)
+	return out
+}
+
+// paritySkill is the round's skill level as the global site records it
 // (CONTRACT §1.2): skillLevel when it is an integer 1-10, else -1.
 func paritySkill(settings string) int {
 	var s map[string]any
@@ -222,7 +256,7 @@ func TestGlobalParity(t *testing.T) {
 		t.Skip("no global/node_modules: run npm ci in global/")
 	}
 	now := globalNow
-	rounds := globalParityRounds(now)
+	rounds := append(globalParityRounds(now), parityRefiled()...)
 	// The rounds that tell a start day from an end day: hours long, some ending the day after they began.
 	long, crossing := 0, 0
 	for _, r := range rounds {
@@ -412,6 +446,29 @@ func TestGlobalParity(t *testing.T) {
 		t.Fatalf("the third player's second pass should send the %d rounds the site named in retry, sent %v", len(retried), again)
 	}
 
+	// The skill level correction, over everyone's rounds as the global site
+	// judges them: the level each re-filed round counts at, by its id.
+	if err := Refile(union.DB()); err != nil {
+		t.Fatal(err)
+	}
+	var refiled []struct {
+		ID  string `db:"round_id"`
+		Eff string `db:"skill_eff"`
+	}
+	if err := union.DB().NewQuery("SELECT round_id, skill_eff FROM ts_rounds WHERE skill_eff <> skill_level").All(&refiled); err != nil {
+		t.Fatal(err)
+	}
+	counts := map[string]string{}
+	for _, m := range refiled {
+		if m.ID[24:] != parityRefiledTag || m.Eff != "5" {
+			t.Fatalf("the correction moved a round it should not have: %+v", m)
+		}
+		counts[m.ID] = m.Eff
+	}
+	if len(counts) != 30 {
+		t.Fatalf("the correction moved %d rounds, want the 30 recorded at level 3 between two days at level 5", len(counts))
+	}
+
 	// What the global site should answer, from the union's rounds.
 	var final []Round
 	if err := union.DB().NewQuery("SELECT " + roundColumns + " FROM ts_rounds").All(&final); err != nil {
@@ -464,13 +521,19 @@ func TestGlobalParity(t *testing.T) {
 		}
 		return roundtrip(s)
 	}
-	// summarizeRounds is Summarize over a server that has just rs.
+	// summarizeRounds is Summarize over a server that has just rs, each
+	// counting at the level the correction gave it among everyone's rounds.
 	summarizeRounds := func(rs []Round, f Filter) Summary {
 		app := testApp(t)
 		if err := app.RunInTransaction(func(tx core.App) error {
 			for _, r := range rs {
 				if err := upsertRound(tx.DB(), r); err != nil {
 					return err
+				}
+				if eff, ok := counts[r.ID]; ok {
+					if _, err := tx.DB().NewQuery("UPDATE ts_rounds SET skill_eff = {:l} WHERE round_id = {:id}").Bind(map[string]any{"l": eff, "id": r.ID}).Execute(); err != nil {
+						return err
+					}
 				}
 			}
 			return nil
@@ -538,8 +601,18 @@ func TestGlobalParity(t *testing.T) {
 		cases = append(cases, testCase{Name: "summary " + name, Route: "summary", Params: params, Expected: expected, Spreads: sp,
 			Cut: coinRange || medalRange})
 	}
-	skillIn := func(levels ...int) func(Round) bool {
+	// skillIn keeps the rounds counting at one of the levels, recordedIn those recorded at one.
+	recordedIn := func(levels ...int) func(Round) bool {
 		return func(r Round) bool { return slices.Contains(levels, paritySkill(r.Settings)) }
+	}
+	skillIn := func(levels ...int) func(Round) bool {
+		return func(r Round) bool {
+			level := paritySkill(r.Settings)
+			if eff, ok := counts[r.ID]; ok {
+				level, _ = strconv.Atoi(eff)
+			}
+			return slices.Contains(levels, level)
+		}
 	}
 	itemsIn := func(masks ...int) func(Round) bool {
 		return func(r Round) bool {
@@ -593,6 +666,16 @@ func TestGlobalParity(t *testing.T) {
 	summary("item set, net", map[string]string{"items": "1", "net": "1"}, map[string]string{"net": "1"}, itemsIn(1))
 	summary("skill and items", map[string]string{"skill": "1,6", "items": "98", "from": "2026-09-15T00:00:00Z"},
 		map[string]string{"from": "2026-09-15T00:00:00Z"}, func(r Round) bool { return skillIn(1, 6)(r) && itemsIn(98)(r) })
+
+	// The skill level correction: donald's 30 rounds recorded at level 3
+	// count at 5, on the site as on the server, unless asked as recorded.
+	summary("a re-filed Tsum", map[string]string{"tsum": "donald"}, nil, nil)
+	summary("a re-filed Tsum, as recorded", map[string]string{"tsum": "donald", "levels": "recorded"}, nil, nil)
+	summary("the level re-filed rounds count at", map[string]string{"tsum": "donald", "skill": "5"}, map[string]string{"tsum": "donald"}, skillIn(5))
+	summary("the level they were recorded at, now empty", map[string]string{"tsum": "donald", "skill": "3"}, map[string]string{"tsum": "donald"}, skillIn(3))
+	summary("the level they were recorded at, as recorded", map[string]string{"tsum": "donald", "skill": "3", "levels": "recorded"},
+		map[string]string{"tsum": "donald", "levels": "recorded"}, recordedIn(3))
+	summary("levels as recorded, final coins, their day", map[string]string{"levels": "recorded", "coins": "final", "from": "2026-09-21T00:00:00Z", "to": "2026-09-22T00:00:00Z"}, nil, nil)
 
 	// Outlier ranges. The global site keeps whole bins, by their rounds'
 	// average; a bound on a bin's edge keeps the same rounds as the server.

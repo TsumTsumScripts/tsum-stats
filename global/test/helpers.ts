@@ -185,7 +185,7 @@ export async function r2keys(prefix: string): Promise<string[]> {
 export async function wipe(): Promise<void> {
   await env.DB.batch([
     "DELETE FROM contributors WHERE id != 0", "DELETE FROM devices", "DELETE FROM settings", "DELETE FROM rounds",
-    "DELETE FROM dirty_days", "DELETE FROM pending", "DELETE FROM budget", "DELETE FROM join_limits", "DELETE FROM state", "DELETE FROM cells", "DELETE FROM cells2", "DELETE FROM cells3",
+    "DELETE FROM dirty_days", "DELETE FROM pending", "DELETE FROM budget", "DELETE FROM join_limits", "DELETE FROM state", "DELETE FROM cells", "DELETE FROM cells2", "DELETE FROM cells3", "DELETE FROM cells4", "DELETE FROM cell_bins4", "DELETE FROM skill_units", "DELETE FROM skill_fix",
     "DELETE FROM bins", "DELETE FROM cell_bins", "DELETE FROM cell_bins2", "DELETE FROM cell_bins3", "DELETE FROM contrib_cells", "DELETE FROM recent", "DELETE FROM presets",
   ].map(s => env.DB.prepare(s)));
   const keys = await r2keys("");

@@ -7,7 +7,10 @@
 // 3 a cell is of one skill type too (format 2's are all skill type "", as
 // the rounds before it kept none), and from format 4 of one value of each
 // play setting (before it, all not recorded), and from format 5 either all
-// coin-bonus jackpots or none (before it, all counted as none). Each cell has
+// coin-bonus jackpots or none (before it, all counted as none). From format 7
+// a cell is also of one recorded skill level (`stated`), its `skill` being
+// the level its rounds count at, which the Worker's skill level correction
+// may have made another (CONTRACT §3.2 step 1c; before it, the same). Each cell has
 // bins (CONTRACT §5): its rounds counted by 2 % wide bins of their base coins,
 // final coins and medals, with each bin's figures. The quartiles, P90 and
 // histogram come from them, approximately, and so do the outlier ranges: a
@@ -96,8 +99,10 @@ const binList = o => Object.entries(o).map(([b, f]) => [Number(b), ...f]).sort((
  * its cells read: not recorded, no jackpot, no gaps told, longest unknown.
  */
 const LATER = {skillType: '', scan: -1, chain: -1, bubble: '', jackpot: 0, gapSum: 0, gapN: 0, secsMax: null};
+/** Columns a part before format 7 lacks that read as another column of the same row: every round counted at its recorded level. */
+const SAME_AS = {stated: 'skill'};
 /** The key columns, in the tables' order: how a cell's bins find it. */
-const KEY = ['day', 'build', 'tsum', 'skill', 'skillType', 'items', 'scan', 'chain', 'bubble', 'medal', 'jackpot'];
+const KEY = ['day', 'build', 'tsum', 'skill', 'skillType', 'items', 'scan', 'chain', 'bubble', 'medal', 'jackpot', 'stated'];
 
 /**
  * A part's files as one: their cells and bins rows added together (a part too
@@ -106,8 +111,8 @@ const KEY = ['day', 'build', 'tsum', 'skill', 'skillType', 'items', 'scan', 'cha
  * A column a part's format lacks is LATER's for each of its cells.
  */
 function decodePart(files) {
-  const cat = (key, col) => files.flatMap(p => p[key][col] ?? (col in LATER ? new Array(p[key].n).fill(LATER[col]) : []));
-  const cols = [...new Set([...Object.keys(files[0].cells).filter(k => k !== 'n'), ...Object.keys(LATER)])];
+  const cat = (key, col) => files.flatMap(p => p[key][col] ?? (col in SAME_AS ? p[key][SAME_AS[col]] : col in LATER ? new Array(p[key].n).fill(LATER[col]) : []));
+  const cols = [...new Set([...Object.keys(files[0].cells).filter(k => k !== 'n'), ...Object.keys(LATER), ...Object.keys(SAME_AS)])];
   const c = Object.fromEntries(cols.map(k => [k, cat('cells', k)]));
   c.n = c.day.length;
   // Each cell's bins by kind, or null where the part has none for it.
@@ -132,14 +137,25 @@ function decodePart(files) {
   return cellsOf(c, bins);
 }
 
-/** Decoded cells from raw columns c (the part's names) and their bins: days as times, builds by name, the stats' columns. */
+/**
+ * Decoded cells from raw columns c (the part's names) and their bins: days as
+ * times, builds by name, the stats' columns. `counts` is the level each
+ * cell's rounds count at whatever `skill` is made to show (asRecorded).
+ */
 function cellsOf(c, bins) {
   const base = statCols(c.rounds, c.baseSum, c.baseSq, c.baseMin, c.baseMax, c.secs);
   const final = statCols(c.rounds, c.finalSum, c.finalSq, c.finalMin, c.finalMax, c.secs);
-  return {...c, at: c.at ?? c.day.map(dayStart), build: c.build.map(b => (b === 1 || b === 'jp' ? 'jp' : 'global')), bins,
+  return {...c, counts: c.counts ?? c.skill, at: c.at ?? c.day.map(dayStart), build: c.build.map(b => (b === 1 || b === 'jp' ? 'jp' : 'global')), bins,
     stat: {base, final, netBase: netCols(base, c.items), netFinal: netCols(final, c.items),
       medals: statCols(c.medalsN, c.medalsSum, c.medalsSq, c.medalsMin, c.medalsMax, c.medalsSecs)}};
 }
+
+/**
+ * The same cells with each one's skill level as recorded (`levels=recorded`,
+ * queries.go: Filter.AsRecorded): every figure split or filtered by level
+ * then goes by `stated`. Made once per part.
+ */
+const asRecorded = c => (c.recorded ??= {...c, skill: c.stated});
 
 // ---- The filter (CONTRACT §6.2) ----
 
@@ -180,7 +196,7 @@ const within = (v, lo, hi) => (lo === null || v >= lo) && (hi === null || v <= h
 // ---- Outlier ranges (CONTRACT §6.2) ----
 
 /** The columns a derived set of cells is built in, empty. */
-const RAW = ['day', 'at', 'build', 'tsum', 'skill', 'skillType', 'items', 'scan', 'chain', 'bubble', 'medal', 'jackpot', 'rounds', 'secs', 'scoreSum', 'scoreMin', 'scoreMax', 'first', 'last',
+const RAW = ['day', 'at', 'build', 'tsum', 'skill', 'stated', 'counts', 'skillType', 'items', 'scan', 'chain', 'bubble', 'medal', 'jackpot', 'rounds', 'secs', 'scoreSum', 'scoreMin', 'scoreMax', 'first', 'last',
   'baseSum', 'baseSq', 'baseMin', 'baseMax', 'finalSum', 'finalSq', 'finalMin', 'finalMax',
   'medalsN', 'medalsSum', 'medalsSq', 'medalsMin', 'medalsMax', 'medalsSecs', 'gapSum', 'gapN', 'secsMax'];
 
@@ -305,7 +321,8 @@ export function createGlobalEngine(loader) {
     };
     const medalTsums = new Set((await getManifest()).medalTsums ?? []);
     const out = [];
-    for (const c of await partsFor(f)) {
+    for (const part of await partsFor(f)) {
+      const c = f.asRecorded ? asRecorded(part) : part;
       const idx = [];
       for (let i = 0; i < c.n; i++) {
         if (!keeps(f, c, i, sets)) continue;
@@ -327,6 +344,25 @@ export function createGlobalEngine(loader) {
   }
 
   const each = (sel, fn) => { for (const {p, idx} of sel) for (const i of idx) fn(p, i); };
+
+  /**
+   * The rounds counted at another skill level than recorded, per Tsum and
+   * pair of levels (skillfix.go: refiledStats): the kept cells whose
+   * recorded level is not the one they count at, the same either way the
+   * levels are shown.
+   */
+  function refiledOf(sel) {
+    const by = new Map();
+    each(sel, (c, i) => {
+      if (c.stated[i] === c.counts[i]) return;
+      const tsum = c.tsum[i], from = playText(c.stated[i]), to = playText(c.counts[i]);
+      const key = `${tsum}\u0000${from}\u0000${to}`;
+      if (by.has(key)) by.get(key).rounds += c.rounds[i];
+      else by.set(key, {tsum, from, to, rounds: c.rounds[i]});
+    });
+    const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+    return [...by.values()].sort((x, y) => cmp(x.tsum, y.tsum) || cmp(x.from, y.from) || cmp(x.to, y.to));
+  }
 
   // ---- Aggregates: the snapshot engine's, a cell at a time. Every round here
   // is complete, so a score, coins and a time are counted for each. ----
@@ -593,8 +629,7 @@ export function createGlobalEngine(loader) {
       bonus: {tsums: [], daily: [], all: []},
       medals: plain(medals, f.medals ? dailyTsums : dayTsums(medalSel, 'medals')),
       // Only complete rounds are sent here: none is left out for an unread figure.
-      // The cells are by recorded level until the Worker re-files (CONTRACT §3.2): none yet.
-      refiled: [],
+      refiled: refiledOf(sel),
       incompleteRounds: 0,
       // spreads: whether the primary stat's quartiles, P90 and histogram are there.
       // range: the outlier range applied ('base', 'final' or 'medals'), and ignored: those that were not.

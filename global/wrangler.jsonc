@@ -82,6 +82,8 @@
     // The largest value the Worker has D1 build (D1 refuses one over 2,000,000 bytes); bigger files are split.
     "VALUE_MAX_BYTES": "1500000",
     // Below this many contributors the page flags a Tsum "few players".
-    "MIN_CONTRIBUTORS": "3"
+    "MIN_CONTRIBUTORS": "3",
+    // Tsums one run's skill level correction goes over at most (each at most once a UTC day).
+    "REFILE_TSUMS_PER_RUN": "40"
   }
 }

@@ -47,7 +47,8 @@ cite it by section (`CONTRACT §3.2`).
 | `src/presets.ts` | The preset gallery (§2.7): submit, the contributor's own, delete, takedown; the job's `presets.json` |
 | `src/run.ts` | `Run`: one invocation's D1 queries, R2 operations, bytes, and rows read and written |
 | `src/job.ts` | The hourly job: claims dirty days, runs each step on its own, and lists the `state` keys it keeps |
-| `src/rollup.ts` | Step 1: the `pending` sums folded into `cells`, `cell_bins` and `contrib_cells`, and full recomputes |
+| `src/rollup.ts` | Step 1: the `pending` sums folded into `cells`, `cell_bins`, `contrib_cells` and `skill_units`, and full recomputes, which file a round under the level its `skill_fix` gives it |
+| `src/refile.ts` | Step 1c: the skill level correction. One Tsum's `skill_units` as runs (in SQL), judged by `ui/src/lib/skillFix.js`, kept in `skill_fix`; the days to recompute |
 | `src/parts.ts` | Part files (split when too long), month compaction, the trash, the manifest and its running totals |
 | `src/unlink.ts` | Step 3: finishing an unlink, day by day |
 | `src/archive.ts` | Steps 4 and 4b and restore: final days staged and written to `archive/`, dropped from D1 lazily, and back |
@@ -56,6 +57,7 @@ cite it by section (`CONTRACT §3.2`).
 | `migrations/0002_cell_bins.sql` | Bins per cell with their figures (`cell_bins`), and every day marked to be recomputed into them |
 | `migrations/0003_skill_type.sql` | Each round's skill type kept, and `cells2` / `cell_bins2` keyed by it, copied from `cells` / `cell_bins` |
 | `migrations/0004_jackpot.sql` | `cells3` / `cell_bins3` keyed by coin-bonus jackpots too, copied from `cells2` / `cell_bins2`; `pending.format`, so sums of the old layout are recomputed, not folded |
+| `migrations/0008_skill_fix.sql` | `cells4` / `cell_bins4` keyed by the recorded skill level too (`stated`), copied from `cells3` / `cell_bins3`; `skill_units`, `skill_fix` and `pending.units` for the skill level correction |
 | `wrangler.jsonc` | Bindings, the route, the cron, the local dev address, the tunables |
 | `deploy.sh` | The deploy from a terminal, with its account checks, for when the GAP Devkit (its Tsum Tsum global stats card is the deploy) is not available |
 | `test/` | vitest in workerd (below) |
@@ -88,6 +90,20 @@ rounds, so their days are recomputed over the next runs: expect a day of
 heavier hourly runs as each player's app comes round. Days already archived
 keep skill type `''` (*Not recorded*).
 
+**After the deploy that adds `0008_skill_fix.sql`** nothing is recomputed for
+it: every cell is copied into `cells4` at its recorded level, the parts
+already published stay as they are (the page reads them as nothing re-filed),
+and only the days with uploads waiting at the deploy are made again. From
+then on each day's uploads leave `skill_units` rows, and the skill level
+correction (`src/refile.ts`, CONTRACT §3.2 step 1c) judges each Tsum once a
+day from the days that have them. **The days before the deploy have none
+until they are recomputed**: `POST /api/v1/admin/rebuild` (all of them, or
+`{from, to}`) brings them in, a full recompute of each day, eight a run on
+Paid, and whatever the correction then moves is one more recompute of those
+days. Do it when a day's budgets have the room, or not at all: without it the
+correction only ever sees rounds sent after the deploy. Deploy away from the
+:05 run, as for `0004`.
+
 **After the deploy that adds `0004_jackpot.sql`**, every day is dirty: the
 hourly runs recompute them into `cells3`, jackpots apart, eight a run, and
 publish each in part format 5. Deploy away from the :05 run, so the old
@@ -117,6 +133,9 @@ and to refuse values over a size, as production D1 does.
 `test/volume.test.ts` runs a day of 80,000 rounds from 70 players, uploaded
 as the forwarder does, with the hourly job after each hour, and checks what
 D1 reads and that every row written is in the budget.
+`test/refile.test.ts` is the skill level correction: the units the fold and
+the recompute keep, a run re-filed a day at a time and published, a Tsum
+corrected once a day, what must stay as recorded, and the step's budgets.
 
 **The parity test** runs from Go and covers all three parts:
 
@@ -285,6 +304,17 @@ rewrite. These rules are why some code looks the way it does:
   hourly part of the day, whose cells the play settings split about twice over. `READ_BUDGET_PER_DAY`
   makes the job put off full recomputes, unlinks and the archive past 4
   million.
+- **The skill level correction never reads `rounds`.** It judges runs of
+  rounds, which would be a scan by device and Tsum that `rounds` has no index
+  for. Instead the fold and the recompute keep `skill_units`, a row per
+  device, Tsum, recorded level, item context and day (about one more row
+  written per device and Tsum a day, two the first time, for its index), and
+  one statement per Tsum puts those together into runs in D1, so the
+  Worker's 10 ms see a few rows per run. A Tsum is corrected at most once a
+  UTC day, `REFILE_TSUMS_PER_RUN` a run (2 on Free: 11 queries at most), and a pass reads the Tsum's units of every day: its rows are asked of
+  `READ_BUDGET_PER_DAY` first. A fix recomputes only the past days it
+  changes, each a full recompute of that day (three more statements than
+  before: 12 a day, so 2 days a run on Free where it was 3).
 - **Deletes are put off.** A delete is a row written, so archived days stay in
   D1 until it holds more than `RETAIN_ROWS` rounds, and only then are the
   oldest dropped, when the day's budget has room. A month whose days are all
@@ -322,6 +352,7 @@ numbers (Free) the tests are written against:
 | `RUN_BYTES` | 2000000 | Bytes of parts and archive files one run carries from D1 to R2 |
 | `VALUE_MAX_BYTES` | 1500000 | The largest value the Worker has D1 build; longer files are split |
 | `MIN_CONTRIBUTORS` | 3 | Below this many contributors the page flags a Tsum "few players" |
+| `REFILE_TSUMS_PER_RUN` | 40 (2) | Tsums one run's skill level correction goes over at most, each at most once a UTC day (CONTRACT §3.2, step 1c) |
 
 Change one in `wrangler.jsonc` and deploy. The forwarder sends 60 days of
 rounds (`globalWindow` in `internal/stats/global.go`), so change that with

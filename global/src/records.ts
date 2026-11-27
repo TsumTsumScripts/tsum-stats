@@ -112,6 +112,27 @@ export function playSQL(ps: { key: string; number: boolean }, json: string): str
     ? `(CASE WHEN ${t} IN ('integer', 'real') AND ${v} BETWEEN 0 AND 999 AND ${v} = CAST(${v} AS INTEGER) THEN CAST(${v} AS INTEGER) ELSE -1 END)`
     : `(CASE WHEN ${t} = 'text' AND length(${v}) BETWEEN 1 AND 64 AND ${v} NOT GLOB '*[^A-Za-z0-9_.-]*' THEN ${v} ELSE '' END)`;
 }
+/**
+ * skillFix.js's trustedVersion for the script version `v` (an SQL expression)
+ * in SQL, 1 or 0: a version with Auto Set Skill Level, 6.0a19 and every later
+ * alpha, beta and release. A day's full recompute makes skill_units' `trusted`
+ * this way (CONTRACT §3.1); test/records.test.ts holds the two together.
+ */
+export function trustedSQL(v: string): string {
+  const major = `substr(${v}, 1, instr(${v}, '.') - 1)`, rest = `substr(${v}, instr(${v}, '.') + 1)`;
+  // What follows the minor number, then that less its ".N" groups: an "a" there is an alpha's.
+  const tail = `ltrim(${rest}, '0123456789')`, after = `ltrim(${tail}, '.0123456789')`;
+  const groups = `substr(${tail}, 1, length(${tail}) - length(${after}))`;
+  return `(CASE WHEN instr(${v}, '.') < 2 OR ${major} GLOB '*[^0-9]*' OR ${rest} NOT GLOB '[0-9]*' THEN 0
+    WHEN CAST(${major} AS INTEGER) != 6 THEN CAST(${major} AS INTEGER) > 6
+    WHEN CAST(${rest} AS INTEGER) != 0 THEN 1
+    WHEN ${groups} LIKE '%.' OR instr(${groups}, '..') > 0 THEN 1
+    WHEN ${after} GLOB 'a*' THEN CAST(substr(${after}, 2) AS INTEGER) >= 19
+    ELSE 1 END)`;
+}
+/** skillFix.js's fixContext for the item set `items` (an SQL expression): less +Coin, +Exp and +Score, -1 unknown. */
+export const contextSQL = (items: string) => `(CASE WHEN ${items} < 0 THEN -1 ELSE ${items} & ~25 END)`;
+
 /** The play settings at their longest in an archive file: two numbers ("999", "-1") and a quoted 64-character id, with their commas. */
 export const PLAY_BYTES = 2 * 4 + 64 + 3;
 const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;

@@ -66,16 +66,23 @@ const mid = b => (b < 100 ? b : Math.round(100 * 1.02 ** (b - 99.5)));
 const dayOf = at => sqlTime(at).slice(0, 10);
 const sha8 = s => createHash('sha256').update(s).digest('hex').slice(0, 8);
 
-/** One part: the cells and their bins (format 2) of the rounds in [from, to). */
+/**
+ * One part: the cells and their bins (format 2) of the rounds in [from, to).
+ * A round with `counts` was re-filed by the Worker's skill level correction:
+ * its cell's `skill` is that level and its `stated` the one recorded, and a
+ * part with any is format 7, every cell keyed by `stated` too.
+ */
 function partOf(from, to, rounds) {
   const cells = new Map(), bins = new Map();
+  const refiled = rounds.some(r => r.counts);
   for (const r of rounds) {
     const day = dayOf(r.playedAt);
     const medal = r.medals !== null && r.medals > 0 ? 1 : 0;
     const jackpot = isJackpot(r);
-    const ck = [day, r.build, r.tsum, r.skill, r.items, medal, jackpot].join('|');
+    const key = {day, build: r.build, tsum: r.tsum, skill: r.counts ?? r.skill, items: r.items, medal, jackpot, ...(refiled ? {stated: r.skill} : {})};
+    const ck = Object.values(key).join('|');
     if (!cells.has(ck)) {
-      cells.set(ck, {day, build: r.build, tsum: r.tsum, skill: r.skill, items: r.items, medal, jackpot, rounds: 0, secs: 0,
+      cells.set(ck, {...key, rounds: 0, secs: 0,
         scoreSum: 0, scoreMin: null, scoreMax: null, first: null, last: null,
         baseSum: 0, baseSq: 0, baseMin: null, baseMax: null, finalSum: 0, finalSq: 0, finalMin: null, finalMax: null,
         medalsN: 0, medalsSum: 0, medalsSq: 0, medalsMin: null, medalsMax: null, medalsSecs: 0});
@@ -91,7 +98,7 @@ function partOf(from, to, rounds) {
       c.medalsN++; c.medalsSum += r.medals; c.medalsSq += r.medals * r.medals; c.medalsSecs += r.duration;
       c.medalsMin = lo(c.medalsMin, r.medals); c.medalsMax = hi(c.medalsMax, r.medals);
     }
-    if (!bins.has(ck)) bins.set(ck, {day, build: r.build, tsum: r.tsum, skill: r.skill, items: r.items, medal, jackpot, base: {}, final: {}, medals: {}});
+    if (!bins.has(ck)) bins.set(ck, {...key, base: {}, final: {}, medals: {}});
     const b = bins.get(ck);
     const into = (o, v) => {
       const f = (o[bin(v)] ??= [0, 0, 0, 0, 0, 0]);
@@ -105,9 +112,9 @@ function partOf(from, to, rounds) {
   const columns = (rows, keys) => ({n: rows.length, ...Object.fromEntries(keys.map(k => [k, rows.map(row => row[k]).reverse()]))});
   const cellRows = [...cells.values()];
   return {
-    kind: 'tsum-global-part', format: 2, from, to,
+    kind: 'tsum-global-part', format: refiled ? 7 : 2, from, to,
     cells: columns(cellRows, Object.keys(cellRows[0])),
-    bins: columns([...bins.values()], ['day', 'build', 'tsum', 'skill', 'items', 'medal', 'jackpot', 'base', 'final', 'medals']),
+    bins: columns([...bins.values()], ['day', 'build', 'tsum', 'skill', 'items', 'medal', 'jackpot', ...(refiled ? ['stated'] : []), 'base', 'final', 'medals']),
   };
 }
 
@@ -197,6 +204,8 @@ function snapshotOf(rounds) {
     skillType: zeros(), scriptVersion: zeros(), device: zeros(), source: zeros(), settings: rounds.map(settingsIndex),
     duration: rounds.map(r => r.duration), score: rounds.map(r => r.score), baseCoins: rounds.map(r => r.base),
     finalCoins: rounds.map(r => r.final), medals: rounds.map(r => r.medals), items: rounds.map(r => (r.items < 0 ? null : r.items)),
+    // The level a re-filed round counts at, as a snapshot's month has it (snapshot.go: SkillFix).
+    ...(rounds.some(r => r.counts) ? {skillFix: rounds.map(r => r.counts ?? 0)} : {}),
   };
   const manifest = {
     months: rounds.length ? [{month: 'all', file: 'month.json', first: sqlTime(rounds[0].playedAt), last: sqlTime(rounds.at(-1).playedAt)}] : [],
@@ -729,6 +738,51 @@ test('the Tsum page by every setting together: the snapshot engine\'s over the s
     assert.equal(d.combos.reduce((n, c) => n + c.rounds, 0), d.summary.totals.rounds, `${q.id}: every round once`);
     assert.deepEqual(diff(want.combos, d.combos, false), [], q.id);
   }
+});
+
+test('rounds the Worker re-filed count at their level, or as recorded, and are listed', async () => {
+  // September's and October's pooh at level 3 counts at 6, and mickey at level 2 on one build at 5: the
+  // Worker's correction filed them so (CONTRACT §3.2 step 1c). August's month part predates it (no `stated`).
+  const moved = r => dayOf(r.playedAt) >= '2026-09-10' && ((r.tsum === 'pooh' && r.skill === 3) || (r.tsum === 'mickey' && r.skill === 2 && r.build === 0));
+  const rounds = ROUNDS.map(r => (moved(r) ? {...r, counts: r.tsum === 'pooh' ? 6 : 5} : r));
+  const n = {pooh: rounds.filter(r => r.counts === 6).length, mickey: rounds.filter(r => r.counts === 5).length};
+  assert.ok(n.pooh > 20 && n.mickey > 20, 're-filed rounds to test with');
+  const made = publish(rounds, {split: 2});
+  assert.deepEqual([...new Set([...made.files].filter(([name]) => name !== 'manifest.json').map(([, text]) => JSON.parse(text).format))].sort(), [2, 7]);
+  const engine = createGlobalEngine(loaderOf(made.files));
+  const levelOf = (r, q) => (q.levels === 'recorded' ? r.skill : r.counts ?? r.skill);
+  const refiled = rs => [['mickey', '2', '5'], ['pooh', '3', '6']].map(([tsum, from, to]) =>
+    ({tsum, from, to, rounds: rs.filter(r => r.counts && r.tsum === tsum).length})).filter(x => x.rounds);
+
+  for (const q of [{}, {levels: 'recorded'}, {skill: '6'}, {skill: '3', levels: 'recorded'}, {skill: '3,5'}, {tsum: 'pooh', from: '2026-09-01T00:00:00Z'},
+    {tsum: 'mickey', build: 'jp'}, {coins: 'final', net: '1', levels: 'recorded', to: '2026-09-20T00:00:00Z'}]) {
+    const name = JSON.stringify(q);
+    const kept = rounds.filter(r => keepRound({...r, skill: levelOf(r, q)}, q));
+    const got = await engine.call('summary', q);
+    const want = await snapshotOf(kept).call('summary', {coins: q.coins ?? '', net: q.net ?? '', levels: q.levels ?? ''});
+    assert.deepEqual(got.refiled, refiled(kept), `${name}: refiled`);
+    assert.deepEqual(want.refiled, got.refiled, `${name}: the snapshot engine's refiled`);
+    assert.equal(got.totals.rounds, kept.length, name);
+    const [w, g] = [normalize(want), normalize(structuredClone(got))];
+    assert.deepEqual(diff({mix: w.mix, chains: w.chains, tsums: w.tsums.map(t => [t.tsum, t.rounds, t.coins])},
+      {mix: g.mix, chains: g.chains, tsums: g.tsums.map(t => [t.tsum, t.rounds, t.coins])}, false), [], name);
+  }
+  // The same list whichever way the levels are shown, and the levels of a re-filed Tsum on its page.
+  assert.deepEqual((await engine.call('summary', {})).refiled, (await engine.call('summary', {levels: 'recorded'})).refiled);
+  for (const q of [{id: 'pooh'}, {id: 'pooh', levels: 'recorded'}, {id: 'mickey', coins: 'final'}, {id: 'mickey', levels: 'recorded', skill: '2'}]) {
+    const name = JSON.stringify(q);
+    const rs = rounds.filter(r => r.tsum === q.id && keepRound({...r, skill: levelOf(r, q)}, q));
+    const d = await engine.call('tsum', q);
+    const want = await snapshotOf(rs).call('tsum', {id: q.id, coins: q.coins ?? '', levels: q.levels ?? ''});
+    assert.deepEqual(d.summary.refiled, refiled(rs), name);
+    const levels = list => list.filter(s => s.setting === 'skillLevel').map(s => [s.key, s.rounds]);
+    assert.deepEqual(levels(d.settings), levels(want.settings), `${name}: by skill level`);
+    assert.deepEqual(diff(want.combos, d.combos, false), [], `${name}: combos`);
+    assert.equal(d.skillBins.reduce((s, b) => s + b.rounds, 0), want.skillBins.reduce((s, b) => s + b.rounds, 0), `${name}: skill bins`);
+    const perLevel = list => [...new Set(list.map(b => b.skill))].sort().map(s => [s, list.filter(b => b.skill === s).reduce((k, b) => k + b.rounds, 0)]);
+    assert.deepEqual(perLevel(d.skillBins), perLevel(want.skillBins), `${name}: skill bins per level`);
+  }
+  assert.deepEqual(await engine.call('skill-fixes', {tsum: 'pooh'}), []);
 });
 
 test('the Tsum page leaves coin-bonus jackpots out of final coins', async () => {

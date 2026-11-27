@@ -2,6 +2,8 @@
 // table, and a test dataset to compare it on. Also an env whose D1 and R2
 // count every call, independently of the job's own counter.
 import { expect } from "vitest";
+import { fixContext, trustedVersion } from "../../ui/src/lib/skillFix.js";
+import { isMedalTsum } from "../src/catalog";
 import { bin, keyDay } from "../src/days";
 import type { Env } from "../src/env";
 import { DAY_MS, NOW, env, joinNew, record, rows, upload, type RoundSpec } from "./helpers";
@@ -24,6 +26,26 @@ export interface RoundRow {
   final: number;
   medals: number | null;
   gap: number | null;
+  version: string;
+}
+
+/** A skill_fix row, as far as filing a round goes. */
+export interface FixRow {
+  build: number;
+  tsum: string;
+  device: string;
+  stated: number;
+  from_day: string;
+  to_day: string;
+  level: number;
+}
+
+/** The level a round counts at: its fix's (the newest that covers its day), else the one recorded (rollup.ts: DAY_SOURCE). */
+export function levelOf(r: RoundRow, fixes: FixRow[]): number {
+  const day = keyDay(r.key);
+  const f = fixes.filter(x => x.build === r.build && x.tsum === r.tsum && x.device === r.key.slice(20) && x.stated === r.skill && x.from_day <= day && x.to_day >= day)
+    .sort((a, b) => (a.from_day < b.from_day ? 1 : -1))[0];
+  return f ? f.level : r.skill;
 }
 
 const REAL = new Set(["secs", "base_sq", "final_sq", "medals_sq", "medals_secs", "gap_sum", "secs_max"]);
@@ -37,15 +59,20 @@ const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const minOf = (xs: number[]) => (xs.length ? Math.min(...xs) : null);
 const maxOf = (xs: number[]) => (xs.length ? Math.max(...xs) : null);
 
-/** The cells, bins and contrib_cells the rounds make; hidden contributors are banned, anon ones unlinking. */
-export function reference(rounds: RoundRow[], hidden: Set<number>, anon: Set<number> = new Set()) {
+/**
+ * The cells, bins, contrib_cells and skill_units the rounds make; hidden
+ * contributors are banned, anon ones unlinking. `fixes` are the skill_fix
+ * rows a recompute would apply; a day only folded has none applied.
+ */
+export function reference(rounds: RoundRow[], hidden: Set<number>, anon: Set<number> = new Set(), fixes: FixRow[] = []) {
   const pub = rounds.filter(r => !hidden.has(r.contributor));
-  const cells = [...group(pub, r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.skill, r.skill_type, r.items, r.scan, r.chain, r.bubble, (r.medals ?? 0) > 0 ? 1 : 0, r.final > 10 * r.base ? 1 : 0])).entries()]
+  const cellKey = (r: RoundRow) => JSON.stringify([keyDay(r.key), r.build, r.tsum, levelOf(r, fixes), r.skill_type, r.items, r.scan, r.chain, r.bubble, (r.medals ?? 0) > 0 ? 1 : 0, r.final > 10 * r.base ? 1 : 0, r.skill]);
+  const cells = [...group(pub, cellKey).entries()]
     .map(([k, rs]) => {
-      const [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot] = JSON.parse(k);
+      const [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, stated] = JSON.parse(k);
       const m = rs.filter(r => r.medals !== null);
       return {
-        day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, rounds: rs.length, secs: sum(rs.map(r => r.duration)),
+        day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, stated, rounds: rs.length, secs: sum(rs.map(r => r.duration)),
         score_sum: sum(rs.map(r => r.score)), score_min: minOf(rs.map(r => r.score)), score_max: maxOf(rs.map(r => r.score)),
         first: minOf(rs.map(r => r.played_at)), last: maxOf(rs.map(r => r.played_at)),
         base_sum: sum(rs.map(r => r.base)), base_sq: sum(rs.map(r => r.base ** 2)), base_min: minOf(rs.map(r => r.base)), base_max: maxOf(rs.map(r => r.base)),
@@ -65,11 +92,11 @@ export function reference(rounds: RoundRow[], hidden: Set<number>, anon: Set<num
     }
     return o;
   };
-  const bins = [...group(pub, r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.skill, r.skill_type, r.items, r.scan, r.chain, r.bubble, (r.medals ?? 0) > 0 ? 1 : 0, r.final > 10 * r.base ? 1 : 0])).entries()]
+  const bins = [...group(pub, cellKey).entries()]
     .map(([k, rs]) => {
-      const [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot] = JSON.parse(k);
+      const [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, stated] = JSON.parse(k);
       return {
-        day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, base: figures(rs, r => bin(r.base)), final: figures(rs, r => bin(r.final)),
+        day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, stated, base: figures(rs, r => bin(r.base)), final: figures(rs, r => bin(r.final)),
         medals: figures(rs.filter(r => (r.medals ?? 0) > 0), r => bin(r.medals!)),
       };
     });
@@ -81,7 +108,15 @@ export function reference(rounds: RoundRow[], hidden: Set<number>, anon: Set<num
       final_sum: sum(rs.map(r => r.final)), medals_sum: sum(rs.map(r => r.medals ?? 0)), devices: new Set(rs.map(r => r.key.slice(20))).size,
     };
   });
-  return { cells, bins, contrib };
+  // What the correction judges by: the rounds with a level, as recorded, per device, item context and trusted (CONTRACT §3.1).
+  const units = [...group(pub.filter(r => r.skill >= 1), r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.key.slice(20), r.skill, fixContext(r.items), trustedVersion(r.version) ? 1 : 0])).entries()]
+    .map(([k, rs]) => {
+      const [day, build, tsum, device, skill, context, trusted] = JSON.parse(k);
+      const values = rs.map(r => (isMedalTsum(r.tsum) ? r.medals : r.base) ?? 0).filter(v => v > 0);
+      return { day, build, tsum, device, skill, context, trusted, n: rs.length, vn: values.length, vsum: sum(values),
+        first: minOf(rs.map(r => r.played_at)), last: maxOf(rs.map(r => r.played_at)) };
+    });
+  return { cells, bins, contrib, units };
 }
 
 const order = (keys: string[]) => (a: Record<string, unknown>, b: Record<string, unknown>) => {
@@ -91,7 +126,8 @@ const order = (keys: string[]) => (a: Record<string, unknown>, b: Record<string,
   }
   return 0;
 };
-export const CELL_KEY = ["day", "build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal", "jackpot"];
+export const CELL_KEY = ["day", "build", "tsum", "skill", "skill_type", "items", "scan", "chain", "bubble", "medal", "jackpot", "stated"];
+export const UNIT_KEY = ["day", "build", "tsum", "device", "skill", "context", "trusted"];
 export const BIN_KEY = CELL_KEY;
 /** The bins objects: {bin: figures}, secs (figure 1) a REAL sum. */
 const BINS = new Set(["base", "final", "medals"]);
@@ -124,21 +160,26 @@ function sameBins(got: Record<string, number[]>, want: Record<string, number[]>,
 /** The tables as D1 has them, bins parsed. */
 export async function tables() {
   return {
-    cells: await rows("SELECT * FROM cells3"),
-    bins: (await rows<Record<string, unknown> & { base: string; final: string; medals: string }>("SELECT * FROM cell_bins3"))
+    cells: await rows("SELECT * FROM cells4"),
+    bins: (await rows<Record<string, unknown> & { base: string; final: string; medals: string }>("SELECT * FROM cell_bins4"))
       .map((b): Record<string, unknown> => ({ ...b, base: JSON.parse(b.base), final: JSON.parse(b.final), medals: JSON.parse(b.medals) })),
     contrib: await rows("SELECT * FROM contrib_cells"),
+    units: await rows("SELECT * FROM skill_units"),
   };
 }
 
 /** The tables match the reference over D1's rounds; `days` limits it to the days D1 still has. */
-export async function checkAgainstReference(hidden: Set<number>, anon: Set<number> = new Set(), days?: string[]) {
-  const want = reference(await rows<RoundRow>("SELECT * FROM rounds"), hidden, anon);
+export async function checkAgainstReference(hidden: Set<number>, anon: Set<number> = new Set(), days?: string[], fixedDays?: string[]) {
+  // The fixes count on the days recomputed since they were made; a test that has any says which days (`fixedDays`).
+  const fixes = (await rows<FixRow>("SELECT * FROM skill_fix")).filter(() => fixedDays !== undefined)
+    .flatMap(f => fixedDays!.filter(d => d >= f.from_day && d <= f.to_day).map(d => ({ ...f, from_day: d, to_day: d })));
+  const want = reference(await rows<RoundRow>("SELECT * FROM rounds"), hidden, anon, fixes);
   const got = await tables();
   const only = <T extends Record<string, unknown>>(list: T[]) => (days ? list.filter(r => days.includes(r.day as string)) : list);
   sameRows(only(got.cells), want.cells, CELL_KEY);
   sameRows(only(got.bins), want.bins, BIN_KEY);
   sameRows(only(got.contrib), want.contrib, CONTRIB_KEY);
+  sameRows(only(got.units), want.units, UNIT_KEY);
   return want;
 }
 
