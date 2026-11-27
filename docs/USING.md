@@ -887,7 +887,8 @@ everyone's rounds, and in the *Winter Village* theme until you pick another:
   device's name) and the account you named for a stretch of rounds, and the
   site bounds the levels of your rounds with them, the ones this computer no
   longer has included. A list imported later still corrects rounds of months
-  ago. Unlinking deletes your lists from the site. The global site judges a run on the average of its coins
+  ago. Unlinking takes your id off your lists as it does off your rounds; both
+are kept, and the lists go on bounding those rounds. The global site judges a run on the average of its coins
   where your site has the median, and by whole days. The note says how many
   rounds count at another level, and *Show as recorded* works; why a run moved
   is not published, since that is one device's history.

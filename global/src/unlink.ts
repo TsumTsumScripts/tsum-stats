@@ -7,7 +7,7 @@
 import { archiveKey, bannedName, namedPrefix, unlinkedName } from "./archive";
 import { addDays, DAY_ROUNDS, dayParams, dayRange } from "./days";
 import type { Job } from "./job";
-import { listsPrefix } from "./lists";
+import { NAMED_LISTS, listsPrefix } from "./lists";
 
 /** unlink:<id>, written by contributors.ts: unlink. */
 interface Unlinking {
@@ -70,24 +70,26 @@ export async function unlinkStep(job: Job): Promise<void> {
     }
 
     if (!u.days.length) {
-      if (!run.room(9, 2)) {
+      if (!run.room(9, 1)) {
         job.more = true;
         return;
       }
-      // Its Tsum Lists and links are evidence about its accounts, not rounds: they leave with it, the archive's copies too.
-      const files = await run.list({ prefix: listsPrefix(row.id) });
-      if (files.objects.length) await run.del(files.objects.map(o => o.key));
-      if (files.truncated) {
+      // Its Tsum Lists and links are kept, as its rounds are (CONTRACT §3.4): the archive's files are renamed
+      // so none names it, and D1's rows become no one's, under a word of their own so that two former
+      // contributors' lists are never read as one account's. A banned one's files go to b, and its rows
+      // leave D1 with its rounds.
+      const group = (banned ? await bannedName(run.env, `lists:${row.id}`) : await unlinkedName(run.env, `lists:${row.id}`)).replace(".json", "");
+      if (!(await renameLists(job, row.id, group))) {
         job.more = true;
         return;
       }
       const stmts = [
-        // The days its lists moved rounds on are made again without them.
-        run.stmt(`INSERT OR IGNORE INTO dirty_days (day) SELECT DISTINCT u.day FROM skill_bound b JOIN skill_units u
-          ON u.tsum = b.tsum AND u.build = b.build AND u.device = b.device WHERE b.contributor = ?1 AND u.day > ?2`, row.id, job.droppedThrough),
+        // Its bounds were copied to contributor 0 when it left (contributors.ts); its own rows are done with.
         run.stmt("DELETE FROM skill_bound WHERE contributor = ?1", row.id),
-        run.stmt("DELETE FROM tsum_lists WHERE contributor = ?1", row.id),
-        run.stmt("DELETE FROM device_links WHERE contributor = ?1", row.id),
+        banned ? run.stmt("DELETE FROM tsum_lists WHERE contributor = ?1", row.id)
+          : run.stmt("UPDATE tsum_lists SET contributor = 0, grp = ?2 WHERE contributor = ?1", row.id, group),
+        banned ? run.stmt("DELETE FROM device_links WHERE contributor = ?1", row.id)
+          : run.stmt("UPDATE device_links SET contributor = 0, grp = ?2 WHERE contributor = ?1", row.id, group),
         run.stmt("DELETE FROM contributors WHERE id = ?1", row.id),
         // Deleted at unlink, and an upload landing after it is refused (ingest.ts), but no
         // device row may outlive the contributor: it would tie a device hash to the id.
@@ -105,6 +107,31 @@ export async function unlinkStep(job: Job): Promise<void> {
       job.report.unlinked.push(row.id);
     }
   }
+}
+
+/**
+ * Renames a contributor's Tsum List and link files from archive/lists/c<id>/
+ * to archive/lists/<group>/, each without its contributor's id: a get, a put
+ * and a delete per file. False when the run's R2 budget ran out first; what
+ * was renamed stays renamed, and the rest is done next run.
+ */
+async function renameLists(job: Job, id: number, group: string): Promise<boolean> {
+  const { run } = job;
+  const from = listsPrefix(id);
+  const page = await run.list({ prefix: from });
+  for (const obj of page.objects) {
+    if (!run.room(9, 3, obj.size)) return false;
+    const got = await run.get(obj.key);
+    if (!got) continue;
+    const text = await got.text();
+    if (!NAMED_LISTS.test(text)) {
+      console.error("unlink: unexpected lists file", obj.key);
+      continue;
+    }
+    await run.put(listsPrefix(group) + obj.key.slice(from.length), text.replace(NAMED_LISTS, "$1null,"));
+    await run.del(obj.key);
+  }
+  return !page.truncated;
 }
 
 /**

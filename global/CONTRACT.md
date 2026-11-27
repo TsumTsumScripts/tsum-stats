@@ -155,7 +155,8 @@ oldest first, a list joins the account of its game with the newest list it
 can follow, when they have 5 Tsums in common, at most 2 % of those read
 lower in skill or level, and half or more are at the very same skill; else
 it starts an account. Per contributor: a contributor's lists are never
-grouped with another's, and bound only that contributor's rounds.
+grouped with another's, and bound only that contributor's rounds (and go on
+bounding them once it has unlinked and they are no one's, §3.4).
 
 A device's rounds of one game are linked to an account by, in this order:
 the contributor's link for that device and game (an account by one of its
@@ -398,7 +399,10 @@ id, so a file that still names one is never restored as anyone's. Unlinked
 rounds stay in the public figures and keep their device hash (de-duplication
 needs it). A banned contributor's rounds of days not yet archived are deleted,
 so never archived; its files already archived are kept as `b` files, and
-never restored.
+never restored. **Its Tsum Lists, links and bounds are kept the same way**
+(§3.4): no one's in D1, their archive files renamed, the bounds still
+applying to its rounds; a banned contributor's rows deleted and its files
+kept as `b` files.
 
 ### 2.5 Admin
 
@@ -638,19 +642,20 @@ CREATE TABLE rounds (
 
 -- 0009: Tsum Lists as evidence (§1.3). Private. One row per list, its Tsums one JSON value, every column as sent.
 CREATE TABLE tsum_lists (
-  contributor INTEGER NOT NULL, id TEXT NOT NULL,           -- the sender's 16 hex
+  contributor INTEGER NOT NULL, grp TEXT NOT NULL DEFAULT '',   -- grp: '' while linked; a former contributor's opaque word once it unlinked (§3.4), with contributor 0
+  id TEXT NOT NULL,                                         -- the sender's 16 hex
   build INTEGER NOT NULL, stamp INTEGER NOT NULL,           -- epoch s: when the list was read
   n INTEGER NOT NULL, hash TEXT NOT NULL,                   -- its Tsums; hex SHA-256 of `tsums`
   tsums TEXT NOT NULL,                                      -- JSON: [{"order", "tsum", "name", "level", …}], each row's columns sorted
   at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0, -- when the site took it; 1 once it is in archive/lists/
-  PRIMARY KEY (contributor, id)
+  PRIMARY KEY (contributor, grp, id)
 ) WITHOUT ROWID;
 -- Private: the account a device's rounds of one game were played on, as its contributor's app says:
 -- one of the account's lists, '' for "not known", NULL for an answer taken back.
 CREATE TABLE device_links (
-  contributor INTEGER NOT NULL, build INTEGER NOT NULL, device TEXT NOT NULL,   -- the device hash (§1.1)
+  contributor INTEGER NOT NULL, grp TEXT NOT NULL DEFAULT '', build INTEGER NOT NULL, device TEXT NOT NULL,   -- grp as tsum_lists'; the device hash (§1.1)
   list TEXT, at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (contributor, build, device)
+  PRIMARY KEY (contributor, grp, build, device)
 ) WITHOUT ROWID;
 -- Private, made from the two above (§3.2, step 1b'): what the lists of a device's account say of one Tsum's
 -- level for rounds ending from `from_at` until the next row's: at least `floor`, at most `cap`, 0 for none.
@@ -1106,6 +1111,7 @@ rounds]]`), `restore:<day>`, `settings_archived`, `span:<id>`,
 | `archive/settings/<firstId>-<lastId>.json` | no | Settings rows, written once per new range, sized by bytes |
 | `archive/lists/c<id>/<listId>.<sha8>.json` | no | One Tsum List of a contributor, whole (§1.3); a replaced one keeps its old file too |
 | `archive/lists/c<id>/links.<epoch s>.json` | no | The contributor's links, every time one changed |
+| `archive/lists/u<hex>/…`, `archive/lists/b<hex>/…` | no | The same files once their contributor unlinked (`u`), or unlinked banned (`b`: kept for good, never read back), `contributor` null |
 
 `<sha8>` is the first 8 hex digits of the file's SHA-256. Only
 `data/global/*` is served; the Worker answers `/data/global/<name>` from
@@ -1146,11 +1152,27 @@ day: `{"kind": "tsum-global-list", "format": 1, "contributor", "id", "build",
 [{"build", "device", "list", "at"}]}`, the contributor's links as they stood.
 The round files are unchanged by them: a round's file is the round as
 recorded, and a restored day's recompute finds the bounds in D1, where no
-step empties them. **An unlink deletes the contributor's lists, links and
-bounds, in D1 and in `archive/lists/`**: they are evidence about its
-accounts, not rounds, and its rounds, now no one's, count as recorded again
-(the days its bounds moved are recomputed). A merge moves them to the other
-contributor, whose bounds are made again.
+step empties them.
+
+**An unlink keeps the contributor's lists, links and bounds, as it keeps its
+rounds** (§2.4): nothing a contributor sent is deleted for leaving.
+- When it unlinks, its `skill_bound` rows are copied to contributor 0 (the
+  last to leave wins a device two contributors shared), so its rounds, which
+  become contributor 0's day by day, **go on counting at the levels its lists
+  give them**. Its own rows go when the unlink is done.
+- When the unlink is done, its `tsum_lists` and `device_links` rows become
+  contributor 0's, under `grp`: an opaque word (`u` + 16 hex of an HMAC of
+  the id), the same for one former contributor's rows, so two former
+  contributors' lists are never read as one account's. Nothing regroups
+  them; they are kept as the evidence the bounds were made from.
+- Its files move from `archive/lists/c<id>/` to `archive/lists/<grp>/`, each
+  with `"contributor": null`: no file and no row names it any more.
+- **A banned contributor** that unlinks: its bounds are not copied and its
+  D1 rows are deleted, as its rounds are (they were never public); its files
+  move to `archive/lists/b<hex>/` and are kept for good, never read back.
+
+A merge moves lists and links to the other contributor, whose bounds are
+made again.
 
 A day counts as archived (`archived_through`) once all its files are written,
 from its staged pieces; its rows leave D1 later, if ever (§3.2, step 4b:
@@ -1531,8 +1553,9 @@ nothing. `lastError` is shown only for its own site (or when `url` is `""`).
   says the site was told, and `null` for one told that holds no more. Each
   is recorded after `ok: true`. **No round is sent again for any of this**,
   and a round's record is as it always was: the levels are worked out on the
-  site. A new join, of this site or another, empties both tables, since the
-  site keeps lists by contributor and drops them at an unlink.
+  site. A new join, of this site or another, empties both tables: the site
+  keeps lists by contributor, and after an unlink the old ones are no one's
+  (§3.4), bounding the rounds sent before, not the new contributor's.
 - **Never sent**: `device` and any device name, `source`, paths.
 - **After `ok: true`**: every row in the batch **except those the reply names
   in `retry`** goes into

@@ -172,6 +172,13 @@ export async function unlink(env: Env, c: Contributor, nowMs: number): Promise<R
     // The manifest's counts of people move with it.
     db.prepare("DELETE FROM recent WHERE contributor = ?1").bind(c.id),
     db.prepare("DELETE FROM state WHERE key = 'people'"),
+    // What its Tsum Lists say of its devices' Tsums (skill_bound, lists.ts) goes on applying to its rounds as
+    // they become no one's: a copy under contributor 0 from now, the last to leave winning a shared device.
+    // Not for a banned one, whose rounds leave the figures.
+    db.prepare(`DELETE FROM skill_bound WHERE contributor = 0 AND (tsum, build, device) IN (SELECT tsum, build, device FROM skill_bound WHERE contributor = ?1)
+      AND (SELECT status FROM contributors WHERE id = ?1) = 'unlinking'`).bind(c.id),
+    db.prepare(`INSERT INTO skill_bound (tsum, build, device, contributor, from_at, floor, cap)
+      SELECT tsum, build, device, 0, from_at, floor, cap FROM skill_bound WHERE contributor = ?1 AND (SELECT status FROM contributors WHERE id = ?1) = 'unlinking'`).bind(c.id),
     // Its gallery presets go with it.
     db.prepare("DELETE FROM presets WHERE contributor = ?1").bind(c.id),
     markDirty(db),

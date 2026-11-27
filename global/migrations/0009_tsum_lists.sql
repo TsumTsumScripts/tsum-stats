@@ -7,7 +7,8 @@
 -- Private. One row per list, its Tsums as one JSON value: every column the
 -- list was sent with, as sent.
 CREATE TABLE tsum_lists (
-  contributor INTEGER NOT NULL,
+  contributor INTEGER NOT NULL,          -- 0 once its contributor unlinked
+  grp TEXT NOT NULL DEFAULT '',          -- '' while linked; then an opaque word, the same for one former contributor's lists and links, so two never read as one's
   id TEXT NOT NULL,                      -- the sender's name for the list: 16 hex, the same for the same list
   build INTEGER NOT NULL,                -- 0 global, 1 jp
   stamp INTEGER NOT NULL,                -- epoch s, UTC: when the list was read on the device
@@ -16,7 +17,7 @@ CREATE TABLE tsum_lists (
   tsums TEXT NOT NULL,                   -- JSON: [{"order", "tsum", "name", "level", "level_cap", "skill", "skill_max", "skill_progress", "acquired", "favorite", …}], every value text
   at INTEGER NOT NULL,                   -- epoch s: when the site took it
   archived INTEGER NOT NULL DEFAULT 0,   -- 1 once it is in archive/lists/
-  PRIMARY KEY (contributor, id)
+  PRIMARY KEY (contributor, grp, id)
 ) WITHOUT ROWID;
 
 -- Private. The account a device's rounds of one game were played on, as its
@@ -24,12 +25,13 @@ CREATE TABLE tsum_lists (
 -- NULL for an answer taken back (the site then links it by itself, or not).
 CREATE TABLE device_links (
   contributor INTEGER NOT NULL,
+  grp TEXT NOT NULL DEFAULT '',          -- as tsum_lists.grp
   build INTEGER NOT NULL,
   device TEXT NOT NULL,                  -- the device hash (§1.1)
   list TEXT,
   at INTEGER NOT NULL,
   archived INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (contributor, build, device)
+  PRIMARY KEY (contributor, grp, build, device)
 ) WITHOUT ROWID;
 
 -- Private, made from the two above: what a device's account's lists say of

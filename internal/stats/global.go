@@ -316,8 +316,9 @@ func (c *Contributor) Join() error {
 	pending := -1
 	if !resume {
 		// A new contributor, of this site or another: the site holds the Tsum
-		// Lists and links by contributor (and drops them at an unlink), so what
-		// an earlier one was told is not what this one has.
+		// Lists and links by contributor (an unlinked one's stay behind as no
+		// one's, with its rounds), so what an earlier one was told is not what
+		// this one has.
 		for _, q := range []string{"DELETE FROM ts_global_lists", "DELETE FROM ts_global_links"} {
 			if _, err := c.db().NewQuery(q).Execute(); err != nil {
 				return fmt.Errorf("could not join the global stats: %w", err)

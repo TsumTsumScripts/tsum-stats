@@ -113,9 +113,9 @@ export async function storeLists(body: Record<string, unknown>, env: Env, c: Con
 
   // What D1 has of them, so only what changed is written.
   const [had, hadLinks] = await db.batch([
-    db.prepare("SELECT l.id, l.hash, l.build, l.stamp FROM json_each(?1) j JOIN tsum_lists l ON l.contributor = ?2 AND l.id = j.value")
+    db.prepare("SELECT l.id, l.hash, l.build, l.stamp FROM json_each(?1) j JOIN tsum_lists l ON l.contributor = ?2 AND l.grp = '' AND l.id = j.value")
       .bind(JSON.stringify([...sent.keys()]), c.id),
-    db.prepare("SELECT build, device, list FROM device_links WHERE contributor = ?1").bind(c.id),
+    db.prepare("SELECT build, device, list FROM device_links WHERE contributor = ?1 AND grp = ''").bind(c.id),
   ]);
   const reads = had.meta.rows_read + hadLinks.meta.rows_read;
   const stored = new Map((had.results as { id: string; hash: string; build: number; stamp: number }[]).map(l => [l.id, l]));
@@ -135,13 +135,13 @@ export async function storeLists(body: Record<string, unknown>, env: Env, c: Con
   for (const l of write) {
     // One statement a list: a list is one value, and D1 has its size to itself.
     stmts.push(db.prepare(`INSERT INTO tsum_lists (contributor, id, build, stamp, n, hash, tsums, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-      ON CONFLICT (contributor, id) DO UPDATE SET build = excluded.build, stamp = excluded.stamp, n = excluded.n, hash = excluded.hash,
+      ON CONFLICT (contributor, grp, id) DO UPDATE SET build = excluded.build, stamp = excluded.stamp, n = excluded.n, hash = excluded.hash,
         tsums = excluded.tsums, at = excluded.at, archived = 0`).bind(c.id, l.id, l.build, l.stamp, l.n, l.hash, l.tsums, now));
   }
   if (writeLinks.length) {
     stmts.push(db.prepare(`INSERT INTO device_links (contributor, build, device, list, at)
       SELECT ?1, k ->> 0, k ->> 1, k ->> 2, ?3 FROM (SELECT value AS k FROM json_each(?2)) WHERE true
-      ON CONFLICT (contributor, build, device) DO UPDATE SET list = excluded.list, at = excluded.at, archived = 0`)
+      ON CONFLICT (contributor, grp, build, device) DO UPDATE SET list = excluded.list, at = excluded.at, archived = 0`)
       .bind(c.id, JSON.stringify(writeLinks.map(k => [k.build, k.device, k.list])), now));
   }
   if (stmts.length) {
@@ -156,7 +156,7 @@ export async function storeLists(body: Record<string, unknown>, env: Env, c: Con
 /** A contributor's lists as the grouping reads them: each Tsum's skill (1-10) and level, in SQL, so the Worker never parses a list. */
 const READINGS = `SELECT id, build, stamp, archived, coalesce((SELECT json_group_object(t.value ->> 'tsum', json_array(CAST(t.value ->> 'skill' AS INTEGER), CAST(t.value ->> 'level' AS INTEGER)))
     FROM json_each(l.tsums) t WHERE CAST(t.value ->> 'skill' AS INTEGER) BETWEEN 1 AND 10), '{}') AS readings
-  FROM tsum_lists l WHERE contributor = ?1 ORDER BY stamp, id`;
+  FROM tsum_lists l WHERE contributor = ?1 AND grp = '' ORDER BY stamp, id`;
 
 /** What reading one contributor's evidence costs (one batch), and writing its bounds at most. */
 const READ_QUERIES = 5, WRITE_QUERIES = 6;
@@ -236,7 +236,7 @@ export async function evidenceStep(job: Job): Promise<void> {
     }
     const [lists, links, devices, recent, bounds] = await run.batch([
       run.stmt(READINGS, id),
-      run.stmt("SELECT build, device, list, archived FROM device_links WHERE contributor = ?1", id),
+      run.stmt("SELECT build, device, list, archived FROM device_links WHERE contributor = ?1 AND grp = ''", id),
       run.stmt("SELECT device_hash FROM devices WHERE contributor = ?1", id),
       run.stmt("SELECT tsum FROM recent WHERE contributor = ?1", id),
       run.stmt("SELECT tsum, build, device, from_at, floor, cap FROM skill_bound WHERE contributor = ?1", id),
@@ -285,19 +285,19 @@ export async function evidenceStep(job: Job): Promise<void> {
         break;
       }
       const f = await run.first<{ hash: string; body: string }>(`SELECT hash, json_object('kind', 'tsum-global-list', 'format', 1, 'contributor', contributor, 'id', id,
-        'build', build, 'stamp', stamp, 'at', at, 'hash', hash, 'n', n, 'tsums', json(tsums)) AS body FROM tsum_lists WHERE contributor = ?1 AND id = ?2`, id, l.id);
+        'build', build, 'stamp', stamp, 'at', at, 'hash', hash, 'n', n, 'tsums', json(tsums)) AS body FROM tsum_lists WHERE contributor = ?1 AND grp = '' AND id = ?2`, id, l.id);
       if (!f) continue;
       await put(job, `${listsPrefix(id)}${l.id}.${f.hash.slice(0, 8)}.json`, f.body);
-      await run.batch([run.stmt("UPDATE tsum_lists SET archived = 1 WHERE contributor = ?1 AND id = ?2 AND hash = ?3", id, l.id, f.hash)]);
+      await run.batch([run.stmt("UPDATE tsum_lists SET archived = 1 WHERE contributor = ?1 AND grp = '' AND id = ?2 AND hash = ?3", id, l.id, f.hash)]);
       archived++;
     }
     if (!left && said.some(k => !k.archived)) {
       if (!run.room(2 + 2, 1)) left = true;
       else {
         const f = await run.first<{ body: string }>(`SELECT json_object('kind', 'tsum-global-links', 'format', 1, 'contributor', CAST(?1 AS INTEGER), 'at', CAST(?2 AS INTEGER),
-          'links', json_group_array(json_object('build', build, 'device', device, 'list', list, 'at', at))) AS body FROM device_links WHERE contributor = ?1`, id, Math.floor(run.now));
+          'links', json_group_array(json_object('build', build, 'device', device, 'list', list, 'at', at))) AS body FROM device_links WHERE contributor = ?1 AND grp = ''`, id, Math.floor(run.now));
         await put(job, `${listsPrefix(id)}links.${Math.floor(run.now)}.json`, f!.body);
-        await run.batch([run.stmt("UPDATE device_links SET archived = 1 WHERE contributor = ?1", id)]);
+        await run.batch([run.stmt("UPDATE device_links SET archived = 1 WHERE contributor = ?1 AND grp = ''", id)]);
       }
     }
     if (left) {
@@ -308,8 +308,10 @@ export async function evidenceStep(job: Job): Promise<void> {
   }
 }
 
-/** Where a contributor's lists and links are in the archive. */
-export const listsPrefix = (id: number) => `archive/lists/c${id}/`;
+/** Where a contributor's lists and links are in the archive; `who` is c<id>, or what an unlink renamed it to. */
+export const listsPrefix = (who: number | string) => `archive/lists/${typeof who === "number" ? "c" + who : who}/`;
+/** A lists or links file's contributor, as its JSON begins: what an unlink blanks. */
+export const NAMED_LISTS = /^(\{"kind":"tsum-global-(?:list|links)","format":\d+,"contributor":)\d+,/;
 
 async function put(job: Job, key: string, body: string): Promise<void> {
   const bytes = new TextEncoder().encode(body);

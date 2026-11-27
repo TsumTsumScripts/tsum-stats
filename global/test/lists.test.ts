@@ -258,18 +258,62 @@ describe("evidence for days that are final", () => {
 });
 
 describe("a contributor that leaves", () => {
-  it("takes its lists, links and bounds with it, the archive's copies too", async () => {
+  const setup = async () => {
     const c = await joinNew();
     await upload(c.key, played(1, 6, { skill: 6 }));
     await send(c.key, { lists: [list("93", NOW, { mickey: 1, ...OTHERS })], links: [{ build: "global", tag: TAG_A, list: "93".padEnd(16, "0") }] });
     await job();
     expect(await cells()).toEqual([{ day: day(1), skill: 1, stated: 6, n: 6 }]);
     expect((await r2keys(`archive/lists/c${c.id}/`)).length).toBe(2);
+    return c;
+  };
+
+  it("leaves its lists, links and bounds behind as no one's, still bounding its rounds, and no file names it", async () => {
+    const c = await setup(), d = await joinNew();
+    // Another contributor with a list of the very same id, who leaves too: the two are never one group.
+    await send(d.key, { lists: [list("93", NOW, { mickey: 4, ...OTHERS })] });
+    await job();
+    expect((await call("/api/v1/me/unlink", { body: {}, key: c.key })).status).toBe(200);
+    expect((await call("/api/v1/me/unlink", { body: {}, key: d.key })).status).toBe(200);
+    await job();
+    expect(await one("SELECT count(*) AS n FROM contributors WHERE id != 0")).toEqual({ n: 0 });
+    // Kept whole in D1, under contributor 0 and a word of each one's own.
+    const lists = await rows<{ contributor: number; grp: string; n: number }>("SELECT contributor, grp, n FROM tsum_lists ORDER BY grp");
+    expect(lists.map(l => [l.contributor, l.n])).toEqual([[0, 6], [0, 6]]);
+    expect(new Set(lists.map(l => l.grp)).size).toBe(2);
+    expect(lists.every(l => /^u[0-9a-f]{16}$/.test(l.grp))).toBe(true);
+    const links = await rows<{ contributor: number; grp: string; list: string }>("SELECT contributor, grp, list FROM device_links");
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({ contributor: 0, list: "93".padEnd(16, "0") });
+    expect(lists.map(l => l.grp)).toContain(links[0].grp);
+    expect(await rows("SELECT DISTINCT contributor FROM skill_bound")).toEqual([{ contributor: 0 }]);
+    // The archive's files are renamed, none deleted, and none names a contributor.
+    expect(await r2keys(`archive/lists/c${c.id}/`)).toEqual([]);
+    expect(await r2keys(`archive/lists/c${d.id}/`)).toEqual([]);
+    const files = await r2keys("archive/lists/");
+    expect(files).toHaveLength(3);
+    expect(files.every(f => /^archive\/lists\/u[0-9a-f]{16}\//.test(f))).toBe(true);
+    for (const f of files) expect(await r2json(f)).toMatchObject({ contributor: null });
+    expect(await r2json(files.find(f => !f.includes("links."))!)).toMatchObject({ kind: "tsum-global-list", n: 6 });
+    // Its rounds are no one's now and count as they did: the bounds still apply, through a full recompute too.
+    expect(await cells()).toEqual([{ day: day(1), skill: 1, stated: 6, n: 6 }]);
+    await admin("rebuild", {});
+    await job();
+    expect(await cells()).toEqual([{ day: day(1), skill: 1, stated: 6, n: 6 }]);
+    await checkAgainstReference(new Set());
+  });
+
+  it("keeps a banned contributor's files as b files, and drops its rows with its rounds", async () => {
+    const c = await setup();
+    expect((await admin("ban", { id: c.id })).status).toBe(200);
+    await job();
+    expect(await cells()).toEqual([]);
     expect((await call("/api/v1/me/unlink", { body: {}, key: c.key })).status).toBe(200);
     await job();
-    expect(await one("SELECT (SELECT count(*) FROM tsum_lists) + (SELECT count(*) FROM device_links) + (SELECT count(*) FROM skill_bound) AS n")).toEqual({ n: 0 });
-    expect(await r2keys(`archive/lists/c${c.id}/`)).toEqual([]);
-    // Its rounds are no one's now, and count as recorded.
-    expect(await cells()).toEqual([{ day: day(1), skill: 6, stated: 6, n: 6 }]);
+    expect(await one("SELECT (SELECT count(*) FROM tsum_lists) + (SELECT count(*) FROM device_links) + (SELECT count(*) FROM skill_bound) + (SELECT count(*) FROM rounds) AS n")).toEqual({ n: 0 });
+    const files = await r2keys("archive/lists/");
+    expect(files).toHaveLength(2);
+    expect(files.every(f => /^archive\/lists\/b[0-9a-f]{16}\//.test(f))).toBe(true);
+    for (const f of files) expect(await r2json(f)).toMatchObject({ contributor: null });
   });
 });
