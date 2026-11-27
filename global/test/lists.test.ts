@@ -73,6 +73,21 @@ describe("POST /api/v1/lists", () => {
     expect((await call("/api/v1/lists", { body: { schema: "gap.tsum-lists/1", lists: [good] } })).status).toBe(401);
   });
 
+  it("is taken at the uploads' URL too, with a key or with none (a join first), for the Tsum script", async () => {
+    const c = await joinNew();
+    const body = { schema: "gap.tsum-lists/1", lists: [list("b7", NOW, { mickey: 1, ...OTHERS })], links: [{ build: "global", tag: TAG_A, list: "b7".padEnd(16, "0") }] };
+    expect(await json(call("/api/v1/rounds", { body, key: c.key }))).toMatchObject({ ok: true, accepted: 1, links: { accepted: 1 }, lists: 1 });
+    const keyless = await json<{ ok: boolean; id: number; key: string; accepted: number }>(call("/api/v1/rounds", { body, ip: "198.51.100.200" }));
+    expect(keyless).toMatchObject({ ok: true, accepted: 1 });
+    expect(keyless.id).toBeGreaterThan(c.id);
+    expect(keyless.key).toHaveLength(43);
+    expect(await rows("SELECT contributor FROM tsum_lists ORDER BY contributor")).toEqual([{ contributor: c.id }, { contributor: keyless.id }]);
+    // A body that cannot be read makes no contributor.
+    const before = await one<{ n: number }>("SELECT count(*) AS n FROM contributors");
+    expect((await call("/api/v1/rounds", { body: { schema: "gap.tsum-lists/1" }, ip: "198.51.100.201" })).status).toBe(400);
+    expect(await one("SELECT count(*) AS n FROM contributors")).toEqual(before);
+  });
+
   it("is refused past the day's budget, and writes a row a list", async () => {
     const c = await joinNew();
     const k = counted();

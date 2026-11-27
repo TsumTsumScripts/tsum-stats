@@ -575,8 +575,12 @@ Tsums one JSON value, one row a link, and one for the queue. No quota, no age
 limit. Nothing is worked out in the request: the contributor goes into
 `state` `evidence_queue` for the hourly job (§3.2, step 1b').
 
-The Tsum script has no part in this yet: its uploads are keyless (§2.2.1) and
-this route takes a key.
+**At the uploads' URL too.** `POST /api/v1/rounds` takes a body whose
+`schema` is `gap.tsum-lists/1` exactly as this route does, with a key or, as
+§2.2.1, with none (a join first, the reply carrying `id` and `key`): the Tsum
+script can send to that one URL only. The script does not send lists yet;
+when it does, it knows its own device tag, so it can send its device's link
+with each list and no player has to name an account.
 
 ## 3. Storage
 

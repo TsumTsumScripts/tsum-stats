@@ -69,13 +69,23 @@ export const QUEUE_EVIDENCE = `INSERT INTO state (key, value) VALUES ('evidence_
 
 /** POST /api/v1/lists: `{schema, lists: [...], links: [...]}` (CONTRACT §2.8). */
 export async function postLists(req: Request, env: Env, c: Contributor, nowMs: number): Promise<Response> {
-  const body = await readObject(req);
+  return ok(await storeLists(await readObject(req), env, c, nowMs));
+}
+
+/** Checks a gap.tsum-lists/1 body's shape: 400 for one that cannot be read. */
+export function checkLists(body: Record<string, unknown>): void {
   const lists = body.lists ?? [], links = body.links ?? [];
   const objects = (a: unknown) => Array.isArray(a) && a.every(x => x !== null && typeof x === "object" && !Array.isArray(x));
   if (body.schema !== LISTS_SCHEMA || !objects(lists) || !objects(links) || (lists as unknown[]).length > MAX_LISTS ||
     (links as unknown[]).length > MAX_LINKS || (lists as unknown[]).length + (links as unknown[]).length < 1) {
     throw new HttpError(400, "bad-request");
   }
+}
+
+/** Stores one gap.tsum-lists/1 body under contributor c; the reply's fields. */
+export async function storeLists(body: Record<string, unknown>, env: Env, c: Contributor, nowMs: number): Promise<Record<string, unknown>> {
+  checkLists(body);
+  const lists = body.lists ?? [], links = body.links ?? [];
   const db = env.DB, lim = limits(env), now = Math.floor(nowMs / 1000);
   const reply = { accepted: 0, unchanged: 0, invalid: 0, links: { accepted: 0, unchanged: 0, invalid: 0 } };
 
@@ -138,7 +148,7 @@ export async function postLists(req: Request, env: Env, c: Contributor, nowMs: n
     stmts.push(db.prepare(QUEUE_EVIDENCE).bind(c.id));
     await spend(db, nowMs, { est: write.length + writeLinks.length + 1, cap: lim.budget - lim.reserve, reads, checks: [db.prepare(LINKED_CHECK).bind(c.id)] }, stmts);
   }
-  return ok({ ...reply, lists: LISTS });
+  return { ...reply, lists: LISTS };
 }
 
 // ---- The job's step ----

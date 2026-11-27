@@ -16,7 +16,7 @@ import { HttpError, ok, readObject } from "./http";
 import { checkRecords, isJackpot, type Round } from "./records";
 import { fixContext, trustedVersion } from "../../ui/src/lib/skillFix.js";
 import { isMedalTsum } from "./catalog";
-import { LISTS } from "./lists";
+import { LISTS, LISTS_SCHEMA, checkLists, storeLists } from "./lists";
 
 export const SCHEMA = "gap.round-stats/1";
 export const MAX_RECORDS = 250;
@@ -220,17 +220,21 @@ function readBatch(body: Record<string, unknown>): Record<string, unknown>[] {
 
 /** POST /api/v1/rounds, with a key, or with none to join first. */
 export async function postRounds(req: Request, env: Env, nowMs: number): Promise<Response> {
+  // A gap.tsum-lists/1 body is taken here too (CONTRACT §2.8): the Tsum script can reach this URL only.
   if (req.headers.has("authorization")) {
     const c = await authContributor(req, env);
-    return ok(await ingest(readBatch(await readObject(req)), env, c, nowMs));
+    const body = await readObject(req);
+    return ok(body.schema === LISTS_SCHEMA ? await storeLists(body, env, c, nowMs) : await ingest(readBatch(body), env, c, nowMs));
   }
   // The batch is read before joining, so a bad one makes no contributor.
   const body = await readObject(req);
-  const records = readBatch(body);
+  const isLists = body.schema === LISTS_SCHEMA;
+  if (isLists) checkLists(body);
+  const records = isLists ? [] : readBatch(body);
   const c = await makeContributor(req, env, nowMs, body.client);
   const made = { id: c.id, key: c.key };
   try {
-    return ok({ ...(await ingest(records, env, c, nowMs)), ...made });
+    return ok({ ...(isLists ? await storeLists(body, env, c, nowMs) : await ingest(records, env, c, nowMs)), ...made });
   } catch (e) {
     // The key is the sender's only way back to this contributor: a refused
     // batch still hands it over.
