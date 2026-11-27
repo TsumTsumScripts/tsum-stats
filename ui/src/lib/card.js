@@ -210,8 +210,15 @@ function cardBody(from, info) {
   body.classList.add('cc-body');
   condenseTables(body, info.unit);
   body.querySelectorAll(DROP).forEach(n => n.remove());
-  // A Tsum name that is a button in the page is plain text in the picture.
-  body.querySelectorAll('button').forEach(b => b.replaceWith(...b.childNodes));
+  // A button is a span in the picture, keeping its class: a Tsum name's
+  // (linkish, all: unset) stays plain text, and a row that is a button (the
+  // best earners) keeps its layout instead of its parts stacking as blocks.
+  body.querySelectorAll('button').forEach(b => {
+    const s = el('span', b.getAttribute('class') ?? '');
+    if (b.hasAttribute('style')) s.setAttribute('style', b.getAttribute('style'));
+    s.append(...b.childNodes);
+    b.replaceWith(s);
+  });
   return body;
 }
 
