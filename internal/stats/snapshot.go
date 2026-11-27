@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -78,8 +79,13 @@ type snapshotManifest struct {
 	SkillTypes []SkillTypeCount `json:"skillTypes"`
 	// PlaySettings is PlayedPlaySettings, for the filters' options.
 	PlaySettings map[string][]PlayValue `json:"playSettings"`
-	// SkillLevels is PlayedSkillLevels, for the skill filter.
-	SkillLevels []PlayValue `json:"skillLevels"`
+	// SkillLevels is PlayedSkillLevels, for the skill filter: the levels rounds
+	// count at, and SkillLevelsRecorded the recorded ones.
+	SkillLevels         []PlayValue `json:"skillLevels"`
+	SkillLevelsRecorded []PlayValue `json:"skillLevelsRecorded"`
+	// SkillFixes is SkillFixes, the runs counted at another level and why,
+	// without the device tags they came from.
+	SkillFixes []SkillFix `json:"skillFixes"`
 	// MedalTsums is medalTsumsSQL, for the engine's completeness and medal range.
 	MedalTsums []string `json:"medalTsums"`
 	Themes     []Theme  `json:"themes"`
@@ -142,6 +148,10 @@ type monthFile struct {
 	// Between is each round's time between rounds (summary.go: gapsSQL),
 	// 0 when none; a snapshot from before it has none, and so no such figure.
 	Between []float64 `json:"between"`
+	// SkillFix is the skill level each round counts at where the correction
+	// re-filed it (skillfix.go), 0 where its recorded level stands. Left out
+	// of a month with none re-filed, and of a snapshot from before it.
+	SkillFix []int `json:"skillFix,omitempty"`
 }
 
 // dictionary numbers distinct strings in the order they first appear.
@@ -193,6 +203,12 @@ func encodeMonth(month string, rounds []Round, devices func(string) string) ([]b
 		m.Medals = append(m.Medals, r.Medals)
 		m.Items = append(m.Items, r.Items)
 		m.Between = append(m.Between, r.Between)
+		if r.SkillEff != r.SkillLevel {
+			if m.SkillFix == nil {
+				m.SkillFix = make([]int, len(rounds))
+			}
+			m.SkillFix[i], _ = strconv.Atoi(r.SkillEff)
+		}
 	}
 	m.Dict.Tsum, m.Dict.Build, m.Dict.SkillType = orEmpty(tsum.values), orEmpty(build.values), orEmpty(skill.values)
 	m.Dict.ScriptVersion, m.Dict.Device, m.Dict.Source = orEmpty(ver.values), orEmpty(device.values), orEmpty(source.values)
@@ -243,7 +259,7 @@ func ExportSnapshot(db dbx.Builder, site fs.FS, dir string, o SnapshotOptions) (
 	}
 
 	var rounds []Round
-	if err := db.NewQuery("SELECT " + roundColumns + " FROM ts_rounds ORDER BY played_at, round_id").All(&rounds); err != nil {
+	if err := db.NewQuery("SELECT " + roundColumns + ", skill_level, skill_eff FROM ts_rounds ORDER BY played_at, round_id").All(&rounds); err != nil {
 		return res, err
 	}
 	var gaps []struct {
@@ -338,8 +354,17 @@ func ExportSnapshot(db dbx.Builder, site fs.FS, dir string, o SnapshotOptions) (
 	if man.SkillTypes, err = PlayedSkillTypes(db); err != nil {
 		return res, err
 	}
-	if man.SkillLevels, err = PlayedSkillLevels(db); err != nil {
+	if man.SkillLevels, err = PlayedSkillLevels(db, false); err != nil {
 		return res, err
+	}
+	if man.SkillLevelsRecorded, err = PlayedSkillLevels(db, true); err != nil {
+		return res, err
+	}
+	if man.SkillFixes, err = SkillFixes(db, ""); err != nil {
+		return res, err
+	}
+	for i := range man.SkillFixes {
+		man.SkillFixes[i].Player = ""
 	}
 	if man.PlaySettings, err = PlayedPlaySettings(db); err != nil {
 		return res, err

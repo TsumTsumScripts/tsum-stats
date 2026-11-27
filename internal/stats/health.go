@@ -32,7 +32,7 @@ type ReadStat struct {
 }
 
 // VersionCell is one script version's expected coins on one Tsum at one skill
-// level with one item set (skillLevelSQL's text, itemsSQL).
+// level with one item set (Filter.skill's text, itemsSQL).
 type VersionCell struct {
 	Version string `db:"version" json:"version"`
 	Tsum    string `db:"tsum" json:"tsum"`
@@ -66,7 +66,7 @@ func DescribeHealth(db dbx.Builder, f Filter) (Health, error) {
 			return db.NewQuery(`SELECT device AS k, ` + readStats + ` FROM ts_rounds` + aw + ` GROUP BY k ORDER BY rounds DESC, k`).Bind(ap).All(&h.Devices)
 		},
 		func() error {
-			return db.NewQuery(`SELECT script_version AS version, tsum, ` + skillLevelSQL + ` AS skill, ` + itemsSQL + ` AS items, ` + expCols + `
+			return db.NewQuery(`SELECT script_version AS version, tsum, ` + f.skill() + ` AS skill, ` + itemsSQL + ` AS items, ` + expCols + `
 				FROM ts_rounds` + where + ` GROUP BY version, tsum, skill, items ORDER BY version, tsum, skill, items`).Bind(p).All(&h.Cells)
 		},
 	})

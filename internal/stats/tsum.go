@@ -131,6 +131,15 @@ const settingValueSQL = `(CASE j.type WHEN 'true' THEN 'true' WHEN 'false' THEN 
 	WHEN 'real' THEN (CASE WHEN j.value = CAST(j.value AS INTEGER) THEN CAST(CAST(j.value AS INTEGER) AS TEXT) ELSE CAST(j.value AS TEXT) END)
 	ELSE CAST(j.value AS TEXT) END)`
 
+// settingValue is settingValueSQL with a re-filed round's skillLevel as the
+// level it counts at (skillfix.go), unless f counts levels as recorded.
+func (f Filter) settingValue() string {
+	if f.AsRecorded {
+		return settingValueSQL
+	}
+	return "(CASE WHEN j.key = 'skillLevel' AND skill_eff <> skill_level THEN skill_eff ELSE " + settingValueSQL + " END)"
+}
+
 // groupStats are GroupStat's columns for the primary stat c.
 func groupStats(c string) string { return groupStatsWith(c, expCols) }
 
@@ -169,7 +178,7 @@ func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *
 		func() error {
 			// Each round's expected coins once, before json_each makes a row per setting of it.
 			return db.NewQuery(`WITH r AS MATERIALIZED (SELECT *, ` + expSQL + ` AS ev FROM ts_rounds` + where + `)
-				SELECT j.key AS setting, ` + settingValueSQL + ` AS k, ` + groupStatsWith(c, expColsOf("ev", "ev IS NOT NULL")) + `
+				SELECT j.key AS setting, ` + f.settingValue() + ` AS k, ` + groupStatsWith(c, expColsOf("ev", "ev IS NOT NULL")) + `
 				FROM r, json_each(` + settingsSQL + `) AS j WHERE j.type NOT IN ('object', 'array')
 				GROUP BY setting, k ORDER BY setting, k`).Bind(p).All(&d.Settings)
 		},
@@ -182,7 +191,7 @@ func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *
 			// The inner names (it, st) differ from the columns, so items and skill_type stay the rounds' own inside the sums.
 			return db.NewQuery(`SELECT skill, it AS items, scan, chain, bubble, st AS skill_type,
 				skill || ',' || it || ',' || scan || ',' || chain || ',' || bubble || ',' || st AS k, ` + groupStats(c) + `
-				FROM (SELECT *, ` + skillLevelSQL + ` AS skill, ` + itemsSQL + ` AS it, skill_type AS st, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` +
+				FROM (SELECT *, ` + f.skill() + ` AS skill, ` + itemsSQL + ` AS it, skill_type AS st, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` +
 				playSettingSQL(PlaySettings[1]) + ` AS chain, ` + playSettingSQL(PlaySettings[2]) + ` AS bubble FROM ts_rounds` + where + `)
 				GROUP BY skill, it, scan, chain, bubble, st ORDER BY rounds DESC, k`).Bind(p).All(&d.Combos)
 		},
@@ -241,7 +250,7 @@ func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *
 		sw, sp := f.whereAnd(skillWhere, c+" IS NOT NULL")
 		sp["w"], sp["cap"] = width, limit
 		err = db.NewQuery(`SELECT k, ` + bucketSQL + ` AS bucket, COUNT(*) AS rounds
-			FROM (SELECT ` + settingValueSQL + ` AS k, ` + c + ` AS v FROM ts_rounds, ` + skillSQL + sw + `)
+			FROM (SELECT ` + f.settingValue() + ` AS k, ` + c + ` AS v FROM ts_rounds, ` + skillSQL + sw + `)
 			GROUP BY k, bucket ORDER BY k, bucket`).Bind(sp).All(&d.SkillBins)
 	}
 	if err != nil || d.Jackpots == nil || d.Jackpots.Rounds == 0 {

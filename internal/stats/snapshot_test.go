@@ -215,6 +215,11 @@ func TestSnapshotParity(t *testing.T) {
 		}
 	})
 	addTsumLists(t, app)
+	// A run the skill level correction moves, so the engine's effective levels are held to the server's.
+	fillRefiled(t, app)
+	if err := Refile(app.DB()); err != nil {
+		t.Fatal(err)
+	}
 	dir := t.TempDir()
 	// Keep the device names so rounds can be compared whole.
 	if _, err := ExportSnapshot(app.DB(), fstest.MapFS{"index.html": {Data: []byte("<head></head>")}}, dir, SnapshotOptions{Devices: DevicesKeep}); err != nil {
@@ -379,6 +384,15 @@ func TestSnapshotParity(t *testing.T) {
 	tsumCase("unknown", map[string]string{"id": "nope"})
 	tsumCase("mickey, one skill type", map[string]string{"id": "mickey", "skillType": "pair_tsum"})
 	tsumCase("mickey, one chain", map[string]string{"id": "mickey", "chain": "4,-"})
+	// The skill level correction: the levels rounds count at, and as recorded.
+	tsumCase("donald, re-filed", map[string]string{"id": "donald"})
+	tsumCase("donald, as recorded", map[string]string{"id": "donald", "levels": "recorded"})
+	tsumCase("donald, level 3 as recorded", map[string]string{"id": "donald", "levels": "recorded", "skill": "3"})
+	summary("levels as recorded", map[string]string{"levels": "recorded"})
+	summary("level 5", map[string]string{"skill": "5"})
+	summary("level 3 or none, as recorded", map[string]string{"skill": "3,-", "levels": "recorded"})
+	roundsCase("level 5 of donald", map[string]string{"tsum": "donald", "skill": "5", "perPage": "200"}, false)
+	roundsCase("level 3 of donald, as recorded", map[string]string{"tsum": "donald", "skill": "3", "levels": "recorded"}, false)
 
 	tsums, _ := PlayedTsums(app.DB())
 	devices, _ := PlayedDevices(app.DB())
@@ -390,11 +404,24 @@ func TestSnapshotParity(t *testing.T) {
 		t.Fatalf("too few play setting values to test with: %v", play)
 	}
 	cases = append(cases, testCase{Name: "played play settings", Route: "play-settings", Params: map[string]any{}, Expected: roundtrip(play)})
-	levels, _ := PlayedSkillLevels(app.DB())
+	levels, _ := PlayedSkillLevels(app.DB(), false)
 	cases = append(cases, testCase{Name: "played skill levels", Route: "skill-levels", Params: map[string]any{}, Expected: roundtrip(levels)})
+	recorded, _ := PlayedSkillLevels(app.DB(), true)
+	if fmt.Sprint(levels) == fmt.Sprint(recorded) {
+		t.Fatal("the correction moved no round, so its cases test nothing")
+	}
+	cases = append(cases, testCase{Name: "recorded skill levels", Route: "skill-levels", Params: map[string]any{"levels": "recorded"}, Expected: roundtrip(recorded)})
+	// The snapshot leaves out which device a re-filed run came from.
+	fixes, _ := SkillFixes(app.DB(), "")
+	for i := range fixes {
+		fixes[i].Player = ""
+	}
+	cases = append(cases, testCase{Name: "skill fixes", Route: "skill-fixes", Params: map[string]any{}, Expected: roundtrip(fixes)},
+		testCase{Name: "skill fixes of one Tsum", Route: "skill-fixes", Params: map[string]any{"tsum": "donald"}, Expected: roundtrip(fixes)},
+		testCase{Name: "skill fixes of another", Route: "skill-fixes", Params: map[string]any{"tsum": "daisy"}, Expected: roundtrip([]SkillFix{})})
 	for name, q := range map[string]map[string]string{
 		"everything": {}, "one Tsum": {"tsum": "elsa"}, "a range": {"from": "2026-09-05 00:00:00", "to": "2026-09-20 00:00:00"},
-		"incomplete kept": {"incomplete": "1"}, "final net": {"coins": "final", "net": "1"},
+		"incomplete kept": {"incomplete": "1"}, "final net": {"coins": "final", "net": "1"}, "levels as recorded": {"levels": "recorded"},
 	} {
 		v := url.Values{}
 		params := map[string]any{}

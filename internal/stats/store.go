@@ -23,6 +23,11 @@ type Round struct {
 	Device        string   `db:"device" json:"device"`
 	Settings      string   `db:"settings" json:"-"`
 	Source        string   `db:"source" json:"source"`
+	// SkillLevel is the recorded skill level (skillLevelSQL), SkillEff the one
+	// it counts at (skillfix.go); the same unless the correction re-filed it.
+	// Only the rounds page fills them.
+	SkillLevel string `db:"skill_level" json:"skillLevel"`
+	SkillEff   string `db:"skill_eff" json:"skillEffective"`
 	// Items is the boost-item bitmask from Settings (see itemBits); nil when unknown.
 	Items *int `db:"-" json:"items"`
 	// Between is the time between this round and the one before on its device

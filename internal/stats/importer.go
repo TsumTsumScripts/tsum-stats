@@ -22,6 +22,8 @@ type Importer struct {
 	mu   sync.Mutex
 	// changed is called after an import that stored something.
 	changed func(ImportResult)
+	// stored is the Tsums whose rounds were stored since the last refile.
+	stored map[string]bool
 }
 
 // ImportResult says what one scan or upload stored.
@@ -104,6 +106,7 @@ func (im *Importer) Scan() ImportResult {
 			return nil
 		})
 	}
+	im.refile(&res)
 	im.notify(res)
 	return res
 }
@@ -135,6 +138,7 @@ func (im *Importer) ImportFiles(paths []string) ImportResult {
 		}
 		im.remember(path, info)
 	}
+	im.refile(&res)
 	im.notify(res)
 	return res
 }
@@ -155,6 +159,7 @@ func (im *Importer) Import(name string, r io.Reader) (ImportResult, error) {
 	if err := im.importData(name, data, "", &res); err != nil {
 		return res, err
 	}
+	im.refile(&res)
 	im.notify(res)
 	return res, nil
 }
@@ -210,6 +215,12 @@ func (im *Importer) importData(name string, data []byte, fallbackDevice string, 
 	if err == nil {
 		res.Files++
 		res.Rounds += len(rounds)
+		for _, r := range rounds {
+			if im.stored == nil {
+				im.stored = map[string]bool{}
+			}
+			im.stored[r.Tsum] = true
+		}
 	}
 	return err
 }
@@ -225,6 +236,22 @@ func (im *Importer) remember(path string, info fs.FileInfo) {
 	_, _ = im.app.DB().NewQuery(`INSERT INTO ts_imports (path, size, mtime) VALUES ({:p}, {:s}, {:m})
 		ON CONFLICT (path) DO UPDATE SET size = excluded.size, mtime = excluded.mtime`).
 		Bind(dbx.Params{"p": path, "s": info.Size(), "m": info.ModTime().UnixNano()}).Execute()
+}
+
+// refile works out again the effective skill level of the Tsums whose rounds
+// were just stored (skillfix.go: Refile), once per import however many files.
+func (im *Importer) refile(res *ImportResult) {
+	if len(im.stored) == 0 {
+		return
+	}
+	tsums := make([]string, 0, len(im.stored))
+	for t := range im.stored {
+		tsums = append(tsums, t)
+	}
+	im.stored = nil
+	if err := Refile(im.app.DB(), tsums...); err != nil {
+		res.Errors = append(res.Errors, "skill levels: "+err.Error())
+	}
 }
 
 func (im *Importer) notify(res ImportResult) {

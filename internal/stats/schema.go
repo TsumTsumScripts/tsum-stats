@@ -65,6 +65,27 @@ var schema = []string{
 		size  INTEGER NOT NULL,
 		mtime INTEGER NOT NULL
 	)`,
+	// The runs of rounds counted at another skill level than recorded, and why
+	// (skillfix.go: Refile). Made again from the rounds, so nothing is lost with it.
+	`CREATE TABLE IF NOT EXISTS ts_skill_fixes (
+		tsum        TEXT NOT NULL,
+		player      TEXT NOT NULL,
+		from_level  INTEGER NOT NULL,
+		to_level    INTEGER NOT NULL,
+		rounds      INTEGER NOT NULL,
+		first       TEXT NOT NULL,
+		last        TEXT NOT NULL,
+		rule        TEXT NOT NULL,
+		context     INTEGER NOT NULL,
+		n           INTEGER NOT NULL,
+		mid         REAL NOT NULL,
+		against_n   INTEGER NOT NULL,
+		against_mid REAL NOT NULL,
+		ratio       REAL NOT NULL,
+		confidence  TEXT NOT NULL,
+		medals      INTEGER NOT NULL DEFAULT 0
+	)`,
+	`CREATE INDEX IF NOT EXISTS ts_skill_fixes_tsum ON ts_skill_fixes (tsum)`,
 	// What the global stats site has taken (global.go), so a round is sent
 	// again only when its record changes. hash is the record's fingerprint.
 	`CREATE TABLE IF NOT EXISTS ts_global_sent (
@@ -127,15 +148,37 @@ func migrate(app core.App) error {
 	if err := addItemsColumn(app); err != nil {
 		return err
 	}
-	return rereadListsOnce(app, "device-from-folder")
+	if err := rereadListsOnce(app, "device-from-folder"); err != nil {
+		return err
+	}
+	return refileOnce(app)
+}
+
+// refileOnce works out every round's effective skill level (Refile) once per
+// SkillFixVersion: for a database from before the correction, and again when
+// its rules change. After that, whoever stores rounds keeps it up.
+func refileOnce(app core.App) error {
+	path := "migration:skill-fix-" + SkillFixVersion
+	var n int
+	err := app.DB().NewQuery(`SELECT COUNT(*) FROM ts_imports WHERE path = {:p}`).Bind(dbx.Params{"p": path}).Row(&n)
+	if err != nil || n > 0 {
+		return err
+	}
+	if err := Refile(app.DB()); err != nil {
+		return err
+	}
+	_, err = app.DB().NewQuery(`INSERT INTO ts_imports (path, size, mtime) VALUES ({:p}, 0, 0)`).Bind(dbx.Params{"p": path}).Execute()
+	return err
 }
 
 // addItemsColumn gives ts_rounds the columns worked out from settings once
 // instead of in every query: items, a round's boost-item bitmask (itemBits),
 // NULL when its settings predate the items (itemsMaskSQL), and skill_level,
-// its skill level 1-10 as text, '' when none (skillLevelOf). Triggers keep
-// them in step with settings whoever writes the row, and rows from before a
-// column are filled in here.
+// its skill level 1-10 as text, '' when none (skillLevelOf), and skill_eff,
+// the level it counts at (skillfix.go), which starts as skill_level and which
+// Refile moves. Triggers keep them in step with settings whoever writes the
+// row (so a round stored again counts as recorded until Refile runs), and
+// rows from before a column are filled in here.
 func addItemsColumn(app core.App) error {
 	cols := []struct {
 		name, def string
@@ -143,6 +186,7 @@ func addItemsColumn(app core.App) error {
 	}{
 		{"items", "INTEGER", itemsMaskSQL},
 		{"skill_level", "TEXT NOT NULL DEFAULT ''", skillLevelOf},
+		{"skill_eff", "TEXT NOT NULL DEFAULT ''", skillLevelOf},
 	}
 	var qs []string
 	sets := make([]string, len(cols))

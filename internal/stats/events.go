@@ -258,6 +258,10 @@ func (ev *Events) roundEnd(device string, line wireLine, data roundData) {
 		ev.app.Logger().Error("Could not store a round from an event", slog.String("id", r.ID), slog.String("error", err.Error()))
 		return
 	}
+	// One more round can change a run's verdict (skillfix.go).
+	if err := Refile(ev.app.DB(), r.Tsum); err != nil {
+		ev.app.Logger().Error("Could not work out skill levels after a round", slog.String("tsum", r.Tsum), slog.String("error", err.Error()))
+	}
 	if ev.roundStored != nil {
 		ev.roundStored(r)
 	}

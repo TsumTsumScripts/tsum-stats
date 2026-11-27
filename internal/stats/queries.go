@@ -25,9 +25,12 @@ type Filter struct {
 	// Skills are the skill levels to keep, as skillLevelSQL's text; "" is the
 	// rounds that recorded none. The global site's skill filter.
 	Skills []string
-	Build  string
-	From   string // sqlTime, inclusive, UTC
-	To     string // sqlTime, exclusive, UTC
+	// AsRecorded counts every round at its recorded skill level (skill_level)
+	// instead of the level the correction files it under (skill_eff, skillfix.go).
+	AsRecorded bool
+	Build      string
+	From       string // sqlTime, inclusive, UTC
+	To         string // sqlTime, exclusive, UTC
 	// The outlier ranges, each bound inclusive. Coins are base or final coins
 	// (never medals); the medal range only judges medal Tsums' rounds.
 	MinCoins, MaxCoins   *int64
@@ -158,6 +161,18 @@ var PlaySettings = []PlaySetting{
 // (addItemsColumn) holds skillLevelOf(settings).
 const skillLevelSQL = "skill_level"
 
+// skillEffSQL is the level a round counts at: skillLevelSQL's, or another
+// where the skill level correction re-filed it (skillfix.go: Refile).
+const skillEffSQL = "skill_eff"
+
+// skill is the column the figures split and filter skill levels by.
+func (f Filter) skill() string {
+	if f.AsRecorded {
+		return skillLevelSQL
+	}
+	return skillEffSQL
+}
+
 // skillLevelOf is skillLevelSQL's value for the settings JSON in col.
 func skillLevelOf(col string) string {
 	obj := "(CASE WHEN json_valid(" + col + ") AND json_type(" + col + ") = 'object' THEN " + col + " ELSE '{}' END)"
@@ -185,7 +200,8 @@ func playSettingSQL(ps PlaySetting) string {
 // the rounds without one), skill (skill levels, NoSkillType or -1 for none), build, from, to, the outlier
 // ranges (min/max Coins, Score, Medals), incomplete ("1" keeps rounds with an
 // unread figure), coins (the primary stat: "final", "medals", or base coins by
-// default) and net ("1" subtracts the items' cost from coins).
+// default), net ("1" subtracts the items' cost from coins) and levels
+// ("recorded" counts skill levels as recorded, without the correction).
 // from/to are UTC in either the sqlTime or the ISO form; the page sends the
 // user's local day bounds already converted.
 func ParseFilter(q url.Values) Filter {
@@ -243,6 +259,7 @@ func ParseFilter(q url.Values) Filter {
 	f.FinalCoins = q.Get("coins") == "final"
 	f.Medals = q.Get("coins") == "medals"
 	f.Net = q.Get("net") == "1"
+	f.AsRecorded = q.Get("levels") == "recorded"
 	return f
 }
 
@@ -309,7 +326,7 @@ func (f Filter) where() (string, dbx.Params) {
 			names[i] = "{:" + key + "}"
 			p[key] = v
 		}
-		parts = append(parts, skillLevelSQL+" IN ("+strings.Join(names, ",")+")")
+		parts = append(parts, f.skill()+" IN ("+strings.Join(names, ",")+")")
 	}
 	if f.Build != "" {
 		parts = append(parts, "build = {:build}")
@@ -401,7 +418,7 @@ func RoundsPage(db dbx.Builder, f Filter, sort string, page, perPage int) ([]Rou
 	if col != "played_at" {
 		order += " NULLS LAST"
 	}
-	q := "SELECT " + roundColumns + " FROM ts_rounds" + where +
+	q := "SELECT " + roundColumns + ", skill_level, skill_eff FROM ts_rounds" + where +
 		" ORDER BY " + order + ", round_id " + dir + " LIMIT {:limit} OFFSET {:offset}"
 	var rows []Round
 	err := db.NewQuery(q).Bind(p).All(&rows)
@@ -461,10 +478,11 @@ func PlayedPlaySettings(db dbx.Builder) (map[string][]PlayValue, error) {
 }
 
 // PlayedSkillLevels is each skill level (skillLevelSQL's text) with at least
-// one round, not recorded among them as "", for the Stats rail's skill filter.
-func PlayedSkillLevels(db dbx.Builder) ([]PlayValue, error) {
+// one round, not recorded among them as "", for the Stats rail's skill filter:
+// the levels rounds count at, or with asRecorded the recorded ones.
+func PlayedSkillLevels(db dbx.Builder, asRecorded bool) ([]PlayValue, error) {
 	out := []PlayValue{}
-	err := db.NewQuery(`SELECT ` + skillLevelSQL + ` AS value, COUNT(*) AS rounds FROM ts_rounds
+	err := db.NewQuery(`SELECT ` + Filter{AsRecorded: asRecorded}.skill() + ` AS value, COUNT(*) AS rounds FROM ts_rounds
 		GROUP BY value ORDER BY rounds DESC, value`).All(&out)
 	return out, err
 }

@@ -593,6 +593,8 @@ export function createGlobalEngine(loader) {
       bonus: {tsums: [], daily: [], all: []},
       medals: plain(medals, f.medals ? dailyTsums : dayTsums(medalSel, 'medals')),
       // Only complete rounds are sent here: none is left out for an unread figure.
+      // The cells are by recorded level until the Worker re-files (CONTRACT §3.2): none yet.
+      refiled: [],
       incompleteRounds: 0,
       // spreads: whether the primary stat's quartiles, P90 and histogram are there.
       // range: the outlier range applied ('base', 'final' or 'medals'), and ignored: those that were not.
@@ -788,7 +790,7 @@ export function createGlobalEngine(loader) {
         case 'skill-levels': return (await getManifest()).skills.map(s => ({value: String(s), rounds: null}));
         case 'status': return status();
         case 'themes': return THEMES.map(t => ({...t}));
-        case 'devices': case 'round-devices': case 'owned-sources': case 'owned-history': return [];
+        case 'devices': case 'round-devices': case 'owned-sources': case 'owned-history': case 'skill-fixes': return [];
         case 'owned': return {list: null};
         default: throw new Error(`${path}: not available on the global site`);
       }

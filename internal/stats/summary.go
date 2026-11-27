@@ -28,6 +28,10 @@ type Summary struct {
 	// Medals are the same totals and per-Tsum figures for medals, over the
 	// rounds that earned any, so the page can show them beside coins.
 	Medals StatSet `json:"medals"`
+	// Refiled is the rounds counted at another skill level than recorded
+	// (skillfix.go), per Tsum and pair of levels; with Filter.AsRecorded, the
+	// rounds the correction would move.
+	Refiled []Refiled `json:"refiled"`
 	// Incomplete is the rounds the rest of the filter keeps that were left out
 	// for an unread figure (completeSQL); 0 when the filter keeps them.
 	Incomplete int64 `json:"incompleteRounds"`
@@ -210,7 +214,8 @@ type DayTsumStat struct {
 
 // MixStat is one build × Tsum × skill level × boost-item combination. The
 // page folds it into the sunburst and the items chart, and judges items within
-// a skill level. Skill is skillLevelSQL's text, "" when not recorded.
+// a skill level. Skill is the level the rounds count at (Filter.skill), ""
+// when not recorded.
 type MixStat struct {
 	Build      string   `db:"build" json:"build"`
 	Tsum       string   `db:"tsum" json:"tsum"`
@@ -453,8 +458,9 @@ func Summarize(db dbx.Builder, f Filter, tzMinutes int) (Summary, error) {
 			return db.NewQuery(`SELECT COUNT(*) FROM ts_rounds` + w).Bind(ap).Row(&s.Incomplete)
 		},
 		func() (err error) { s.Bonus, err = coinBonus(db, f, tzMinutes); return err },
+		func() (err error) { s.Refiled, err = refiledStats(db, f); return err },
 		func() error {
-			return db.NewQuery(`SELECT build, tsum, ` + skillLevelSQL + ` AS skill, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` + playSettingSQL(PlaySettings[1]) + ` AS chain,
+			return db.NewQuery(`SELECT build, tsum, ` + f.skill() + ` AS skill, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` + playSettingSQL(PlaySettings[1]) + ` AS chain,
 				COUNT(*) AS rounds, SUM(` + c + `) AS coins, COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs, ` + expCols + `
 				FROM ts_rounds` + where + ` GROUP BY build, tsum, skill, scan, chain ORDER BY rounds DESC, build, tsum, skill, scan, chain`).Bind(p).All(&s.Chains)
 		},
@@ -489,7 +495,7 @@ func mixStats(db dbx.Builder, f Filter) ([]MixStat, error) {
 	c := f.col()
 	where, p := f.where()
 	mix := []MixStat{}
-	err := db.NewQuery(`SELECT build, tsum, ` + skillLevelSQL + ` AS skill, ` + itemsSQL + ` AS items, COUNT(*) AS rounds, SUM(` + c + `) AS coins,
+	err := db.NewQuery(`SELECT build, tsum, ` + f.skill() + ` AS skill, ` + itemsSQL + ` AS items, COUNT(*) AS rounds, SUM(` + c + `) AS coins,
 		COUNT(` + c + `) AS coin_rounds, ` + rateCoins(c) + ` AS rate_coins, ` + rateSecs(c) + ` AS rate_secs, ` + expCols + `
 		FROM ts_rounds` + where + ` GROUP BY build, tsum, skill, items ORDER BY rounds DESC`).Bind(p).All(&mix)
 	return mix, err

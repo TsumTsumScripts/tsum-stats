@@ -98,6 +98,7 @@ Cloudflare account only, never the GAP one (`global/README.md`,
 | `internal/stats/queries.go` | `Filter` (`ParseFilter`, the WHERE), the play settings (`PlaySettings`, `playSettingSQL`), the rounds page and its sort columns, played Tsums, devices, skill types and play settings, the latest Tsum list |
 | `internal/stats/summary.go` | `Summarize`: everything above the tables (KPIs, per day / hour / Tsum / mix, spreads, the coin histogram); item sets and their cost (`itemBits`) |
 | `internal/stats/health.go` | `DescribeHealth`: the Script versions panel's answer (unread figures by version and device, expected coins per version × Tsum × skill × items) |
+| `internal/stats/skillfix.go` | The skill level correction: `Refile` works out the level each round counts at (`ts_rounds.skill_eff`) from all of its Tsum's rounds, `SkillFixes` the runs that moved and why (`ts_skill_fixes`), `refiledStats` a filter's moved rounds. The Go port of `ui/src/lib/skillFix.js` |
 | `internal/stats/tsum.go` | `DescribeTsum`: the Tsum page's answer (by setting, every setting together (`ComboStat`), version, device; form, skill bins, rank) |
 | `internal/stats/art.go` | `Art`: Tsum portraits fetched for the page at `/api/stats/art/{id}` (their origin sends no CORS headers), kept in memory |
 | `internal/stats/server.go` | `Register`, `Config`, `StarterHook`: wiring into PocketBase, the `/api/stats` routes (`registerRoutes`, `registerGlobalRoutes`), the topics `ts/devices`, `ts/rounds`, `ts/imports` and their broadcaster, the loopback and same-origin guards |
@@ -116,7 +117,9 @@ through a fake adb; unzip refusing escapes), `legacy_test.go`, `site_test.go`
 `ui/tests/parity.mjs`), `publish_test.go` (a fake GitHub;
 `TestPageSubscribesToEveryTopic`), `art_test.go` (portraits through a fake
 origin), `global_test.go` (the forwarder against a
-fake Worker), `presets_test.go` (the gallery calls, same fake), `globaldata_test.go` (the global files kept and passed on), `global_parity_test.go` (`TestGlobalParity`, which runs
+fake Worker), `skillfix_test.go` (`TestSkillFixParity` runs
+`ui/tests/skill-fix-parity.mjs`; `TestRefile`, the correction through the
+tables and the figures), `presets_test.go` (the gallery calls, same fake), `globaldata_test.go` (the global files kept and passed on), `global_parity_test.go` (`TestGlobalParity`, which runs
 `global/test/parity.test.ts`).
 
 ### `internal/starter/` -- the service starter's website
@@ -173,6 +176,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `ui/src/lib/names.svelte.js` | The page-wide Tsum name language (`names.lang`: `en`, English else JP; `jp`), set from the top bar's EN/JP toggle, a per-browser preference |
 | `ui/src/lib/expected.js` | Expected net coins (`EXPECTED_BONUS`, `expRate`, `expHour`, `sumExp`): the page's side of `summary.go`'s `Expected` sums |
 | `ui/src/lib/skillCurve.js` | `levelGains`: each Tsum's gain from one skill level to the next, within item sets (the Catalog's what to max next) |
+| `ui/src/lib/skillFix.js` | **The skill level correction's rules** (`refile`, `runsOf`, `FIX` its thresholds, `trustedVersion`): which runs of rounds count at another level than recorded. Shared with the Worker; the server's port is `internal/stats/skillfix.go` |
 | `ui/src/lib/fit.js` | A number too long for its box shows its short form, 1.3B (`fit`, the action; `refit`, which the copy card calls too) |
 | `ui/src/lib/popup.js` | `popup`, the action every popup uses (menus, suggestion lists, the column picker, the tooltip, toasts): the browser's top layer, above every panel and dialog whatever its z-index, placed at its anchor |
 | `ui/src/lib/ui.svelte.js` | Shared page state: catalog, devices, tooltip, toasts, expanded panel, theme |
@@ -189,6 +193,8 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `presets/text.js` | Cleaning a preset's name and description (control and format characters dropped), for the Worker's submit and presets GAP Companion sent |
 | `ui/tests/parity.mjs` | The snapshot engine against the server's answers, run by `TestSnapshotParity` |
 | `ui/tests/share-codes.test.mjs` | The codec against the script's golden codes, and the companion links (`npm run test:codes`) |
+| `ui/tests/skill-fix.test.mjs` | The correction's rules on made-up rounds: what moves and what must not (`npm run test:fix`) |
+| `ui/tests/skill-fix-parity.mjs` | The correction over rounds Go wrote, run by `TestSkillFixParity` |
 | `ui/tests/global-engine.test.mjs` | The global engine against the snapshot engine over the same rounds (`npm run test:global`) |
 
 ## Source map -- the Worker, `global/`
@@ -232,6 +238,7 @@ plain JS, counting D1), `env.d.ts`.
 | `go run . serve --dir /tmp/tsum-stats-data` | Run it by hand (`--import-dir`, `--global-url` and the rest: `docs/USING.md` § Options) |
 | `cd ui && npm run dev` / `npm run check` | Hot reload on :5173 proxying `/api` to :8090 / svelte-check |
 | `cd ui && npm run build:global` / `npm run test:global` | The global page into `global/site/` / the global engine's tests |
+| `cd ui && npm run test:fix` | The skill level correction's rules (`ui/tests/skill-fix.test.mjs`) |
 | `cd global && npm ci && npm test` / `npm run typecheck` | The Worker's tests in workerd / tsc |
 | `cd global && npm run dev` | The Worker locally on 127.0.0.1:8788 (`global/README.md` § Running it locally) |
 | `tools/build.sh [--publish]` | Builds the page, vets and tests, five binaries, archives and the pin into `build/<version>/`, copies the pin to `tsum-stats.txt`; `--publish` makes the GitHub release |
@@ -254,6 +261,7 @@ plain JS, counting D1), `env.d.ts`.
 | `api()`, `IMAGE_URL`; `isSnapshot`; `isGlobal` | `ui/src/lib/util.js`; `snapshot/client.js`; `global/client.js` |
 | `parseFilter`, `parseTime`, `sqlTime`, `itemCost`, `histBounds`, `bucketOf` (the global engine reuses them; the Worker imports `parseTime` and `sqlTime`) | `ui/src/lib/snapshot/engine.js` |
 | `decodePart`, `cutCell` (an outlier range on a cell's bins), `THEMES` (the global site's theme list) | `ui/src/lib/global/engine.js` |
+| `refile`, `runsOf`, `FIX`, `trustedVersion`; `Refile`, `SkillFixes`, `SkillFixVersion`, `Filter.AsRecorded` | `ui/src/lib/skillFix.js`; `internal/stats/skillfix.go`; `queries.go` |
 | `aggregate`; `CELLS`; `CELL_COLUMNS`; `Run`; `limits` | `global/src/ingest.ts`; `rollup.ts`; `parts.ts`; `run.ts`; `env.ts` |
 
 ## Adding something -- what a change has to touch
@@ -264,6 +272,7 @@ plain JS, counting D1), `env.d.ts`.
 | a new `/api/stats` route | its handler in `registerRoutes`, `internal/stats/server.go` → a `case` in the snapshot engine's and the global engine's route switch (an empty answer where it has no meaning) → cases in `snapshot_test.go` and, when the global site answers it, `global_parity_test.go` | as above |
 | a change to the **published global format** or the upload | `global/CONTRACT.md` first → the Worker (`global/src/`, a new file in `global/migrations/` for D1) → the global engine (`decodePart`) → `global/test/reference.ts` and the parity fixture → the forwarder (`internal/stats/global.go`) if the upload changed | `cd global && npm test`, `npm run test:global`, `TestGlobalParity` |
 | a column the script's stats CSV gained | `csv.go` (`parseStatsCSV`) → `Round` and `roundColumns` in `store.go` → `schema.go` (and a migration for existing databases) → `snapshot.go` and the snapshot engine if the page reads it → `global/CONTRACT.md` §1.2 and `global/src/records.ts` if the global site keeps it | `go test ./...` |
+| a change to the **skill level correction's rules** | `ui/src/lib/skillFix.js` (and `ui/tests/skill-fix.test.mjs`) → the same change in `internal/stats/skillfix.go`, with `SkillFixVersion` raised so stored rounds are corrected again → `docs/USING.md` § Skill level correction, `docs/INTERNALS.md` § The skill level correction | `npm run test:fix`, `go test ./internal/stats -run 'SkillFix\|Refile'` |
 | a realtime topic | a `Topic*` constant and its sends in `internal/stats/` → its subscription in `App.svelte` → `docs/INTERNALS.md` § The server | `TestPageSubscribesToEveryTopic` |
 | a new Tsum | `ui/public/data/catalog.json`, regenerated by `stats-catalog.js` (External trees) → commit, push, deploy the Worker (the Devkit card) → `POST /api/v1/admin/rebuild` to bring its days in (`global/README.md`) | `npm test` in `global/` |
 | a built-in theme | `ui/public/themes/<name>.css` with an `@name` line → `themeOrder` in `internal/stats/site.go` → `THEMES` in `ui/src/lib/global/engine.js` → `docs/USING.md` § Themes | `go test ./internal/stats` |

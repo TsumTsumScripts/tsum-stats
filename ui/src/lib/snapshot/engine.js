@@ -126,8 +126,16 @@ export const skillLevelOf = settings => {
   const v = settings?.skillLevel;
   return Number.isInteger(v) && v >= 1 && v <= 10 ? String(v) : '';
 };
-/** The skill level filter as select() takes a play setting's. */
-const SKILL_LEVEL = {param: 'skill', key: 'skillLevel'};
+/**
+ * The skill level round i of month sh counts at (queries.go: Filter.skill):
+ * the level the correction re-filed it under (the month's skillFix,
+ * skillfix.go), unless the filter counts levels as recorded or it has none;
+ * else its recorded level.
+ */
+export const levelOf = (sh, i, f) => {
+  const fix = f.asRecorded || !sh.skillFix ? 0 : sh.skillFix[i];
+  return fix ? String(fix) : skillLevelOf(sh.settings[i] === null ? null : sh.dict.settings[sh.settings[i]]);
+};
 
 /**
  * A play setting's value in a settings object, as text (queries.go:
@@ -170,6 +178,8 @@ export function parseFilter(q) {
     String(q[ps.param] ?? '').split(',').map(s => s.trim()).filter(Boolean).map(s => (s === NO_SKILL_TYPE ? '' : s))]));
   // Skill levels as text, '-' or -1 for the rounds that recorded none (queries.go: Filter.Skills).
   f.skills = String(q.skill ?? '').split(',').map(s => s.trim()).filter(Boolean).map(s => (s === NO_SKILL_TYPE || s === '-1' ? '' : s));
+  // Skill levels as recorded, without the correction (queries.go: Filter.AsRecorded).
+  f.asRecorded = q.levels === 'recorded';
   if (q.build === 'global' || q.build === 'jp') f.build = q.build;
   f.from = q.from ? parseTime(q.from) : null;
   f.to = q.to ? parseTime(q.to) : null;
@@ -248,8 +258,8 @@ export function createEngine(loader) {
     const tsumSet = f.tsums.length ? new Set(f.tsums) : null;
     const deviceSet = f.devices.length ? new Set(f.devices) : null;
     const skillTypeSet = f.skillTypes.length ? new Set(f.skillTypes) : null;
-    const playSets = [...PLAY_SETTINGS, SKILL_LEVEL].filter(ps => (ps === SKILL_LEVEL ? f.skills : f.play[ps.param])?.length)
-      .map(ps => [ps, new Set(ps === SKILL_LEVEL ? f.skills : f.play[ps.param])]);
+    const playSets = PLAY_SETTINGS.filter(ps => f.play[ps.param]?.length).map(ps => [ps, new Set(f.play[ps.param])]);
+    const skillSet = f.skills?.length ? new Set(f.skills) : null;
     const out = [];
     for (const sh of await monthsFor(f)) {
       const deviceOk = deviceSet ? sh.dict.device.map(d => deviceSet.has(d)) : null;
@@ -257,7 +267,7 @@ export function createEngine(loader) {
       const buildOk = f.build ? sh.dict.build.map(b => b === f.build) : null;
       const skillTypeOk = skillTypeSet ? sh.dict.skillType.map(s => skillTypeSet.has(s)) : null;
       // Each play setting picked: whether each of the month's settings objects (and none, '') has a value it keeps.
-      const playOk = playSets.map(([ps, set]) => [set.has(''), sh.dict.settings.map(o => set.has(ps === SKILL_LEVEL ? skillLevelOf(o) : playValue(o, ps)))]);
+      const playOk = playSets.map(([ps, set]) => [set.has(''), sh.dict.settings.map(o => set.has(playValue(o, ps)))]);
       const medalTsum = sh.dict.tsum.map(t => medalSet.has(t));
       const idx = [];
       const coins = sh[coinsCol];
@@ -270,6 +280,7 @@ export function createEngine(loader) {
         if (buildOk && !buildOk[sh.build[i]]) continue;
         if (skillTypeOk && !skillTypeOk[sh.skillType[i]]) continue;
         if (playOk.length && !playOk.every(([none, ok]) => (sh.settings[i] === null ? none : ok[sh.settings[i]]))) continue;
+        if (skillSet && !skillSet.has(levelOf(sh, i, f))) continue;
         // Complete (queries.go: completeSQL): a Tsum and every figure read; medals only for a medal Tsum.
         if (f.complete && (sh.dict.tsum[sh.tsum[i]] === '' || sh.score[i] === null || sh.baseCoins[i] === null
           || sh.finalCoins[i] === null || sh.duration[i] === null || (sh.medals[i] === null && medalTsum[sh.tsum[i]]))) continue;
@@ -544,7 +555,7 @@ export function createEngine(loader) {
       const build = sh.dict.build[sh.build[i]];
       const items = itemsOf(sh, i);
       const o = sh.settings[i] === null ? null : sh.dict.settings[sh.settings[i]];
-      const skill = skillLevelOf(o);
+      const skill = levelOf(sh, i, f);
       const mk = `${build}\u0000${tsum}\u0000${skill}\u0000${items}`;
       if (!mix.has(mk)) mix.set(mk, {build, tsum, skill, items, a: acc()});
       add(mix.get(mk).a, sh, i, c);
@@ -574,9 +585,24 @@ export function createEngine(loader) {
       histogram: histogram(sel, c, main.totals),
       bonus: await coinBonus(sel, dayOf),
       medals,
+      refiled: refiledOf(sel),
       // The rounds the rest of the filter keeps that an unread figure left out (summary.go: Summary.Incomplete).
       incompleteRounds: f.complete ? count(await select({...f, complete: false})) - count(sel) : 0,
     };
+  }
+
+  /** The rounds counted at another skill level than recorded, per Tsum and pair of levels (skillfix.go: refiledStats). */
+  function refiledOf(sel) {
+    const by = new Map();
+    each(sel, (sh, i) => {
+      if (!sh.skillFix?.[i]) return;
+      const tsum = sh.dict.tsum[sh.tsum[i]], from = skillLevelOf(sh.dict.settings[sh.settings[i]]), to = String(sh.skillFix[i]);
+      const key = `${tsum}\u0000${from}\u0000${to}`;
+      if (by.has(key)) by.get(key).rounds++;
+      else by.set(key, {tsum, from, to, rounds: 1});
+    });
+    const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+    return [...by.values()].sort((x, y) => cmp(x.tsum, y.tsum) || cmp(x.from, y.from) || cmp(x.to, y.to));
   }
 
   /** /api/stats/tsum: one Tsum's page (tsum.go: DescribeTsum). */
@@ -601,8 +627,10 @@ export function createEngine(loader) {
       const back = total - pos++; // 1 for the newest round
       if (back <= 2 * FORM_ROUNDS) into(form, back <= FORM_ROUNDS ? 'recent' : 'before', sh, i, {key: back <= FORM_ROUNDS ? 'recent' : 'before'});
       const s = sh.settings[i] === null ? {} : sh.dict.settings[sh.settings[i]];
+      // A re-filed round's skillLevel is the level it counts at (tsum.go: Filter.settingValue).
+      const fixed = f.asRecorded ? 0 : sh.skillFix?.[i];
       for (const [setting, v] of Object.entries(s)) {
-        const key = settingText(v);
+        const key = fixed && setting === 'skillLevel' ? String(fixed) : settingText(v);
         if (key !== undefined) into(settings, `${setting}\u0000${key}`, sh, i, {setting, key});
       }
       const scan = playValue(s, PLAY_SETTINGS[0]), chain = playValue(s, PLAY_SETTINGS[1]);
@@ -610,7 +638,7 @@ export function createEngine(loader) {
       const skillType = sh.dict.skillType[sh.skillType[i]];
       into(skillTypes, skillType, sh, i, {key: skillType});
       // Every setting a player picks, together (tsum.go: ComboStat).
-      const skill = skillLevelOf(s), items = itemsOf(sh, i), bubble = playValue(s, PLAY_SETTINGS[2]);
+      const skill = levelOf(sh, i, f), items = itemsOf(sh, i), bubble = playValue(s, PLAY_SETTINGS[2]);
       const ck = `${skill},${items},${scan},${chain},${bubble},${skillType}`;
       into(combos, ck, sh, i, {key: ck, skill, items, scan, chain, bubble, skillType});
       const version = sh.dict.scriptVersion[sh.scriptVersion[i]];
@@ -658,7 +686,7 @@ export function createEngine(loader) {
         const v = sh[c][i];
         const s = sh.settings[i] === null ? {} : sh.dict.settings[sh.settings[i]];
         if (v === null || !Object.hasOwn(s, 'skillLevel')) return;
-        const skill = settingText(s.skillLevel);
+        const skill = !f.asRecorded && sh.skillFix?.[i] ? String(sh.skillFix[i]) : settingText(s.skillLevel);
         if (skill === undefined) return;
         const from = bucketOf(v, bounds);
         const key = `${skill}\u0000${from}`;
@@ -740,7 +768,7 @@ export function createEngine(loader) {
     const cells = new Map();
     each(await select(f), (sh, i) => {
       const o = sh.settings[i] === null ? null : sh.dict.settings[sh.settings[i]];
-      const c = {version: sh.dict.scriptVersion[sh.scriptVersion[i]], tsum: sh.dict.tsum[sh.tsum[i]], skill: skillLevelOf(o), items: itemsOf(sh, i)};
+      const c = {version: sh.dict.scriptVersion[sh.scriptVersion[i]], tsum: sh.dict.tsum[sh.tsum[i]], skill: levelOf(sh, i, f), items: itemsOf(sh, i)};
       const key = `${c.version}\u0000${c.tsum}\u0000${c.skill}\u0000${c.items}`;
       if (!cells.has(key)) cells.set(key, {...c, a: acc()});
       add(cells.get(key).a, sh, i, 'baseCoins');
@@ -767,6 +795,8 @@ export function createEngine(loader) {
     skillType: sh.dict.skillType[sh.skillType[i]], scriptVersion: sh.dict.scriptVersion[sh.scriptVersion[i]],
     durationSeconds: sh.duration[i], score: sh.score[i], baseCoins: sh.baseCoins[i], finalCoins: sh.finalCoins[i],
     medals: sh.medals[i], device: sh.dict.device[sh.device[i]], source: sh.dict.source[sh.source[i]], items: sh.items[i],
+    // The recorded skill level and the one it counts at (store.go: Round.SkillLevel, SkillEff).
+    skillLevel: levelOf(sh, i, {asRecorded: true}), skillEffective: levelOf(sh, i, {}),
   });
 
   /** /api/stats/rounds: one page of the table (queries.go: RoundsPage). */
@@ -821,8 +851,15 @@ export function createEngine(loader) {
   }
 
   /** queries.go: PlayedSkillLevels; an older snapshot lists none. */
-  async function skillLevels() {
-    return (await getManifest()).skillLevels ?? [];
+  async function skillLevels(q) {
+    const man = await getManifest();
+    return (q.levels === 'recorded' ? man.skillLevelsRecorded : null) ?? man.skillLevels ?? [];
+  }
+
+  /** skillfix.go: SkillFixes, of one Tsum or all; an older snapshot lists none. */
+  async function skillFixes(q) {
+    const tsum = String(q.tsum ?? '').trim();
+    return ((await getManifest()).skillFixes ?? []).filter(x => !tsum || x.tsum === tsum);
   }
 
   // One device's newest list for a build; null when it has none.
@@ -855,7 +892,8 @@ export function createEngine(loader) {
         case 'round-devices': return roundDevices();
         case 'skill-types': return skillTypes();
         case 'play-settings': return playSettings();
-        case 'skill-levels': return skillLevels();
+        case 'skill-levels': return skillLevels(params);
+        case 'skill-fixes': return skillFixes(params);
         case 'health': return health(params);
         // A snapshot keeps each device's newest Tsum list only.
         case 'owned-history': return [];

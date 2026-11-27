@@ -214,7 +214,16 @@ func registerRoutes(se *core.ServeEvent, events *Events, importer *Importer, pul
 	})
 
 	g.GET("/skill-levels", func(e *core.RequestEvent) error {
-		s, err := PlayedSkillLevels(e.App.DB())
+		s, err := PlayedSkillLevels(e.App.DB(), e.Request.URL.Query().Get("levels") == "recorded")
+		if err != nil {
+			return e.InternalServerError("", err)
+		}
+		return e.JSON(http.StatusOK, s)
+	})
+
+	// The runs of rounds counted at another skill level than recorded, and why (skillfix.go).
+	g.GET("/skill-fixes", func(e *core.RequestEvent) error {
+		s, err := SkillFixes(e.App.DB(), strings.TrimSpace(e.Request.URL.Query().Get("tsum")))
 		if err != nil {
 			return e.InternalServerError("", err)
 		}

@@ -8,7 +8,8 @@
     "build:global": "vite build --mode global",
     "check": "svelte-check",
     "test:global": "node --test tests/global-engine.test.mjs",
-    "test:codes": "node --test tests/share-codes.test.mjs"
+    "test:codes": "node --test tests/share-codes.test.mjs",
+    "test:fix": "node --test tests/skill-fix.test.mjs"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
