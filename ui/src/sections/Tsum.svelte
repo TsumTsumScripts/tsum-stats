@@ -33,6 +33,7 @@
   import Kpis from './stats/Kpis.svelte';
   import {EXP_WHAT, expHour, expRate, sumExp} from '../lib/expected.js';
   import Legend from '../components/Legend.svelte';
+  import BestSettings from './tsum/BestSettings.svelte';
   import Breakdown from './tsum/Breakdown.svelte';
   import Earners from './tsum/Earners.svelte';
   import Insights from './tsum/Insights.svelte';
@@ -560,6 +561,13 @@
           </p>
         {/if}
       </div>
+
+      {#if detail.combos?.length}
+        <Panel title="Best settings" expandable={false}
+          sub="every setting picked together: skill level, items, chains per scan and max chain, bubbles and skill type · ranked by {filter.coins === 'medals' ? 'medals an hour, of the combinations with 20 rounds or more' : 'expected net coins an hour, each item set charged its cost, of the combinations known within ± 5 %'} · best marked when it beats the next by more than luck{mixedNote}">
+          <BestSettings combos={detail.combos} {unit} />
+        </Panel>
+      {/if}
 
       {#if skills.length}
         <Panel title="By skill level" sub="the skill level set in the script for each round · change is against the level below · pays back in: hours of play for the gain to earn back that level's boxes" expandable={false}>

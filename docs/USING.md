@@ -460,6 +460,17 @@ nothing is left out of them. Stats keeps every round.
   the middle half's width over the median, so a misread round does not stretch
   it). Type a target to see what share of rounds fell under it; the target is
   kept per Tsum and primary stat in this browser (`target=` in the API).
+- **Best settings:** every setting picked for the Tsum taken together, a row
+  per combination of skill level, item set, chains per scan and max chain
+  length, bubble strategy and skill type: the ten best by expected net coins
+  an hour (each item set's cost taken off, so a dearer set has to earn it),
+  of those known within ± 5 %, against the most played combination. The first
+  is marked *best* only when it beats the next by more than luck explains.
+  In Medals it ranks by medals an hour, of the combinations with 20 rounds or
+  more. A setting no row recorded is left out as a column. With no
+  combination known well enough yet, it shows the five most played, flagged.
+  Skill levels mixed, the highest level usually wins: pick one in the header
+  to see the best setup at your level.
 - **By skill level:** the figures per `skillLevel` the script was set to, each
   against the level below. *Pays back in* is the hours of play a level's gain
   in expected coins takes to earn back the boxes from the level below (30,000
@@ -780,7 +791,7 @@ everyone's rounds, and in the *Winter Village* theme until you pick another:
   rate among every Tsum, its share of all rounds and its players, the KPI
   tiles, consistency and rounds under a target (≈, from the bins), by skill
   level with its spread chart, the histogram, by items and *Do the
-  items pay?*, *By chain settings*, and *By script setting* for chains per scan, max chain length
+  items pay?*, *Best settings* (every setting the cells keep: all six), *By chain settings*, and *By script setting* for chains per scan, max chain length
   and bubble strategy. Coin-bonus jackpots are left out in final coins as
   here; days the site archived before it told jackpots apart keep theirs in. Not there: recent form, boxes to the next skill, other settings,
   versions, devices and best rounds. The Catalog links each

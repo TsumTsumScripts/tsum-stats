@@ -1122,6 +1122,13 @@ answer has `tsum.go: TsumDetail`'s fields, plus `global: {approx: true}`:
   `scan` and `chain` as text, `''` not recorded, kept), as `{scan, chain,
   key: "scan,chain", rounds, …}` like `settings`' rows, most rounds first,
   then by scan and chain as text.
+- `combos`: by every setting a player picks together, as `tsum.go:
+  ComboStat`: `{skill, items, scan, chain, bubble, skillType, key, rounds,
+  …}` like `settings`' rows, with `skill` the cells' as text (`''` for `-1`),
+  `items` the cells' (`-1` unknown), `scan`, `chain` and `bubble` as
+  `chains`' (`''` not recorded) and `skillType` the cells' (`''` included),
+  all kept; `key` is the six joined by commas, in that order. Most rounds
+  first, then by key as text.
 - `settings`: the skill level (the cells' `skill`, `-1` left out) and the
   play settings (`maxChainsPerScan`, `maxChain`, `bubbleStrategy`, their
   values as text, not recorded left out), as `{setting, key, rounds,

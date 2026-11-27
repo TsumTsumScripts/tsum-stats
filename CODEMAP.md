@@ -98,7 +98,7 @@ Cloudflare account only, never the GAP one (`global/README.md`,
 | `internal/stats/queries.go` | `Filter` (`ParseFilter`, the WHERE), the play settings (`PlaySettings`, `playSettingSQL`), the rounds page and its sort columns, played Tsums, devices, skill types and play settings, the latest Tsum list |
 | `internal/stats/summary.go` | `Summarize`: everything above the tables (KPIs, per day / hour / Tsum / mix, spreads, the coin histogram); item sets and their cost (`itemBits`) |
 | `internal/stats/health.go` | `DescribeHealth`: the Script versions panel's answer (unread figures by version and device, expected coins per version × Tsum × skill × items) |
-| `internal/stats/tsum.go` | `DescribeTsum`: the Tsum page's answer (by setting, version, device; form, skill bins, rank) |
+| `internal/stats/tsum.go` | `DescribeTsum`: the Tsum page's answer (by setting, every setting together (`ComboStat`), version, device; form, skill bins, rank) |
 | `internal/stats/art.go` | `Art`: Tsum portraits fetched for the page at `/api/stats/art/{id}` (their origin sends no CORS headers), kept in memory |
 | `internal/stats/server.go` | `Register`, `Config`, `StarterHook`: wiring into PocketBase, the `/api/stats` routes (`registerRoutes`, `registerGlobalRoutes`), the topics `ts/devices`, `ts/rounds`, `ts/imports` and their broadcaster, the loopback and same-origin guards |
 | `internal/stats/site.go` | The site's files: the embedded build, `--web-dir` overrides gated by `override.json` (`Manifest`), themes and `themeOrder`, `ExportSite` |
@@ -162,7 +162,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `ui/src/sections/Stats.svelte` | Filter rail, KPIs, charts, per-Tsum and rounds tables. Global: no rounds table or hours |
 | `sections/stats/` | `FilterRail.svelte` (filters, jump menu), `FocusBar.svelte` (picked Tsums), `HeadToHead.svelte`, `Kpis.svelte`, `ChainBest.svelte` (each Tsum's best chain pair), `Versions.svelte` (script versions and devices: unread figures, the regression check) |
 | `ui/src/sections/Tsum.svelte` | The Tsum page: one Tsum's figures, settings, rank, ownership, best rounds (on the global site: everyone's rounds of it, by skill level and items); without one, the list of Tsums (best earners, most played) |
-| `sections/tsum/` | `Breakdown.svelte` (by skill, setting, version, device), `Insights.svelte` (form, pace, steadiness), `ItemPayback.svelte`, `Earners.svelte` (the list of Tsums' best coin and medal earners) |
+| `sections/tsum/` | `Breakdown.svelte` (by skill, setting, version, device), `Insights.svelte` (form, pace, steadiness), `ItemPayback.svelte`, `Earners.svelte` (the list of Tsums' best coin and medal earners), `BestSettings.svelte` (a Tsum's best combinations of settings) |
 | `ui/src/sections/Catalog.svelte` | Every Tsum against the latest Tsum list; the roster on the global site. `catalog/MaxOut.svelte`: cost and time to max; `catalog/Progress.svelte`: boxes opened between a device's Tsum lists |
 | `ui/src/sections/Presets.svelte` | Presets: the gallery (global site, `presets.json`), Convert (pasted share codes, or presets GAP Companion sent in `#/presets?p=`) with Copy code and Add to GAP Companion; on the local app, Share to the gallery and the contributor's own (CONTRACT §2.7, §7.3). Not in a snapshot |
 | `ui/src/sections/Help.svelte` | How to get data in |
@@ -246,7 +246,7 @@ plain JS, counting D1), `env.d.ts`.
 | Commands `serve`, `snapshot`, `web export`, `update`; `siteURL`, `version`, every flag | `main.go`; `updateURL`, `selfUpdate` in `update.go`; `dataDir` in `launch.go` |
 | `Config`, `StarterHook`, `Register`, the `/api/stats` routes, `TopicDevices` / `TopicRounds` / `TopicImports` | `internal/stats/server.go`; `TopicPublish` in `publish.go`, `TopicGlobal` in `global.go`; the page side `ui/src/lib/realtime.js`, `App.svelte` |
 | `Round`, `OwnedTsum`, `roundColumns`; the `ts_*` tables | `internal/stats/store.go`; `internal/stats/schema.go` |
-| `Filter`, `ParseFilter`, `RoundsPage`; `Summary`, `Summarize`, `itemBits`; `TsumDetail`, `DescribeTsum` | `internal/stats/queries.go`; `summary.go`; `tsum.go` |
+| `Filter`, `ParseFilter`, `RoundsPage`; `Summary`, `Summarize`, `itemBits`; `TsumDetail`, `ComboStat`, `DescribeTsum` | `internal/stats/queries.go`; `summary.go`; `tsum.go` |
 | `Events`, `Device`, `LiveRound`; `Importer`; `Puller`, `FindADB`, `InstallADB` | `internal/stats/events.go`; `importer.go`; `stats/adb.go`, `adb_install.go` |
 | `ExportSnapshot`, `SnapshotFormat`; `Publisher`, `GitHub`; `Contributor`, `GlobalRecord`, `RoundBatch`, `DefaultGlobalURL` | `internal/stats/snapshot.go`; `publish.go`, `github.go`; `global.go` |
 | `SiteFS`, `Overlay`, `Manifest`, `ExportSite`, `Themes`, `themeOrder` | `internal/stats/site.go` |

@@ -716,6 +716,21 @@ test('the Tsum page: its figures, its rank, by skill level', async () => {
   await assert.rejects(engine.call('tsum', {}), /id is required/);
 });
 
+test('the Tsum page by every setting together: the snapshot engine\'s over the same rounds', async () => {
+  const engine = createGlobalEngine(loaderOf(files));
+  const qs = [{id: 'mickey'}, {id: 'minnie', coins: 'final', net: '1', from: '2026-09-01T00:00:00Z'}, {id: 'beastda', coins: 'medals'}, {id: 'stitch', skill: '3'}];
+  for (const q of qs) {
+    const d = await engine.call('tsum', q);
+    const rs = ROUNDS.filter(r => r.tsum === q.id && keepRound(r, q));
+    const want = await snapshotOf(rs).call('tsum', {id: q.id, coins: q.coins ?? '', net: q.net ?? ''});
+    // These parts predate the play settings and skill types: a combination is a skill level and an item set.
+    assert.ok(d.combos.length > 1, `${q.id}: several combinations`);
+    assert.ok(d.combos.every(c => c.key === [c.skill, c.items, c.scan, c.chain, c.bubble, c.skillType].join(',')), `${q.id}: keys`);
+    assert.equal(d.combos.reduce((n, c) => n + c.rounds, 0), d.summary.totals.rounds, `${q.id}: every round once`);
+    assert.deepEqual(diff(want.combos, d.combos, false), [], q.id);
+  }
+});
+
 test('the Tsum page leaves coin-bonus jackpots out of final coins', async () => {
   const engine = createGlobalEngine(loaderOf(files));
   for (const q of [{id: 'mickey', coins: 'final'}, {id: 'minnie', coins: 'final', net: '1', from: '2026-09-01T00:00:00Z'}]) {

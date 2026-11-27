@@ -798,6 +798,9 @@ td.pick input { width: 16px; height: 16px; accent-color: var(--accent-b); cursor
 .breakdown .tag, .breakdown td .sub { margin-left: 8px; }
 /* Stats' best chain pair per Tsum: fewer columns, so it sizes to them. */
 .breakdown.chain-best { table-layout: auto; min-width: 560px; }
+/* The Tsum page's best setups (sections/tsum/BestSettings.svelte): a column per setting, sized to them. */
+.breakdown.combo-best { table-layout: auto; min-width: 680px; }
+.combo-note { margin: 8px 0 0; }
 /* Rows with too few rounds (or, on the global site, too few players) to trust: hatched, and
    flagged in words, rather than faded, which would take their figures below 4.5:1. */
 .breakdown tr.few td, .dt tr.few td { background-image: repeating-linear-gradient(135deg, var(--hairline) 0 1px, transparent 1px 7px); }

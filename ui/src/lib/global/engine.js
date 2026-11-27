@@ -636,6 +636,8 @@ export function createGlobalEngine(loader) {
       avgScore: avg(a.scoreSum, a.rounds), first: sqlTime(a.first), last: sqlTime(a.last), ...expectedOf(a),
     });
     const bySkill = new Map(), byType = new Map();
+    // Every setting a player picks, together (tsum.go: ComboStat): the cells are keyed by all six.
+    const byCombo = new Map();
     // The play settings, by value, not recorded left out (as the skill level's -1 is).
     const byPlay = new Map();
     // Chains per scan and max chain length together, not recorded kept.
@@ -655,6 +657,10 @@ export function createGlobalEngine(loader) {
       const t = c.skillType[i];
       if (!byType.has(t)) byType.set(t, acc());
       add(byType.get(t), c, i, c.stat[k]);
+      const skill = playText(c.skill[i]), bubble = playText(c.bubble[i]);
+      const key = `${skill},${c.items[i]},${scan},${chain},${bubble},${t}`;
+      if (!byCombo.has(key)) byCombo.set(key, {skill, items: c.items[i], scan, chain, bubble, skillType: t, a: acc()});
+      add(byCombo.get(key).a, c, i, c.stat[k]);
       const s = c.skill[i];
       if (s < 0) return;
       if (!bySkill.has(s)) bySkill.set(s, acc());
@@ -721,6 +727,8 @@ export function createGlobalEngine(loader) {
         .sort((x, y) => cmp(x.setting, y.setting) || cmp(x.key, y.key)),
       chains: [...byChains].map(([key, {scan, chain, a}]) => ({scan, chain, ...group(a, key)}))
         .sort((x, y) => y.rounds - x.rounds || cmp(x.scan, y.scan) || cmp(x.chain, y.chain)),
+      combos: [...byCombo].map(([key, {a, ...settings}]) => ({...settings, ...group(a, key)}))
+        .sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),
       skillTypes: [...byType].map(([t, a]) => group(a, t)).sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),
       versions: [],
       devices: [],

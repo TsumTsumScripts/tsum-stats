@@ -588,7 +588,7 @@ export function createEngine(loader) {
     const noJackpots = parsed.finalCoins && !parsed.medals;
     const f = {...parsed, noJackpots};
     const c = coinCol(f);
-    const settings = new Map(), chains = new Map(), skillTypes = new Map(), versions = new Map(), devices = new Map(), field = new Map(), form = new Map();
+    const settings = new Map(), chains = new Map(), combos = new Map(), skillTypes = new Map(), versions = new Map(), devices = new Map(), field = new Map(), form = new Map();
     const into = (map, key, sh, i, extra) => {
       if (!map.has(key)) map.set(key, {a: acc(), ...extra});
       add(map.get(key).a, sh, i, c);
@@ -609,6 +609,10 @@ export function createEngine(loader) {
       into(chains, `${scan},${chain}`, sh, i, {key: `${scan},${chain}`, scan, chain});
       const skillType = sh.dict.skillType[sh.skillType[i]];
       into(skillTypes, skillType, sh, i, {key: skillType});
+      // Every setting a player picks, together (tsum.go: ComboStat).
+      const skill = skillLevelOf(s), items = itemsOf(sh, i), bubble = playValue(s, PLAY_SETTINGS[2]);
+      const ck = `${skill},${items},${scan},${chain},${bubble},${skillType}`;
+      into(combos, ck, sh, i, {key: ck, skill, items, scan, chain, bubble, skillType});
       const version = sh.dict.scriptVersion[sh.scriptVersion[i]];
       into(versions, version, sh, i, {key: version});
       const device = sh.dict.device[sh.device[i]];
@@ -691,6 +695,8 @@ export function createEngine(loader) {
         .map(g => ({setting: g.setting, ...group(g)})),
       chains: [...chains.values()].map(g => ({scan: g.scan, chain: g.chain, ...group(g)}))
         .sort((x, y) => y.rounds - x.rounds || cmp(x.scan, y.scan) || cmp(x.chain, y.chain)),
+      combos: [...combos.values()].map(g => ({skill: g.skill, items: g.items, scan: g.scan, chain: g.chain, bubble: g.bubble, skillType: g.skillType, ...group(g)}))
+        .sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),
       skillTypes: [...skillTypes.values()].map(group).sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),
       versions: [...versions.values()].map(group).sort((x, y) => cmp(y.last, x.last) || cmp(x.key, y.key)),
       devices: [...devices.values()].map(group).sort((x, y) => y.rounds - x.rounds || cmp(x.key, y.key)),

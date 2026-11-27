@@ -13,6 +13,9 @@ type TsumDetail struct {
 	Settings []SettingStat `json:"settings"`
 	// Chains are by chains per scan and max chain length together, most played first.
 	Chains []ChainGroup `json:"chains"`
+	// Combos are by every setting a player picks for the Tsum at once (ComboStat),
+	// most played first, then by key: which whole setup earns the most.
+	Combos []ComboStat `json:"combos"`
 	// SkillTypes are by the script's skill type, "" for the rounds sent without one.
 	SkillTypes []GroupStat `json:"skillTypes"`
 	Versions   []GroupStat `json:"versions"`
@@ -91,6 +94,22 @@ type ChainGroup struct {
 	GroupStat
 }
 
+// ComboStat is a GroupStat for one combination of the settings a player picks
+// for a Tsum: the skill level (skillLevelSQL's text), the item set (itemsSQL,
+// -1 unknown), chains per scan, max chain length and the bubble strategy
+// (playSettingSQL's text) and the skill type, each "" where not recorded. Key
+// is the six joined by commas, in that order. The global site's cells are
+// keyed by all six, so it answers the same (global/CONTRACT.md §6.3).
+type ComboStat struct {
+	Skill     string `db:"skill" json:"skill"`
+	Items     int64  `db:"items" json:"items"`
+	Scan      string `db:"scan" json:"scan"`
+	Chain     string `db:"chain" json:"chain"`
+	Bubble    string `db:"bubble" json:"bubble"`
+	SkillType string `db:"skill_type" json:"skillType"`
+	GroupStat
+}
+
 // FieldStat is one Tsum's rate, with the sums behind it so the page can add
 // Tsums up.
 type FieldStat struct {
@@ -131,7 +150,7 @@ const skillWhere = "j.key = 'skillLevel' AND j.type NOT IN ('object', 'array')"
 // Tsums' too: luck that has nothing to do with the Tsum, which one round in
 // a few hundred would otherwise swing.
 func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *int64) (TsumDetail, error) {
-	d := TsumDetail{Settings: []SettingStat{}, Chains: []ChainGroup{}, SkillTypes: []GroupStat{}, Versions: []GroupStat{}, Devices: []GroupStat{}, Field: []FieldStat{},
+	d := TsumDetail{Settings: []SettingStat{}, Chains: []ChainGroup{}, Combos: []ComboStat{}, SkillTypes: []GroupStat{}, Versions: []GroupStat{}, Devices: []GroupStat{}, Field: []FieldStat{},
 		Form: []GroupStat{}, SkillBins: []SkillBin{}}
 	all := f
 	all.Tsums = nil
@@ -158,6 +177,14 @@ func DescribeTsum(db dbx.Builder, f Filter, tsum string, tzMinutes int, target *
 			return db.NewQuery(`SELECT scan, chain, scan || ',' || chain AS k, ` + groupStats(c) + `
 				FROM (SELECT *, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` + playSettingSQL(PlaySettings[1]) + ` AS chain FROM ts_rounds` + where + `)
 				GROUP BY scan, chain ORDER BY rounds DESC, scan, chain`).Bind(p).All(&d.Chains)
+		},
+		func() error {
+			// The inner names (it, st) differ from the columns, so items and skill_type stay the rounds' own inside the sums.
+			return db.NewQuery(`SELECT skill, it AS items, scan, chain, bubble, st AS skill_type,
+				skill || ',' || it || ',' || scan || ',' || chain || ',' || bubble || ',' || st AS k, ` + groupStats(c) + `
+				FROM (SELECT *, ` + skillLevelSQL + ` AS skill, ` + itemsSQL + ` AS it, skill_type AS st, ` + playSettingSQL(PlaySettings[0]) + ` AS scan, ` +
+				playSettingSQL(PlaySettings[1]) + ` AS chain, ` + playSettingSQL(PlaySettings[2]) + ` AS bubble FROM ts_rounds` + where + `)
+				GROUP BY skill, it, scan, chain, bubble, st ORDER BY rounds DESC, k`).Bind(p).All(&d.Combos)
 		},
 		func() error {
 			return db.NewQuery(`SELECT skill_type AS k, ` + groupStats(c) + ` FROM ts_rounds` + where +
