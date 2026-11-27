@@ -879,7 +879,12 @@ everyone's rounds, and in the *Winter Village* theme until you pick another:
   none.
 - **Skill level correction:** as on your own site (§ Skill level correction),
   per device, once a day: a round sent today is filed as recorded until the
-  next day's pass. The global site judges a run on the average of its coins
+  next day's pass. What your own site worked out goes with your rounds: the
+  level each round counts at, and whether a Tsum List or its coins say so
+  (never the lists, the accounts or the device names). For rounds too old to
+  send again the level goes alone, so naming an account or importing a Tsum
+  List later still corrects rounds of months ago on the global site. A
+  contributor's level comes before the site's own. The global site judges a run on the average of its coins
   where your site has the median, and by whole days. The note says how many
   rounds count at another level, and *Show as recorded* works; why a run moved
   is not published, since that is one device's history.
