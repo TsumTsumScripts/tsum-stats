@@ -87,13 +87,21 @@ var schema = []string{
 		hash     INTEGER NOT NULL,
 		sent_at  TEXT NOT NULL
 	)`,
-	// The level the global site was last told a round counts at (global.go:
-	// sendLevels, CONTRACT §7.2), '' for none, so a level goes once.
-	`CREATE TABLE IF NOT EXISTS ts_global_levels (
-		round_id TEXT PRIMARY KEY,
-		level    TEXT NOT NULL,
-		src      TEXT NOT NULL,
-		sent_at  TEXT NOT NULL
+	// The Tsum Lists the global site has taken, by file, with each one's
+	// fingerprint as sent, and what it was last told of each device's account:
+	// one of the account's lists (its id as sent), or '' for "not known"
+	// (globallists.go, CONTRACT §7.2). So a list goes once, and a link when it changes.
+	`CREATE TABLE IF NOT EXISTS ts_global_lists (
+		file    TEXT PRIMARY KEY,
+		hash    INTEGER NOT NULL,
+		sent_at TEXT NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS ts_global_links (
+		build   TEXT NOT NULL,
+		tag     TEXT NOT NULL,
+		list    TEXT NOT NULL,
+		sent_at TEXT NOT NULL,
+		PRIMARY KEY (build, tag)
 	)`,
 }
 
@@ -219,8 +227,6 @@ func addItemsColumn(app core.App) error {
 		{"items", "INTEGER", itemsMaskSQL},
 		{"skill_level", "TEXT NOT NULL DEFAULT ''", skillLevelOf},
 		{"skill_eff", "TEXT NOT NULL DEFAULT ''", skillLevelOf},
-		// Where skill_eff comes from when it is not skill_level (skillfix.go: SrcList and the rest); Refile's.
-		{"skill_src", "TEXT NOT NULL DEFAULT ''", func(string) string { return "''" }},
 	}
 	var qs []string
 	sets := make([]string, len(cols))

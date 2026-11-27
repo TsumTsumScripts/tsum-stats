@@ -172,10 +172,9 @@ bound) clamps the recorded level; the coin rules run on those levels, a round
 whose floor and cap agree counting as trusted; and a coin verdict outside the
 bound is dropped. A list fix is a `ts_skill_fixes` row with `rule = "list"`
 and the list's device, stamp, level and side. A new list or answer refiles
-every Tsum. The snapshot needs none of it: it carries the levels. `Refile`
-also writes where each level comes from (`ts_rounds.skill_src`: `list` for an
-account linked by the site, `pick` for one the player named, else the coin
-rule), which is what the forwarder sends (below).
+every Tsum. The snapshot needs none of it: it carries the levels. The grouping
+and the bounds are a port of `ui/src/lib/accounts.js`, which the global Worker
+runs; `TestAccountsParity` holds the two together.
 
 The order rule is a small dynamic programme per player (`orderRule`): levels
 that never go down, at least cost, where changing a run costs its weight and
@@ -358,23 +357,23 @@ nothing: every cell was copied with `stated = skill`, and a part without
 correction only when the admin `rebuild` recomputes them (`global/CONTRACT.md`
 §3.2, `global/README.md`).
 
-**What only the local app knows reaches the site as a level.** The Tsum
-Lists and the accounts never leave the computer; the level they give a round
-does (`global/CONTRACT.md` §1.3). Once a reply says the site takes levels
-(`levels: 1`), `GlobalRecord` adds `skill_eff` and `skill_src` to a round
-that counts at another level than recorded; they are in the fingerprint only
-when there, so only those rounds go again. A round too old to send again
-(the Worker's 60 days, or an archived day) gets its level sent alone,
-`POST /api/v1/levels`, tracked in `ts_global_levels` so each goes once and a
-level that is withdrawn is taken back. The Worker keeps levels in
-`round_levels` for good (every change also through `level_log` into
-`archive/levels/`), marks the round's day dirty whatever its age, and a
-day's recompute files a round at its contributor's level first, then at the
-site's own fix, then as recorded. A list's level counts as trusted evidence
-for the site's own correction too. A day whose rounds have left D1 waits for
-`admin/restore {"levels": true}`. A new Worker first, then the app: an older
-Worker would keep the two columns as settings, which is why the app waits to
-be told.
+**The evidence goes up, the levels are worked out there.** A player's
+computer has its Tsum Lists but rarely all its rounds; the site has the
+rounds. So the forwarder sends no level: after a pass's rounds it sends every
+Tsum List once (`globallists.go`, `ts_global_lists`) and, per device tag, the
+account this computer knows its rounds were played on (the player's answer or
+a device-name link, `ts_global_links`), once the site says it takes them
+(`lists: 1`, `global/CONTRACT.md` §2.8). No device name goes with them: a
+list's id is a hash. The Worker stores a list as one row (its Tsums one JSON
+value, every column) and, in the hourly job (`global/src/lists.ts`), groups
+each contributor's lists into accounts with the same `accounts.js`, links its
+devices (the link, else the game's one account), and keeps what the lists say
+of each device's Tsums over time in `skill_bound`. A day's recompute holds
+each round's recorded level within the bound in force when the round ended,
+then lets the coin rules' fix move it inside that bound only; a round the
+lists give one level counts as trusted evidence. New evidence dirties the
+days it can move, archived ones too; a day whose rounds have left D1 waits
+for `admin/restore {"evidence": true}`. The Worker first, then the app.
 
 ## The catalog
 

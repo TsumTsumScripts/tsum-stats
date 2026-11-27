@@ -345,8 +345,8 @@ func TestGlobalParity(t *testing.T) {
 		Me     map[string]any `json:"me"`
 		// PassAt is the Worker's clock at each pass, ms.
 		PassAt []int64 `json:"passAt"`
-		// Levels is each pass's requests to /api/v1/levels, sent after its uploads.
-		Levels [][]LevelBatch `json:"levels"`
+		// Evidence is each pass's requests to /api/v1/lists (Tsum Lists and links), sent after its uploads.
+		Evidence [][]ListBatch `json:"evidence"`
 	}, 3)
 	behind := now.Add(-6 * time.Hour)
 	ahead := behind.Add(10 * time.Minute) // past this the site calls a time future (§1.2)
@@ -448,66 +448,40 @@ func TestGlobalParity(t *testing.T) {
 		t.Fatalf("the third player's second pass should send the %d rounds the site named in retry, sent %v", len(retried), again)
 	}
 
-	// Ten days on, the second player imports a Tsum List of its fold-5: mickey
-	// is at level 1 there, so every round of it recorded higher counts at 1.
-	// (A list of some other account keeps the game from having one account
-	// only, which would link every device's rounds to it.) Only that player's
-	// app knows; the site learns from what its forwarder sends once the site
-	// says it takes levels: the rounds still in the window again, with their
-	// level, and for the older ones the level alone. Its own coin rules' verdict
-	// on donald goes the same way.
-	later := now.Add(10 * 24 * time.Hour)
+	// The second player imports a Tsum List of its fold-5: mickey is at level 1
+	// there, so every round of it recorded higher counts at 1. (A list of some
+	// other account keeps the game from having one account only, which would
+	// link every device's rounds to it.) Only that player's computer has the
+	// list, and knows by the device's name whose rounds it bounds; the site has
+	// the rounds. So once the site says it takes lists, the forwarder sends the
+	// lists and that link, and no round again; the site works the levels out.
 	for _, app := range []core.App{apps[1], union} {
-		addList(t, app, "global", "decoy", later.Add(-2*time.Hour).Format("20060102-150405"), map[string]int64{"mickey": 6, "pooh": 6, "piglet": 6, "tigger": 6, "eeyore": 6})
-		addList(t, app, "global", parityDevices[2].name, later.Add(-time.Hour).Format("20060102-150405"), map[string]int64{"mickey": 1, "pooh": 1, "piglet": 6, "tigger": 2, "eeyore": 3})
-	}
-	if err := Refile(apps[1].DB()); err != nil {
-		t.Fatal(err)
+		addList(t, app, "global", "decoy", now.Add(-time.Hour).Format("20060102-150405"), map[string]int64{"mickey": 6, "pooh": 6, "piglet": 6, "tigger": 6, "eeyore": 6})
+		addList(t, app, "global", parityDevices[2].name, now.Format("20060102-150405"), map[string]int64{"mickey": 1, "pooh": 1, "piglet": 6, "tigger": 2, "eeyore": 3})
 	}
 	workers[1].mu.Lock()
-	workers[1].levels = 1
+	workers[1].lists = 1
 	workers[1].mu.Unlock()
-	contributors[1].now = func() time.Time { return later }
-	before := len(uploaded(1))
+	sentBefore := len(uploaded(1))
 	runPass(t, contributors[1])
+	if n := len(uploaded(1)) - sentBefore; n != 0 {
+		t.Fatalf("sending the lists sent %d uploads of rounds again", n)
+	}
 	for i := range players {
 		players[i].Passes = append(players[i].Passes, pass{})
-		players[i].Levels = [][]LevelBatch{{}, {}, {}}
-		players[i].PassAt = append(players[i].PassAt, later.UnixMilli())
+		players[i].Evidence = [][]ListBatch{{}, {}, {}}
+		players[i].PassAt = append(players[i].PassAt, now.UnixMilli())
 	}
-	players[1].Passes[2] = uploaded(1)[before:]
 	workers[1].mu.Lock()
-	players[1].Levels[2] = slices.Clone(workers[1].levelBatches)
+	players[1].Evidence[2] = slices.Clone(workers[1].listBatches)
 	workers[1].mu.Unlock()
-	// What the site should say of that pass: a round that began before its
-	// window is old, the rest carry a new level; then the levels alone, of
-	// which the ones a round just brought are no news.
-	oldest := later.Add(-globalWindow)
-	third := struct{ accepted, old, levels, levelsNew int }{}
-	withRound := map[string]bool{}
-	for _, b := range players[1].Passes[2] {
-		for _, rec := range b.Records {
-			if rec["skill_eff"] == "" {
-				t.Fatalf("the third pass sent a round with no level: %v", rec)
-			}
-			if roundStart(rec["id"]).Before(oldest) {
-				third.old++
-			} else {
-				third.accepted++
-				withRound[rec["id"]] = true
-			}
-		}
+	lists, links := 0, 0
+	for _, b := range players[1].Evidence[2] {
+		lists += len(b.Lists)
+		links += len(b.Links)
 	}
-	for _, b := range players[1].Levels[2] {
-		for _, it := range b.Levels {
-			third.levels++
-			if !withRound[it.ID] {
-				third.levelsNew++
-			}
-		}
-	}
-	if third.accepted < 50 || third.levelsNew < 5 {
-		t.Fatalf("the third pass: %+v; the data needs levelled rounds on both sides of the window", third)
+	if lists != 2 || links != 1 || players[1].Evidence[2][len(players[1].Evidence[2])-1].Links[0].Tag != parityDevices[2].tag {
+		t.Fatalf("the third pass should send two lists and the fold-5's link: %+v", players[1].Evidence[2])
 	}
 
 	// The skill level correction, over everyone's rounds as the global site
@@ -530,7 +504,7 @@ func TestGlobalParity(t *testing.T) {
 			byCoins++
 		case m.ID[24:] == parityDevices[2].tag && m.Eff == "1":
 			byList++
-			if roundStart(m.ID).Before(oldest) {
+			if roundStart(m.ID).Before(now.Add(-45 * 24 * time.Hour)) {
 				listOld++
 			}
 		default:
@@ -541,10 +515,8 @@ func TestGlobalParity(t *testing.T) {
 	if byCoins != 30 {
 		t.Fatalf("the coin rules moved %d rounds, want the 30 recorded at level 3 between two days at level 5", byCoins)
 	}
-	// Every one of them reached the site: with its round, or alone.
-	if byList < 20 || listOld < 3 || byList+byCoins != third.accepted+third.levelsNew {
-		t.Fatalf("the list moved %d rounds (%d older than the window), the coins %d; the third pass carried %d levels with rounds and %d alone",
-			byList, listOld, byCoins, third.accepted, third.levelsNew)
+	if byList < 20 || listOld < 3 {
+		t.Fatalf("the list moved %d rounds, %d of them from the first weeks; the data needs more", byList, listOld)
 	}
 
 	// What the global site should answer, from the union's rounds.
@@ -753,11 +725,10 @@ func TestGlobalParity(t *testing.T) {
 	summary("the level they were recorded at, now empty", map[string]string{"tsum": "donald", "skill": "3"}, map[string]string{"tsum": "donald"}, skillIn(3))
 	summary("the level they were recorded at, as recorded", map[string]string{"tsum": "donald", "skill": "3", "levels": "recorded"},
 		map[string]string{"tsum": "donald", "levels": "recorded"}, recordedIn(3))
-	// The second player's Tsum List: its mickey rounds count at 1, the ones too old to send again included.
+	// The second player's Tsum List: its fold-5's mickey rounds count at 1, on the site as on the server.
 	summary("a Tsum a contributor's list re-filed", map[string]string{"tsum": "mickey"}, nil, nil)
 	summary("the level the list gave", map[string]string{"tsum": "mickey", "skill": "1", "build": "global"}, map[string]string{"tsum": "mickey", "build": "global"}, skillIn(1))
 	summary("the list's Tsum as recorded", map[string]string{"tsum": "mickey", "levels": "recorded", "build": "global"}, nil, nil)
-	summary("the first days, where only the level could be sent", map[string]string{"to": "2026-08-24T00:00:00Z"}, nil, nil)
 	summary("levels as recorded, final coins, their day", map[string]string{"levels": "recorded", "coins": "final", "from": "2026-09-21T00:00:00Z", "to": "2026-09-22T00:00:00Z"}, nil, nil)
 
 	// Outlier ranges. The global site keeps whole bins, by their rounds'
@@ -921,10 +892,10 @@ func TestGlobalParity(t *testing.T) {
 			{Accepted: len(rounds) + len(newTsum) - len(retried), Duplicates: len(duplicated),
 				Rejected: map[string]int{"id": 2, "tsum": 1, "duration": 1, "range": 1, "future": len(retried)}, Retry: retried},
 			{Accepted: len(edits) + len(retried), Rejected: map[string]int{}, Retry: []string{}},
-			{Accepted: third.accepted, Rejected: map[string]int{"old": third.old}, Retry: []string{}},
+			{Rejected: map[string]int{}, Retry: []string{}},
 		},
-		// The levels sent alone, per pass: how many the site should take as new, and how many it has already.
-		"levelUploads": []map[string]int{{}, {}, {"accepted": third.levelsNew, "unchanged": third.levels - third.levelsNew}},
+		// The case whose answer, less what it says was re-filed, is the list's Tsum once its link is taken back.
+		"withdrawn": "summary the list's Tsum as recorded",
 	}
 	data, err := json.Marshal(fixture)
 	if err != nil {

@@ -64,7 +64,7 @@
           {/each}
           {#if rows.length > MAX}<li class="sub">and {fmt(rows.length - MAX)} more</li>{/if}
         </ul>
-        {#if everyone}<div class="sub">Each from its contributor's own evidence: a Tsum List of the account the rounds were played on, or their coins against that device's other rounds. Whose rounds they are is not published.</div>{/if}
+        {#if everyone}<div class="sub">Worked out on the site from what contributors send: the Tsum Lists of the account the rounds were played on, and their coins against that device's other rounds. Whose rounds they are is not published.</div>{/if}
         <div class="sub">A level typed into the script can be left wrong for a stretch; one read from the Tsum List (script 6.0a19 and later) is trusted, and a Tsum List bounds the rounds of its account (Data → Game accounts). The recorded level is kept as it is.</div>
       </details>
     {/if}
