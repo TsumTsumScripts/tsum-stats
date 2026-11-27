@@ -24,11 +24,17 @@
     const what = f.medals ? 'medals' : 'coins';
     const held = `${fmt(f.mid)} against ${fmt(f.againstMid)} a round`;
     const sure = f.confidence === 'high' ? 'a close match' : 'a fair match';
+    if (f.rule === 'list') {
+      const list = `${f.listDevice ? `${f.listDevice} ` : ''}Tsum List of ${day.format(parseUTC(stampTime(f.listStamp)))}`;
+      return `${fmt(f.rounds)} rounds, ${span(f)}: the ${list} read skill ${f.listLevel} ${f.listBound === 'cap' ? 'after' : 'before'} them, and a Tsum's level never goes down, so it was at ${f.listBound === 'cap' ? 'most' : 'least'} ${f.listLevel}`;
+    }
     if (f.rule === 'trusted') {
       return `a run of ${fmt(f.rounds)} rounds, ${span(f)}: the same ${what} as this device's later rounds at skill ${f.to}, whose level the script read from the Tsum List (${held}; ${sure})`;
     }
     return `a run of ${fmt(f.rounds)} rounds, ${span(f)}: this device's recorded level went ${f.from < f.to ? 'down and back up' : 'up and back down'}, which a Tsum's level never does, and their ${what} match its skill ${f.to} rounds (${held}; ${sure})`;
   }
+  /** A list's stamp (YYYYMMDD-HHMMSS, UTC) as a round's time is written. */
+  const stampTime = s => `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)} ${s.slice(9, 11)}:${s.slice(11, 13)}:${s.slice(13, 15)}`;
   const reasons = r => fixes.filter(f => f.tsum === r.tsum && String(f.from) === r.from && String(f.to) === r.to);
 </script>
 
@@ -52,12 +58,12 @@
           {#each rows.slice(0, MAX) as r (`${r.tsum}|${r.from}|${r.to}`)}
             <li>
               {#if !one}<b>{nameOf(r.tsum)}</b>:{' '}{/if}{fmt(r.rounds)} {r.rounds === 1 ? 'round' : 'rounds'} recorded as skill {r.from} {levels.recorded ? 'would count' : 'counted'} as skill {r.to}
-              {#each reasons(r) as f (`${f.player}|${f.first}`)}<div class="sub">{why(f)}</div>{/each}
+              {#each reasons(r) as f (`${f.player}|${f.first}|${f.rule}|${f.listStamp}`)}<div class="sub">{why(f)}</div>{/each}
             </li>
           {/each}
           {#if rows.length > MAX}<li class="sub">and {fmt(rows.length - MAX)} more</li>{/if}
         </ul>
-        <div class="sub">A level typed into the script can be left wrong for a stretch; one read from the Tsum List (script 6.0a19 and later) is trusted. The recorded level is kept as it is.</div>
+        <div class="sub">A level typed into the script can be left wrong for a stretch; one read from the Tsum List (script 6.0a19 and later) is trusted, and a Tsum List bounds the rounds of its account (Data → Game accounts). The recorded level is kept as it is.</div>
       </details>
     {/if}
   </div>

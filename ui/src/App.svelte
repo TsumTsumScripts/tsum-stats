@@ -230,7 +230,7 @@
     <footer class="site-foot" title={buildTitle}>{buildText}</footer>
   </div>
   {#if local && !readOnly}
-    <DataDialog bind:this={dataDialog} {upload} {overrideText} />
+    <DataDialog bind:this={dataDialog} {upload} {overrideText} onaccounts={() => { stats?.refresh(); tsum?.refresh(); }} />
     <PublishDialog bind:this={publishDialog} />
     <ContributeDialog bind:this={contributeDialog} />
   {/if}

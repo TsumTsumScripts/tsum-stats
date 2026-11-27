@@ -1,15 +1,18 @@
-<!-- The Data dialog: what is stored, where it is read from, and importing CSV files. -->
+<!-- The Data dialog: what is stored, where it is read from, importing CSV files, and the game accounts the rounds were played on. -->
 <script>
   import {api, fmt} from '../lib/util.js';
   import {toast} from '../lib/ui.svelte.js';
+  import Accounts from './Accounts.svelte';
 
-  let {upload, overrideText} = $props();
+  // onaccounts: an account link changed, so the figures by skill level may have moved.
+  let {upload, overrideText, onaccounts = () => {}} = $props();
 
-  let dialog, picker;
+  let dialog, picker, accounts;
   let status = $state.raw(null);
 
   export async function open() {
     dialog.showModal();
+    accounts?.load();
     status = await api('status');
   }
   const close = () => dialog.close();
@@ -20,7 +23,7 @@
   }
 </script>
 
-<dialog bind:this={dialog}>
+<dialog bind:this={dialog} class="data-dialog">
   <div class="panel">
     <h2>Data</h2>
     <div class="sub">
@@ -43,5 +46,10 @@
     <input type="file" accept=".csv" multiple hidden bind:this={picker} onchange={e => upload(e.target.files)}>
     <p class="sub" style="margin:0">Drop <code>stats_*.csv</code> or <code>tsum_list_*.csv</code> files anywhere on the page to import them.
       <a href="#/help" onclick={close}>How to get data in</a></p>
+    <Accounts bind:this={accounts} onchange={onaccounts} />
   </div>
 </dialog>
+
+<style>
+  .data-dialog { max-width: min(760px, calc(100vw - 32px)); }
+</style>
