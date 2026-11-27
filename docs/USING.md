@@ -10,6 +10,9 @@ This is the manual. For how the program is built and how to change it, see
 
 - **Stats.** Coin efficiency first, then charts and two tables, all filterable.
   See [The Stats page](#the-stats-page).
+- **Tsums.** Every Tsum together with few filters (the best earners, the most
+  played, usage per month, where the coins come from), or everything about one.
+  See [The Tsum page](#the-tsum-page).
 - **Catalog.** Every Tsum, what your latest Tsum List export says about it, and
   what it costs to max. See [The catalog](#the-catalog).
 - **Help.** How to get data in: the address to paste into the app's Script
@@ -359,8 +362,6 @@ a card shows initials in their place until it does.
 | Head to head | Only with 2+ Tsums picked: a scorecard with expected coins, consistency and medals an hour scored, and a per-day line per Tsum |
 | Coin efficiency by Tsum | Ranked bars (coins/s, average, median or best); Spread, a box plot of the 12 most played; Bubbles, average coins × coins/s sized by rounds |
 | Coins per day | Stacked by Tsum (top 7 + Other); coins/s; average with the day's range |
-| Tsum usage per month | Rounds a month stacked by Tsum (top 8 by rounds in the range + Other), or each Tsum's share of its month; every month the time range covers (All time for every one), the running month marked *so far*; by the day a round began (UTC on the global site); click a Tsum to focus on it |
-| Where the coins come from | Donut by Tsum (top 8 + Other), or a sunburst of game › Tsum › items used; by coins, rounds or time |
 | By items used | A bar per item set over every Tsum and skill level in the filter (expected coins an hour, coins/s, average or rounds); pick one Tsum, and see its page, to compare like with like |
 | By chain settings | Chains per scan and max chain length taken as one pair, the way an item set is: *Every pair*, a bar per pair over every Tsum and skill level in the filter (expected coins an hour, coins/s, average or rounds); *Best per Tsum*, each Tsum's best pair at its highest skill level with 50 rounds, in expected coins an hour, of the pairs known within ± 5 %, against its most played pair there; *not clear yet* when the next pair is within luck. With Medals as the primary stat, both views measure medals an hour, and in *Best per Tsum* a pair needs 20 rounds to be the best |
 | Coins per round | Histogram stacked by Tsum, with median, average and P90 lines |
@@ -404,7 +405,7 @@ tooltip everywhere else.
 
 ## The Tsum page
 
-**Tsum** in the top bar (`#/tsum?id=<tsum>`) is everything about one Tsum. Open
+**Tsums** in the top bar (`#/tsum?id=<tsum>`) is everything about one Tsum. Open
 it from there, or with **Tsum page →** in the Stats focus bar, which carries the
 range, primary stat, game and a single device across. Without a Tsum picked
 (`#/tsum`) it is the list of Tsums, over its own time range and game (and
@@ -417,6 +418,16 @@ device, with more than one), a click each to its page:
 - **Best medal earners:** the same for the medal Tsums, by medals an hour, a
   round that earned none counting as 0.
 - **Most played:** by rounds in the range.
+- **Tsum usage per month:** rounds a month stacked by Tsum (top 8 by rounds
+  in the range + Other), or each Tsum's share of its month; every month the
+  time range covers (All time, the default, for every one), the running month
+  marked *so far*; by the day a round began (UTC on the global site).
+- **Where the coins come from:** a donut by Tsum (top 8 + Other), or a
+  sunburst of game › Tsum › items used; by base coins, rounds or time, or by
+  the medal Tsums' medals (a donut only).
+
+These are every Tsum together, so they take only the time range, game and
+device; the Stats page has every filter.
 
 On the global site a Tsum too few players sent rounds of over the range is
 marked *few players*, as on Stats. On a Tsum's page, **← All Tsums** goes back
@@ -756,7 +767,8 @@ test copy with its own `--dir` too. `""` turns contributing off.
 
 ### The global page
 
-The global site is this program's Stats page and Catalog, read-only, over
+The global site opens on the list of Tsums (*Tsums*, first in its top bar).
+It is this program's Stats and Tsums pages and Catalog, read-only, over
 everyone's rounds, and in the *Winter Village* theme until you pick another:
 
 - **Days are UTC days, and a round counts on the day it started.** Here a
