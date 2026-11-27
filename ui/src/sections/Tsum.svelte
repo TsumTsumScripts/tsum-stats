@@ -5,9 +5,12 @@
   On the global site it is every contributor's rounds of it: by skill level
   and items, ranked among every Tsum, by UTC day; no rounds, settings or
   Tsum lists, so no best rounds, recent form or boxes to max. Without a Tsum
-  picked it is the list of Tsums over its time range and game: the best coin
-  and medal earners an hour, the most played, and on the global site the
-  Tsums new in the last 30 days above them; with one, All Tsums goes back to it.
+  picked it is the list of Tsums over its time range and game, every Tsum
+  together with few filters (the Stats page has them all): the best coin and
+  medal earners an hour, the most played, the rounds of each Tsum a month and
+  where the coins come from, and on the global site the Tsums new in the last
+  30 days above them; with one, All Tsums goes back to it. The global site
+  opens on it.
 -->
 <script>
   import {onMount, untrack} from 'svelte';
@@ -19,7 +22,7 @@
   import NewTsums from '../components/NewTsums.svelte';
   import Panel from '../components/Panel.svelte';
   import Seg from '../components/Seg.svelte';
-  import {drawHistogram, drawItems, drawSkillSpread} from '../lib/charts.js';
+  import {drawHistogram, drawItems, drawShare, drawSkillSpread, drawUsage} from '../lib/charts.js';
   import {BOX_PRICE, toMax} from '../lib/boxes.js';
   import {JACKPOT_TIMES} from '../lib/snapshot/engine.js';
   import {cardContext} from '../lib/card.js';
@@ -54,7 +57,7 @@
   const filter = $state(blank());
 
   const VIEW_KEY = 'tsum-stats.tsum-views';
-  const views = $state({items: 'exp', best: 'coins', ...loadPref(VIEW_KEY, {})});
+  const views = $state({items: 'exp', best: 'coins', usage: 'rounds', share: 'donut', shareMetric: 'coins', ...loadPref(VIEW_KEY, {})});
   function setView(key, v) {
     views[key] = v;
     savePref(VIEW_KEY, {...views});
@@ -364,6 +367,25 @@
   const listBuilds = $derived(new Set((list?.mix ?? []).map(m => m.build)).size > 1 || Boolean(filter.build));
   const rangeNote = $derived(`${daysLabel(filter.days).toLowerCase()}${globalSite && filter.days !== 'all' ? ' UTC' : ''}`);
 
+  // The list's charts: a click on a Tsum opens its page.
+  const listCtx = {nameOf, colorOf, onPick: id => set({id})};
+  let usageLegend = $state([]), shareLegend = $state([]);
+  /** Medals are the medal Tsums' (the summary's medal set), which has no items mix: a donut only. */
+  const shareMedals = $derived(views.shareMetric === 'medals' && Boolean(list?.medals.tsums.length));
+  const shareView = $derived(shareMedals ? 'donut' : views.share);
+  const shareMetric = $derived(views.shareMetric === 'medals' ? 'coins' : views.shareMetric);
+  const listArgs = $derived(list && {
+    // The month still running, by the day a round began (a UTC one on the global site).
+    usage: [list.dailyTsums, listCtx, views.usage, (globalSite ? new Date().toISOString() : isoDay(new Date())).slice(0, 7)],
+    share: [shareView, shareMedals ? list.medals.tsums : shareView === 'sunburst' ? list.mix : list.tsums, listCtx, shareMetric],
+  });
+  const clickNote = ' · click one to see its page';
+  const usageSub = $derived(`${views.usage === 'share' ? 'each Tsum\'s share of the month\'s rounds' : 'rounds a month'}, top 8 Tsums and the rest as Other${clickNote}`
+    + `${globalSite ? ' · by the UTC day each round began' : ''}${filter.days === 'all' ? '' : ' · only the months in the time range: All time shows every one'}`);
+  const shareTitle = $derived({coins: 'Where the coins come from', medals: 'Where the medals come from', rounds: 'Where the rounds go', time: 'Where the play time goes'}[shareMedals ? 'medals' : shareMetric]);
+  const shareSub = $derived(`${shareView === 'sunburst' ? (listBuilds ? 'inner: game · middle: Tsum · outer: items used' : 'inner: Tsum · outer: items used') : 'top 8 Tsums, the rest as Other'}`
+    + `${shareMedals ? ' · the medal Tsums\' medals' : shareMetric === 'coins' ? ' · base coins' : ''} · ${rangeNote}${clickNote}`);
+
   const args = $derived(s && {
     skills: [detail.skillBins, s.histogram],
     hist: [s.histogram, s.totals, ctx],
@@ -464,7 +486,7 @@
         </div>
       </div>
     {:else}
-      <div class="tsum-title"><h2>Pick a Tsum</h2><div class="sub">Everything about one Tsum: how it plays at each skill level, with each setting, and its best rounds.</div></div>
+      <div class="tsum-title"><h2>Tsums</h2><div class="sub">Every Tsum over the time range. Pick one for everything about it: how it plays at each skill level and with each setting{globalSite ? '' : ', and its best rounds'}.</div></div>
     {/if}
     <div class="tsum-pick">
       {#if filter.id}<button type="button" class="btn" title="Back to the list of Tsums" onclick={() => set({id: ''})}>← All Tsums</button>{/if}
@@ -562,6 +584,26 @@
         </div>
       {/if}
     </div>
+    {#if list?.totals.rounds}
+      <Panel title="Tsum usage per month" sub={usageSub}>
+        {#snippet tools()}
+          <Seg sm label="Measure" value={views.usage} onpick={v => setView('usage', v)} options={[['rounds', 'Rounds'], ['share', 'Share']]} />
+        {/snippet}
+        <Chart draw={drawUsage} args={listArgs?.usage} unit="coins" bind:legend={usageLegend} />
+        <Legend items={usageLegend} />
+      </Panel>
+      <Panel title={shareTitle} sub={shareSub}>
+        {#snippet tools()}
+          {#if !shareMedals}<Seg sm label="Chart" value={views.share} onpick={v => setView('share', v)} options={[['donut', 'Donut'], ['sunburst', 'Sunburst']]} />{/if}
+          <Seg sm label="Measure" value={shareMedals ? 'medals' : shareMetric} onpick={v => setView('shareMetric', v)}
+            options={[['coins', 'Coins'], ...(list.medals.tsums.length ? [['medals', 'Medals']] : []), ['rounds', 'Rounds'], ['time', 'Time']]} />
+        {/snippet}
+        <div class="share-body">
+          <Chart draw={drawShare} args={listArgs?.share} unit={shareMedals ? 'medals' : 'coins'} size="square" bind:legend={shareLegend} />
+          <Legend items={shareLegend} column />
+        </div>
+      </Panel>
+    {/if}
   {:else}
 
     {#if s && !s.totals.rounds}

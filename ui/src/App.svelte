@@ -33,8 +33,12 @@
   const readOnly = snapshot || globalSite;
   // Marks what the global build must not contain at all (see vite.config.js).
   const local = __LOCAL_ONLY__;
-  const ROUTES = [['stats', 'Stats'], ['tsum', 'Tsum'], ['catalog', 'Catalog'], ['presets', 'Presets'], ['help', 'Help']]
-    .filter(([r]) => !(readOnly && r === 'help') && !(snapshot && r === 'presets'));
+  // The global site opens on the list of Tsums, every Tsum together with few
+  // filters, and lists it first; the rest open on Stats.
+  const HOME = globalSite ? 'tsum' : 'stats';
+  const ROUTES = [['stats', 'Stats'], ['tsum', 'Tsums'], ['catalog', 'Catalog'], ['presets', 'Presets'], ['help', 'Help']]
+    .filter(([r]) => !(readOnly && r === 'help') && !(snapshot && r === 'presets'))
+    .sort(([a], [b]) => (b === HOME) - (a === HOME));
   // The commit the site was built from (vite.config.js: siteBuild), for the footer.
   const build = __SITE_BUILD__;
   const buildText = `Site ${build.date} UTC${build.commit ? ` · ${build.commit}` : ''}${build.changed ? ' · with local changes' : ''}`;
@@ -49,7 +53,7 @@
   // "#/stats?tsum=mickey" → {route: 'stats', params: {tsum: 'mickey'}}
   function readHash() {
     const [path, query = ''] = location.hash.replace(/^#\/?/, '').split('?');
-    return {route: ROUTES.some(([r]) => r === path) ? path : 'stats', params: Object.fromEntries(new URLSearchParams(query))};
+    return {route: ROUTES.some(([r]) => r === path) ? path : HOME, params: Object.fromEntries(new URLSearchParams(query))};
   }
 
   // A section mounts the first time it is shown, with that link's params, and stays mounted.

@@ -17,7 +17,7 @@
   import Panel from '../components/Panel.svelte';
   import Seg from '../components/Seg.svelte';
   import TsumCell from '../components/TsumCell.svelte';
-  import {BONUS_TSUM_ROUNDS, bonusTiers, drawBonus, drawCompare, drawDaily, drawEfficiency, drawChains, drawHistogram, drawItems, drawShare, drawUsage} from '../lib/charts.js';
+  import {BONUS_TSUM_ROUNDS, bonusTiers, drawBonus, drawCompare, drawDaily, drawEfficiency, drawChains, drawHistogram, drawItems} from '../lib/charts.js';
   import {cardContext} from '../lib/card.js';
   import {expand, shared, toast} from '../lib/ui.svelte.js';
   import {
@@ -94,7 +94,7 @@
 
   // Chart views are a per-browser preference, not part of the link.
   const VIEW_KEY = 'tsum-stats.views';
-  const defaultViews = {compare: 'exp', eff: 'rate', effMetric: 'exp', daily: 'stack', share: 'donut', shareMetric: 'coins', items: 'exp', chains: 'exp', chainsView: 'all', bonus: 'rounds', bonusView: 'tiers', usage: 'rounds'};
+  const defaultViews = {compare: 'exp', eff: 'rate', effMetric: 'exp', daily: 'stack', items: 'exp', chains: 'exp', chainsView: 'all', bonus: 'rounds', bonusView: 'tiers'};
   const views = $state({...defaultViews, ...loadPref(VIEW_KEY, {})});
   function setView(key, v) {
     views[key] = v;
@@ -144,7 +144,7 @@
   let navTick = $state(0);
   // Rows ticked in the Tsum table for the next comparison.
   const ticked = new SvelteSet();
-  const legends = $state({compare: [], daily: [], usage: [], share: [], hist: [], bonus: []});
+  const legends = $state({compare: [], daily: [], hist: [], bonus: []});
 
   const catalog = shared.catalog;
   const nameOf = id => (id ? tsumName(catalog, id) : '');
@@ -386,16 +386,10 @@
     box: 'the 12 most played · box: middle half · bar: median · dot: average · whiskers: lowest to 90th percentile · ring: highest',
     bubble: 'every Tsum · across: average coins · up: coins per second · size: rounds',
   }[views.eff] + (minRounds ? ` · Tsums with ${fmt(minRounds)} rounds or more` : ''));
-  const shareSub = $derived(summary && (views.share === 'sunburst'
-    ? (new Set(summary.mix.map(m => m.build)).size > 1 ? 'inner: game · middle: Tsum · outer: items used' : 'inner: Tsum · outer: items used')
-    : 'top 8 Tsums, the rest as Other'));
   const dailySub = $derived(summary && {
     stack: `total ${basis}, top 7 Tsums`, rate: `${basis} per second of play`, hour: `${basis} an hour of play`, avg: `average ${basis} per round`,
     exp: `expected net coins an hour of play · band: where the day's true figure most likely is (two standard errors)`,
   }[mv('daily')] + (globalSite ? ' · by the UTC day each round began' : ''));
-  const usageSub = $derived(`${views.usage === 'share' ? `each Tsum's share of the month's ${filter.coins === 'medals' ? 'medal Tsum ' : ''}rounds`
-    : `${filter.coins === 'medals' ? 'medal Tsums\' ' : ''}rounds a month`}, top 8 Tsums and the rest as Other · click one to focus on it${globalSite ? ' · by the UTC day each round began' : ''}`
-    + (filter.days === 'all' ? '' : ' · only the months in the time range: All time shows every one'));
   const histSub = $derived(summary && (noSpreads ? `not available ${noSpreads}: ${noSpreadsWhy}`
     : `how many rounds ended with each amount of ${basis}, by Tsum${summary.global ? ' · ≈ from 2 % wide bins' : ''}`));
 
@@ -434,8 +428,6 @@
     compare: picked.length > 1 ? [compareMv === 'medals' ? summary.medals.dailyTsums : summary.dailyTsums, picked, ctx, compareMv] : null,
     eff: [views.eff, byRounds, spreadCtx, mv('effMetric')],
     daily: [summary.daily, summary.dailyTsums, ctx, mv('daily')],
-    usage: [summary.dailyTsums, ctx, views.usage, isoDay(new Date()).slice(0, 7)],
-    share: [views.share, views.share === 'sunburst' ? summary.mix : summary.tsums, ctx, views.shareMetric],
     items: [summary.mix, mv('items')],
     chains: [summary.chains, mv('chains')],
     hist: [summary.histogram, summary.totals, spreadCtx],
@@ -684,26 +676,6 @@
         <Legend items={legends.daily} />
       </Panel>
     </div>
-
-    <Panel id="s-usage" class="anchor" title="Tsum usage per month" sub={usageSub}>
-      {#snippet tools()}
-        <Seg sm label="Measure" value={views.usage} onpick={v => setView('usage', v)} options={[['rounds', 'Rounds'], ['share', 'Share']]} />
-      {/snippet}
-      <Chart draw={drawUsage} args={args?.usage} {unit} bind:legend={legends.usage} />
-      <Legend items={legends.usage} />
-    </Panel>
-
-    <Panel id="s-share" class="anchor" title="Where the {unit} come from" sub={shareSub}>
-      {#snippet tools()}
-        <Seg sm label="Chart" value={views.share} onpick={v => setView('share', v)} options={[['donut', 'Donut'], ['sunburst', 'Sunburst']]} />
-        <Seg sm label="Measure" value={views.shareMetric} onpick={v => setView('shareMetric', v)}
-          options={[['coins', U], ['rounds', 'Rounds'], ['time', 'Time']]} />
-      {/snippet}
-      <div class="share-body">
-        <Chart draw={drawShare} args={args?.share} {unit} size="square" bind:legend={legends.share} />
-        <Legend items={legends.share} column />
-      </div>
-    </Panel>
 
     <div class="charts anchor" id="s-when">
       <Panel class="wide" title="By items used" sub="every item set over every Tsum and skill level, best first · pick one Tsum, and see its page, to compare like with like">

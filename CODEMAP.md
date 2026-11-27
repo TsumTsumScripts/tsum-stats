@@ -161,10 +161,10 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | File | Owns |
 |:--|:--|
 | `ui/src/main.js`, `ui/src/styles.css` | Mounting `App.svelte`; the page-wide styles |
-| `ui/src/App.svelte` | The shell: hash routing, the top bar, live updates, importing CSVs. Read-only in a snapshot and on the global site |
+| `ui/src/App.svelte` | The shell: hash routing (the global site opens on the list of Tsums, the rest on Stats), the top bar, live updates, importing CSVs. Read-only in a snapshot and on the global site |
 | `ui/src/sections/Stats.svelte` | Filter rail, KPIs, charts, per-Tsum and rounds tables. Global: no rounds table or hours |
 | `sections/stats/` | `FilterRail.svelte` (filters, jump menu), `FocusBar.svelte` (picked Tsums), `HeadToHead.svelte`, `Kpis.svelte`, `ChainBest.svelte` (each Tsum's best chain pair), `Versions.svelte` (script versions and devices: unread figures, the regression check) |
-| `ui/src/sections/Tsum.svelte` | The Tsum page: one Tsum's figures, settings, rank, ownership, best rounds (on the global site: everyone's rounds of it, by skill level and items); without one, the list of Tsums (best earners, most played) |
+| `ui/src/sections/Tsum.svelte` | The Tsum page: one Tsum's figures, settings, rank, ownership, best rounds (on the global site: everyone's rounds of it, by skill level and items); without one, the list of Tsums, every Tsum together with few filters (best earners, most played, usage per month, where the coins come from) |
 | `sections/tsum/` | `Breakdown.svelte` (by skill, setting, version, device), `Insights.svelte` (form, pace, steadiness), `ItemPayback.svelte`, `Earners.svelte` (the list of Tsums' best coin and medal earners), `BestSettings.svelte` (a Tsum's best combinations of settings) |
 | `ui/src/sections/Catalog.svelte` | Every Tsum against the latest Tsum list; the roster on the global site. `catalog/MaxOut.svelte`: cost and time to max; `catalog/Progress.svelte`: boxes opened between a device's Tsum lists |
 | `ui/src/sections/Presets.svelte` | Presets: the gallery (global site, `presets.json`), Convert (pasted share codes, or presets GAP Companion sent in `#/presets?p=`) with Copy code and Add to GAP Companion; on the local app, Share to the gallery and the contributor's own (CONTRACT §2.7, §7.3). Not in a snapshot |
