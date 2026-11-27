@@ -417,7 +417,30 @@ level they were played at**. What was recorded is never changed: the round
 keeps its recorded level, and the level it counts at is worked out again from
 all of the Tsum's rounds whenever rounds arrive.
 
-How it decides. It never judges one round, only a **run**: one device's
+**Tsum Lists come first.** A Tsum List says what level each Tsum was at, and
+a level never goes down. So on the account a list was read from, a list
+reading level N means every earlier round of that Tsum was at N at most, and
+every later round at N at least. A round recorded outside that counts at the
+nearest level it could have been: recorded 6 with a later list reading 1
+counts at 1; recorded 3 after a list read 4 counts at 4. A round recorded
+inside it stands (the Tsum may have levelled up in between), and the coin
+rules below can still judge it, but never past what the lists read.
+
+For that the site has to know which **game account** rounds were played on,
+and a list only names the device folder it came from. One emulator can hold
+another account later, so the site groups lists by what they say: lists are
+one account's when no Tsum's skill or level goes down from one to the next
+and most Tsums are at the very same skill. Rounds are linked to an account
+when their device name has lists of one account only, or when their game
+(INTL or JP) has lists of one account only. Everything else is left unlinked
+rather than guessed. **Data → Game accounts** shows the accounts and every
+stretch of rounds (a game, a device name and a device, with its dates and
+Tsums); for a stretch with no account, pick the account by its lists' device
+names, or *Not known*. The answer is kept in its own table and applies at
+once; the rounds themselves are not touched. Import a Tsum List now and then
+(Help → Tsum list) and old rounds get more exact.
+
+How the coin rules decide. They never judge one round, only a **run**: one device's
 consecutive rounds of one Tsum under one recorded level. A run needs 20 rounds
 with the same play items (5>4, +Time, +Bubble, +Combo; +Coin, +Exp and +Score
 do not change base coins) before its coins are compared with anything. Medal
@@ -441,15 +464,18 @@ Two rules, and a run stays as recorded unless one of them is clear:
   barely changes its coins moves nothing.
 
 One device is never held to another's coins: devices and script versions
-differ by more than a level's worth. A handful of rounds is never moved, nor a
+differ by more than a level's worth. Coins also cannot show a level that was
+never played: 800 rounds recorded at 6 on a level 1 Tsum look like nothing but
+themselves. Only a Tsum List settles those. A handful of rounds is never moved, nor a
 run that used other items than everything around it.
 
 Where you see it:
 
 - **A note** under the Stats totals, and in the Tsum page's *By skill level*
   panel: "208 rounds counted at another skill level than recorded". *Which
-  rounds* lists them per Tsum and pair of levels, with why each run moved and
-  how close the match was.
+  rounds* lists them per Tsum and pair of levels, with why each run moved: the
+  Tsum List that says so ("the JP-Tsum Tsum List of Oct 6 read skill 1 after
+  them"), or the coins and how close the match was.
 - **⇄ N re-filed** beside a Tsum in the per-Tsum table, and **⇄ N recorded as
   skill 3** on a *By skill level* row that holds such rounds.
 - The Rounds table's **Level** column: `3 → 5` is a round recorded as 3 and

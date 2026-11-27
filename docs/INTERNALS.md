@@ -155,6 +155,27 @@ three sides share it:
   some months could not work a run out.
 - **The global Worker** runs `skillFix.js` itself (§ The global site).
 
+**Tsum Lists outrank the coin rules, on the server only** (`accounts.go`).
+`loadAccounts` groups every list with a skill read into accounts, per game,
+oldest first: a list joins the account with the newest list it can follow
+(`Account.joins`: 5 Tsums in common, at most 2 % reading lower in skill or
+level, half or more at the same skill), else starts one. On the developer's
+data same-account lists agree on 95 to 100 % of skills and the two INTL
+accounts on 8 %, with 34 of 37 common Tsums lower. `linker.account` links a
+stretch (build, device name, `stretchTagSQL`) by the player's answer in
+`ts_account_links` (a list's file, so it survives regrouping; '' is "not
+known"), else by a device name whose lists are one account's, else by a build
+with one account. `Refile` then, per round: `Account.bound` (the newest
+reading at or before `played_at` is the floor, the lowest later one the cap;
+stamps are UTC like `played_at`; a Tsum read lower after than before has no
+bound) clamps the recorded level; the coin rules run on those levels, a round
+whose floor and cap agree counting as trusted; and a coin verdict outside the
+bound is dropped. A list fix is a `ts_skill_fixes` row with `rule = "list"`
+and the list's device, stamp, level and side. A new list or answer refiles
+every Tsum. The snapshot needs none of it: it carries the levels. The global
+side does not use lists yet; `skill_eff` is per round so the forwarder can
+later send it as a field of its own.
+
 The order rule is a small dynamic programme per player (`orderRule`): levels
 that never go down, at least cost, where changing a run costs its weight and
 two neighbouring runs with the same coins at different levels cost the smaller
