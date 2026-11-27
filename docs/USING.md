@@ -622,7 +622,10 @@ generated from the Tsum script's portrait library (a tool that lives with the
 scripts, not here) and committed, so building the site needs nothing else.
 
 A blank name means that build does not have the Tsum. The INTL/JP toggle
-filters on this. The top bar's **EN/JP** toggle (a per-browser
+filters on this. A search names what it finds that only the other build has
+(*Only in JP: Lorcana Cruella…*), played ones linking to their Tsum page, with
+a button to show that build: on the local site only when a Tsum list of that
+build is there to show. The top bar's **EN/JP** toggle (a per-browser
 preference, on the local and global sites and in snapshots) picks the language
 every page names Tsums in: EN shows the English name, or the JP one where a
 Tsum has no English name yet; JP shows the JP name, or the English one for a

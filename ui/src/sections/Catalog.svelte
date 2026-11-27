@@ -2,7 +2,8 @@
      player's latest Tsum List export says they own, from any device or one.
      The global site is no one's collection: there it is the roster, with the
      rounds every contributor has played of each Tsum, under the Tsums new in
-     the last 30 days. -->
+     the last 30 days. A search also names the Tsums it finds that only the
+     other build has, with a button to show that build. -->
 <script>
   import {onMount} from 'svelte';
   import {everyoneApi, isGlobal} from '../lib/global/client.js';
@@ -35,6 +36,8 @@
     payback: {label: 'Next skill pays back', dir: 'asc'},
   };
   const VIEWS = ['card', 'list'];
+  /** Names the "Only in JP/INTL" line spells out before "and N more". */
+  const ELSEWHERE_NAMES = 4;
 
   // Sort, view and showing both names are per-browser preferences, not part of the link;
   // the language comes first is the page's (names.lang, the top bar).
@@ -156,6 +159,13 @@
     const o = options.find(x => x.value === value);
     if (o) set({build: o.build, device: o.device});
   };
+  // The other build's roster: on the global site just the build, here the newest Tsum list of that build.
+  // Without one the effect below would move back to this build, so it is offered only when one exists.
+  const canShow = b => globalSite || !sources?.length || sources.some(s => s.build === b);
+  function showBuild(b) {
+    const best = (sources ?? []).filter(s => s.build === b).sort((x, y) => y.stamp.localeCompare(x.stamp))[0];
+    set({build: b, device: best?.device ?? ''});
+  }
   // A link, or a device that has gone, may name no list: take the newest one of the build, else the first.
   $effect(() => {
     if (!sources?.length || options.some(o => o.value === listKey)) return;
@@ -203,9 +213,20 @@
     const chain = prefs.sorts.map(compare);
     shown.sort((a, b) => { for (const c of chain) { const r = c(a, b); if (r) return r; } return collator.compare(a.name, b.name); });
 
+    // What the search finds that only the other build has: the roster above leaves those out, so the
+    // Catalog says where they are (a JP-only Tsum searched for on INTL), most played first.
+    const other = build === 'jp' ? 'global' : 'jp';
+    const elsewhere = !q ? [] : catalog.tsums
+      .filter(t => t[other] && !t[build] && !owned.has(t.id))
+      .map(t => named(t.id, t, null))
+      .filter(e => e.search.includes(q) || e.id.includes(q))
+      .sort((a, b) => (played.get(b.id) ?? 0) - (played.get(a.id) ?? 0) || collator.compare(a.name, b.name));
+
     const when = stampDate(list?.stamp);
     return {
       shown,
+      other,
+      elsewhere,
       totals: maxOutTotals(shown),
       count: list ? `Owned ${fmt(ownedCount)} / ${fmt(entries.length)}`
         : globalSite ? `${fmt(entries.filter(e => played.has(e.id)).length)} of ${fmt(entries.length)} Tsums played` : `${fmt(entries.length)} Tsums`,
@@ -336,6 +357,15 @@
         <span class="sub">{view.source}</span>
       {/if}
     </div>
+    {#if view.elsewhere.length}
+      {@const more = view.elsewhere.length - ELSEWHERE_NAMES}
+      <!-- The search's matches only the other build has; played ones link to their Tsum page. -->
+      <p class="cat-elsewhere">
+        <span>Only in {buildName(view.other)}:
+          {#each view.elsewhere.slice(0, ELSEWHERE_NAMES) as e, i (e.id)}{i ? ', ' : ''}<b>{#if played.has(e.id)}<a href={tsumPage(e.id)} title="{fmt(played.get(e.id))} rounds · its Tsum page">{e.name}</a>{:else}{e.name}{/if}</b>{/each}{#if more > 0}{' '}and {fmt(more)} more{/if}</span>
+        {#if canShow(view.other)}<button type="button" class="btn" onclick={() => showBuild(view.other)}>Show {buildName(view.other)}</button>{/if}
+      </p>
+    {/if}
   </div>
 
   {#if globalSite && loaded}
