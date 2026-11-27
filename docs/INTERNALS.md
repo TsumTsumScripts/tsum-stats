@@ -126,6 +126,48 @@ in `schema.go`. Both are sized against a large synthetic history; if you add a
 query to the summary, check it the same way before shipping it, since they all
 run on one request.
 
+## The skill level correction
+
+`ui/src/lib/skillFix.js` holds the rules, and its header the reasoning;
+`docs/USING.md` § Skill level correction is what a player is told. It is a
+pure function over **run summaries** (`refile(runs, prev)`): a run is one
+player's consecutive rounds of one Tsum under one recorded level, with its
+rounds, how many are from a trusted version (`trustedVersion`: 6.0a19 and
+later) and, per item context (`fixContext`), a count and a middle value of
+its base coins, or medals for a medal Tsum. Working on summaries is what lets
+three sides share it:
+
+- **The server** has a Go port, `internal/stats/skillfix.go`, held to the
+  JavaScript by `TestSkillFixParity` (the same made-up rounds through both).
+  `Refile` reads all of a Tsum's rounds, builds exact runs per build and
+  device tag with medians, and writes the result to the derived column
+  `ts_rounds.skill_eff` (only the rows that change) and the reasons to
+  `ts_skill_fixes`. The table's triggers set `skill_eff` back to the recorded
+  `skill_level` whenever a round's settings are written, so whoever stores
+  rounds calls `Refile` for their Tsums after: the importer once per import,
+  the event listener per round, and `migrate` once per `SkillFixVersion`
+  (raise it with the rules). `Filter.skill()` picks the column: `skill_eff`,
+  or `skill_level` with `levels=recorded`. Nothing reads `settings.skillLevel`
+  for a figure except through those two columns and `Filter.settingValue`.
+- **A snapshot** carries each month's `skillFix` (the level a re-filed round
+  counts at, 0 elsewhere) and the manifest's `skillFixes`, without device
+  tags; the snapshot engine's `levelOf` reads them, since a browser holding
+  some months could not work a run out.
+- **The global Worker** runs `skillFix.js` itself (§ The global site).
+
+The order rule is a small dynamic programme per player (`orderRule`): levels
+that never go down, at least cost, where changing a run costs its weight and
+two neighbouring runs with the same coins at different levels cost the smaller
+one's. A run moves only if pinning it to its recorded level costs at least its
+own weight more, and its coins match a run that kept the target level. The
+trusted rule goes from a player's newest run back. Both are gated on
+`FIX.SAME` (12 %); the thresholds were set on the developer's 35,000 rounds:
+same-level stretches of 20 to 100 rounds differ by under 12 % 95 % of the
+time, and real level-ups measured 17 % to 37 %.
+
+Changing a rule: `skillFix.js` and `ui/tests/skill-fix.test.mjs`, the same in
+`skillfix.go`, `SkillFixVersion` up, then both documents.
+
 ## The snapshot engine
 
 `tsum-stats snapshot DIR` writes the site and its data as plain files
@@ -274,6 +316,25 @@ of the rounds, or the time of day) is approximate from the bins, or left off
 the global site as `hours` and the Rounds table are. A new cell column fills
 only as days are recomputed: `POST /api/v1/admin/rebuild` does the days still
 in D1, and an archived day needs `restore` first (`global/README.md`).
+
+**The skill level correction on the global site.** A cell is keyed by two
+levels: `skill`, the level its rounds count at, and `stated`, the level
+recorded; they differ only where the Worker re-filed a run, and a round's own
+level in `rounds` and the archive is always the recorded one. The Worker
+cannot judge runs from `rounds`, which has no index by device or Tsum, so the
+fold and each full recompute keep `skill_units`, private per-day sums by
+device, Tsum, recorded level, item context and trusted version. Once a UTC
+day per Tsum a job step (`global/src/refile.ts`) has D1 collapse those into
+runs and judges them with the same `ui/src/lib/skillFix.js`, on the mean of a
+run's coins where the server has the median, passing the fixes already made
+so a little drift (12 % to make a fix, 20 % to keep one) never flips one. Its
+verdicts are `skill_fix` rows that a day's recompute applies in SQL; only the
+past days where a fix changes anything are recomputed, so a day's new rounds
+show as recorded until the next day's pass. The format change rebuilt
+nothing: every cell was copied with `stated = skill`, and a part without
+`stated` reads as nothing re-filed. Days from before the migration join the
+correction only when the admin `rebuild` recomputes them (`global/CONTRACT.md`
+§3.2, `global/README.md`).
 
 ## The catalog
 

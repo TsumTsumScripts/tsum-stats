@@ -402,6 +402,65 @@ With hundreds of Tsums some colours are close. So a colour never stands alone:
 charts show the portrait where the mark has room, and a named legend or
 tooltip everywhere else.
 
+### Skill level correction
+
+A round's skill level is the script's `skillLevel` setting. Since script
+6.0a19 the script reads it from the Tsum List each round (*Auto Set Skill
+Level*); before that it was typed in, started at 3, and stayed as it was
+through a level-up, a preset or a change of Tsum. So old rounds are often
+filed under a level the Tsum was not at, and every figure by skill level mixed
+them in.
+
+The site works out which rounds those most likely are and **counts them at the
+level they were played at**. What was recorded is never changed: the round
+keeps its recorded level, and the level it counts at is worked out again from
+all of the Tsum's rounds whenever rounds arrive.
+
+How it decides. It never judges one round, only a **run**: one device's
+consecutive rounds of one Tsum under one recorded level. A run needs 20 rounds
+with the same play items (5>4, +Time, +Bubble, +Combo; +Coin, +Exp and +Score
+do not change base coins) before its coins are compared with anything. Medal
+Tsums are compared on medals, the rest on base coins, by the run's median.
+Two rules, and a run stays as recorded unless one of them is clear:
+
+- **A level never goes down.** Where one device's recorded levels for a Tsum
+  do go down, something was recorded wrong. The site looks for the fewest
+  rounds to re-file that put the levels in order (a round with Auto Set Skill
+  Level counts three times, a round at the default 3 half), and moves a run
+  only when the alternative would cost at least twice as much **and** its
+  coins are within 12 % of a run of the same device that kept the level it
+  moves to. So 90 rounds at "3" between two long runs at 5, earning what the 5
+  runs earn, count as 5. A run that earned half as much stays where it is,
+  whatever it was.
+- **The same coins as your own later trusted rounds.** A run from before
+  6.0a19 moves **up** to the level of the same device's later run with Auto
+  Set Skill Level when the two earn the same (within 12 %), and rounds with
+  Auto Set Skill Level show those two levels at least 28 % apart for the Tsum.
+  A real level-up shows as a step in the coins and stays; a Tsum whose level
+  barely changes its coins moves nothing.
+
+One device is never held to another's coins: devices and script versions
+differ by more than a level's worth. A handful of rounds is never moved, nor a
+run that used other items than everything around it.
+
+Where you see it:
+
+- **A note** under the Stats totals, and in the Tsum page's *By skill level*
+  panel: "208 rounds counted at another skill level than recorded". *Which
+  rounds* lists them per Tsum and pair of levels, with why each run moved and
+  how close the match was.
+- **⇄ N re-filed** beside a Tsum in the per-Tsum table, and **⇄ N recorded as
+  skill 3** on a *By skill level* row that holds such rounds.
+- The Rounds table's **Level** column: `3 → 5` is a round recorded as 3 and
+  counted as 5.
+- **Show as recorded**, on the note, turns the correction off for every figure
+  on the site (the skill filter included) so the two can be compared; **Apply
+  the correction** turns it back on. The choice is kept in your browser. As
+  recorded, the note says how many rounds the correction would move.
+
+A snapshot carries the levels its rounds count at. The global site corrects
+every player's rounds the same way, a day behind (§ The global page).
+
 ## The Tsum page
 
 **Tsum** in the top bar (`#/tsum?id=<tsum>`) is everything about one Tsum. Open
@@ -474,7 +533,9 @@ nothing is left out of them. Stats keeps every round.
   recorded is left out as a column; with none ranked yet, it shows the five
   most played, flagged. The ± is the luck of which rounds were played, not
   changes over time (events, the game's own updates).
-- **By skill level:** the figures per `skillLevel` the script was set to, each
+- **By skill level:** the figures per skill level the rounds count at (the
+  script's `skillLevel`, unless the skill level correction re-filed the round:
+  § Skill level correction; such a row says how many), each
   against the level below. *Pays back in* is the hours of play a level's gain
   in expected coins takes to earn back the boxes from the level below (30,000
   coins each; not for medal Tsums), where the gain is more than luck explains:
@@ -778,6 +839,12 @@ everyone's rounds, and in the *Winter Village* theme until you pick another:
   skill types have none (*Not recorded*) until their player's app sends them
   again, which it does once by itself; rounds older than 60 days by then keep
   none.
+- **Skill level correction:** as on your own site (§ Skill level correction),
+  per device, once a day: a round sent today is filed as recorded until the
+  next day's pass. The global site judges a run on the average of its coins
+  where your site has the median, and by whole days. The note says how many
+  rounds count at another level, and *Show as recorded* works; why a run moved
+  is not published, since that is one device's history.
 - **Outliers:** coin and medal ranges, one at a time; no score range. Rounds
   are kept in their 2 % bins, so a range keeps or leaves out whole bins, by
   their rounds' average: the rounds, totals, averages and rates of what it
