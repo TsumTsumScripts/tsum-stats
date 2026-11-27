@@ -460,17 +460,20 @@ nothing is left out of them. Stats keeps every round.
   the middle half's width over the median, so a misread round does not stretch
   it). Type a target to see what share of rounds fell under it; the target is
   kept per Tsum and primary stat in this browser (`target=` in the API).
-- **Best settings:** every setting picked for the Tsum taken together, a row
-  per combination of skill level, item set, chains per scan and max chain
-  length, bubble strategy and skill type: the ten best by expected net coins
-  an hour (each item set's cost taken off, so a dearer set has to earn it),
-  of those known within ± 5 %, against the most played combination. The first
-  is marked *best* only when it beats the next by more than luck explains.
-  In Medals it ranks by medals an hour, of the combinations with 20 rounds or
-  more. A setting no row recorded is left out as a column. With no
-  combination known well enough yet, it shows the five most played, flagged.
-  Skill levels mixed, the highest level usually wins: pick one in the header
-  to see the best setup at your level.
+- **Best settings:** every setting picked for the Tsum taken together, at one
+  skill level: a row per combination of item set, chains per scan and max
+  chain length, bubble strategy and skill type, the ten best by expected net
+  coins an hour (each item set's cost taken off, so a dearer set has to earn
+  it), of those with 50 rounds or more known within ± 5 % (a few alike rounds
+  can look precise by chance), each against the most played combination at
+  that level. The first is marked *best* only when it beats the next by more
+  than luck explains. It opens at the highest skill level with a ranked
+  combination, the other levels and all of them together a click away; a
+  level picked in the header is the one it shows. In Medals it ranks by medals
+  an hour, of the combinations with 50 rounds or more. A setting no row
+  recorded is left out as a column; with none ranked yet, it shows the five
+  most played, flagged. The ± is the luck of which rounds were played, not
+  changes over time (events, the game's own updates).
 - **By skill level:** the figures per `skillLevel` the script was set to, each
   against the level below. *Pays back in* is the hours of play a level's gain
   in expected coins takes to earn back the boxes from the level below (30,000

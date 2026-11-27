@@ -564,8 +564,8 @@
 
       {#if detail.combos?.length}
         <Panel title="Best settings" expandable={false}
-          sub="every setting picked together: skill level, items, chains per scan and max chain, bubbles and skill type · ranked by {filter.coins === 'medals' ? 'medals an hour, of the combinations with 20 rounds or more' : 'expected net coins an hour, each item set charged its cost, of the combinations known within ± 5 %'} · best marked when it beats the next by more than luck{mixedNote}">
-          <BestSettings combos={detail.combos} {unit} />
+          sub="every setting picked together at one skill level: items, chains per scan and max chain, bubbles and skill type · ranked by {filter.coins === 'medals' ? 'medals an hour' : 'expected net coins an hour, each item set charged its cost'}, of the combinations with {fmt(MIN_ROUNDS)}+ rounds{filter.coins === 'medals' ? '' : ' known within ± 5 %'} · best marked when it beats the next by more than luck · each against the most played at its level">
+          <BestSettings combos={detail.combos} {unit} skill={filter.skill} />
         </Panel>
       {/if}
 
