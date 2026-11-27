@@ -87,6 +87,14 @@ var schema = []string{
 		hash     INTEGER NOT NULL,
 		sent_at  TEXT NOT NULL
 	)`,
+	// The level the global site was last told a round counts at (global.go:
+	// sendLevels, CONTRACT §7.2), '' for none, so a level goes once.
+	`CREATE TABLE IF NOT EXISTS ts_global_levels (
+		round_id TEXT PRIMARY KEY,
+		level    TEXT NOT NULL,
+		src      TEXT NOT NULL,
+		sent_at  TEXT NOT NULL
+	)`,
 }
 
 // skillFixesTable is ts_skill_fixes; refileOnce makes it again when its columns change.
@@ -211,6 +219,8 @@ func addItemsColumn(app core.App) error {
 		{"items", "INTEGER", itemsMaskSQL},
 		{"skill_level", "TEXT NOT NULL DEFAULT ''", skillLevelOf},
 		{"skill_eff", "TEXT NOT NULL DEFAULT ''", skillLevelOf},
+		// Where skill_eff comes from when it is not skill_level (skillfix.go: SrcList and the rest); Refile's.
+		{"skill_src", "TEXT NOT NULL DEFAULT ''", func(string) string { return "''" }},
 	}
 	var qs []string
 	sets := make([]string, len(cols))

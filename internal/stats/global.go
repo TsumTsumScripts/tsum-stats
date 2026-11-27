@@ -97,6 +97,10 @@ type globalSaved struct {
 	// replies' resend, CONTRACT §2.2). The fingerprints follow it too, so each
 	// call sends every round in the window once more.
 	Resend int `json:"resend,omitempty"`
+	// Levels is what the site said it does with levels (its replies' levels,
+	// CONTRACT §2.2): from 1 on it reads a round's skill_eff and skill_src and
+	// takes levels alone, so only then is either sent.
+	Levels int `json:"levels,omitempty"`
 }
 
 // Contributor holds the key and the pass that may be running.
@@ -145,7 +149,7 @@ func NewContributor(dataDir, siteURL string, medalTsums []string, db func() dbx.
 	if data, err := os.ReadFile(c.file); err == nil {
 		_ = json.Unmarshal(data, &c.saved)
 	}
-	c.memo.basis = sendBasis{c.saved.Keeps, c.saved.Resend}
+	c.memo.basis = sendBasis{c.saved.Keeps, c.saved.Resend, c.saved.Levels >= 1}
 	c.next = c.now().Add(c.first) // Run's first timer
 	return c
 }
@@ -312,6 +316,9 @@ func (c *Contributor) Join() error {
 	// No pass runs while no key is joined, so nothing else writes the table now.
 	pending := -1
 	if otherSent {
+		if _, err := c.db().NewQuery("DELETE FROM ts_global_levels").Execute(); err != nil {
+			return err
+		}
 		if _, err := c.db().NewQuery("DELETE FROM ts_global_sent").Execute(); err != nil {
 			return fmt.Errorf("could not join the global stats: %w", err)
 		}
@@ -343,13 +350,13 @@ func (c *Contributor) Join() error {
 	} else {
 		// What the site keeps, and its calls for a re-upload, go with the
 		// rounds sent there (ts_global_sent).
-		keeps, resend := c.saved.Keeps, c.saved.Resend
+		keeps, resend, levels := c.saved.Keeps, c.saved.Resend, c.saved.Levels
 		if otherSent {
-			keeps, resend = 0, 0
+			keeps, resend, levels = 0, 0, 0
 			c.memo.setBasis(sendBasis{})
 		}
 		c.saved = globalSaved{URL: c.url, ID: id, Key: key, Enabled: true, JoinedAt: c.now().UTC().Format(time.RFC3339),
-			Keeps: keeps, Resend: resend}
+			Keeps: keeps, Resend: resend, Levels: levels}
 		c.me = nil
 	}
 	if errors.Is(meErr, ErrGlobalKey) {
@@ -543,8 +550,12 @@ func (c *Contributor) upload(p pass) {
 	}
 	// The site called for a full re-upload since the last upload's reply
 	// (a pass with nothing new learns it here): every round goes once more, now.
-	if me != nil && c.learn(p.gen, 0, me.Resend) && err == nil && !p.wait {
+	if me != nil && c.learn(p.gen, 0, me.Resend, me.Levels) && err == nil && !p.wait {
 		err = c.send(ctx, site, p.gen)
+	}
+	// The levels of rounds too old to send again (CONTRACT §7.2), once the site takes them.
+	if err == nil && !p.wait && !c.left(p.gen) {
+		err = c.sendLevels(ctx, site, p.gen)
 	}
 	pending, countErr := countGlobalPending(c.db(), c.now(), c.medalTsums, c.memo)
 
@@ -617,11 +628,14 @@ func (c *Contributor) send(ctx context.Context, site *GlobalSite, gen int) error
 		if err := markGlobalSent(c.db(), taken, at); err != nil {
 			return err
 		}
+		if err := markLevelsWithRounds(c.db(), taken, at); err != nil {
+			return err
+		}
 		// The site keeps more of a record than when these were sent, or calls
 		// for a full re-upload: the next scan's fingerprints differ, so it
 		// sends every round again. A call for a re-upload starts again from
 		// the oldest round now, so this pass sends them all.
-		called := c.learn(gen, reply.Keeps, reply.Resend)
+		called := c.learn(gen, reply.Keeps, reply.Resend, reply.Levels)
 		c.mu.Lock()
 		if gen == c.gen {
 			c.saved.Sent += len(taken)
@@ -638,20 +652,122 @@ func (c *Contributor) send(ctx context.Context, site *GlobalSite, gen int) error
 	}
 }
 
-// learn saves what a reply of the pass of gen says the site keeps and the
-// highest call for a re-upload, when either went up; the fingerprints follow
-// them. It is whether the call went up.
-func (c *Contributor) learn(gen, keeps, resend int) bool {
+// learn saves what a reply of the pass of gen says the site keeps, the
+// highest call for a re-upload and what it does with levels, when any went
+// up; the fingerprints follow them. It is whether the scan should start over:
+// the call went up, or the site now takes levels, so the rounds that carry
+// one have a record they did not have when the scan passed them.
+func (c *Contributor) learn(gen, keeps, resend, levels int) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if gen != c.gen || (keeps <= c.saved.Keeps && resend <= c.saved.Resend) {
+	if gen != c.gen || (keeps <= c.saved.Keeps && resend <= c.saved.Resend && levels <= c.saved.Levels) {
 		return false
 	}
-	called := resend > c.saved.Resend
-	c.saved.Keeps, c.saved.Resend = max(c.saved.Keeps, keeps), max(c.saved.Resend, resend)
-	c.memo.setBasis(sendBasis{c.saved.Keeps, c.saved.Resend})
+	called := resend > c.saved.Resend || levels > c.saved.Levels
+	c.saved.Keeps, c.saved.Resend, c.saved.Levels = max(c.saved.Keeps, keeps), max(c.saved.Resend, resend), max(c.saved.Levels, levels)
+	c.memo.setBasis(sendBasis{c.saved.Keeps, c.saved.Resend, c.saved.Levels >= 1})
 	_ = c.persist()
 	return called
+}
+
+// sendLevels sends, for rounds the site has, each level it was not told
+// (ts_global_levels): the one a round counts at when it is not the recorded
+// one, or none for a round that counts as recorded again. A round young
+// enough to be sent whole told the site with its upload (markLevelsWithRounds),
+// so these are the rounds too old for that. GlobalLevelRows a request, oldest
+// first, until none is left.
+func (c *Contributor) sendLevels(ctx context.Context, site *GlobalSite, gen int) error {
+	c.mu.Lock()
+	on := c.saved.Levels >= 1
+	c.mu.Unlock()
+	for on && !c.left(gen) {
+		items, err := pendingLevels(c.db())
+		if err != nil || len(items) == 0 {
+			return err
+		}
+		if err := site.Levels(ctx, items); err != nil {
+			return err
+		}
+		if err := markGlobalLevels(c.db(), items, c.now()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// pendingLevels is the next GlobalLevelRows levels sendLevels would send.
+func pendingLevels(db dbx.Builder) ([]LevelItem, error) {
+	var rows []struct {
+		ID  string `db:"round_id"`
+		Eff string `db:"eff"`
+		Src string `db:"src"`
+	}
+	err := db.NewQuery(`SELECT r.round_id, CASE WHEN ` + levelledSQL + ` THEN r.skill_eff ELSE '' END AS eff,
+			CASE WHEN ` + levelledSQL + ` THEN r.skill_src ELSE '' END AS src
+		FROM ts_rounds r JOIN ts_global_sent s ON s.round_id = r.round_id LEFT JOIN ts_global_levels l ON l.round_id = r.round_id
+		WHERE (` + levelledSQL + ` AND (l.round_id IS NULL OR l.level <> r.skill_eff OR l.src <> r.skill_src))
+			OR (NOT ` + levelledSQL + ` AND l.round_id IS NOT NULL AND l.level <> '')
+		ORDER BY r.played_at, r.round_id LIMIT {:n}`).Bind(dbx.Params{"n": GlobalLevelRows}).All(&rows)
+	items := make([]LevelItem, len(rows))
+	for i, r := range rows {
+		items[i] = LevelItem{ID: r.ID, SkillEff: r.Eff, SkillSrc: r.Src}
+	}
+	return items, err
+}
+
+// levelledSQL is true for a round (r) that counts at another level than recorded, with its source known.
+const levelledSQL = "(r.skill_eff <> r.skill_level AND r.skill_eff <> '' AND r.skill_src <> '')"
+
+// markGlobalLevels records the levels the site was told, in one statement.
+func markGlobalLevels(db dbx.Builder, items []LevelItem, at time.Time) error {
+	if len(items) == 0 {
+		return nil
+	}
+	var q strings.Builder
+	p := dbx.Params{"at": at.UTC().Format(sqlTime)}
+	q.WriteString("INSERT INTO ts_global_levels (round_id, level, src, sent_at) VALUES ")
+	for i, it := range items {
+		if i > 0 {
+			q.WriteString(", ")
+		}
+		fmt.Fprintf(&q, "({:i%d}, {:l%d}, {:s%d}, {:at})", i, i, i)
+		p[fmt.Sprintf("i%d", i)], p[fmt.Sprintf("l%d", i)], p[fmt.Sprintf("s%d", i)] = it.ID, it.SkillEff, it.SkillSrc
+	}
+	q.WriteString(" ON CONFLICT (round_id) DO UPDATE SET level = excluded.level, src = excluded.src, sent_at = excluded.sent_at")
+	_, err := db.NewQuery(q.String()).Bind(p).Execute()
+	return err
+}
+
+// markLevelsWithRounds records the levels an upload's rounds carried (and,
+// for a round the site was told a level of before, that it now has none), so
+// they are not sent alone once the rounds grow old. Not for a round at the
+// window's edge, which the site may have turned away as old: that one's level
+// goes alone as well.
+func markLevelsWithRounds(db dbx.Builder, batch []pendingRound, at time.Time) error {
+	edge := at.Add(-globalLevelEdge)
+	var set []LevelItem
+	var clear []string
+	for _, r := range batch {
+		if start, ok := idStart(r.id); !ok || start.Before(edge) {
+			continue
+		}
+		if eff := r.record["skill_eff"]; eff != "" {
+			set = append(set, LevelItem{ID: r.id, SkillEff: eff, SkillSrc: r.record["skill_src"]})
+		} else {
+			clear = append(clear, r.id)
+		}
+	}
+	if err := markGlobalLevels(db, set, at); err != nil || len(clear) == 0 {
+		return err
+	}
+	names := make([]string, len(clear))
+	p := dbx.Params{"at": at.UTC().Format(sqlTime)}
+	for i, id := range clear {
+		k := fmt.Sprintf("i%d", i)
+		names[i], p[k] = "{:"+k+"}", id
+	}
+	_, err := db.NewQuery("UPDATE ts_global_levels SET level = '', src = '', sent_at = {:at} WHERE level <> '' AND round_id IN (" + strings.Join(names, ",") + ")").Bind(p).Execute()
+	return err
 }
 
 // ---- What is sent ----
@@ -682,7 +798,24 @@ func GlobalRecord(r Round) map[string]string {
 	} {
 		rec[k] = v
 	}
+	// The level the round counts at, when it is not the recorded one, and where
+	// it comes from (CONTRACT §1.3). A setting of either name never goes as one.
+	delete(rec, "skill_eff")
+	delete(rec, "skill_src")
+	if r.SkillEff != "" && r.SkillEff != r.SkillLevel && r.SkillSrc != "" {
+		rec["skill_eff"], rec["skill_src"] = r.SkillEff, r.SkillSrc
+	}
 	return rec
+}
+
+// recordFor is GlobalRecord for a site that takes levels, or without the
+// round's level for one that does not (an older Worker would keep
+// skill_eff as a setting).
+func recordFor(r Round, levels bool) map[string]string {
+	if !levels {
+		r.SkillEff, r.SkillSrc = "", ""
+	}
+	return GlobalRecord(r)
 }
 
 // settingCell is settingValue the other way round: switches as T/F, numbers
@@ -784,7 +917,7 @@ func GlobalBatches(db dbx.Builder, now time.Time, client string, medalTsums []st
 // settings name; played in the window; with the fingerprint each was last
 // sent with. Never the device or the source.
 const globalCandidatesSQL = `SELECT round_id, played_at, tsum, build, skill_type, script_version, duration_seconds,
-		score, base_coins, final_coins, medals, settings,
+		score, base_coins, final_coins, medals, settings, skill_level, skill_eff, skill_src,
 		(SELECT hash FROM ts_global_sent s WHERE s.round_id = ts_rounds.round_id) AS sent_hash
 	FROM ts_rounds
 	WHERE ` + completeSQL + `
@@ -852,7 +985,7 @@ func nextGlobalBatch(db dbx.Builder, now time.Time, cur globalCursor, medals str
 	var batch []pendingRound
 	size := 0
 	next, err := scanGlobal(db, now, cur, medals, memo, func(r Round, hash int64) bool {
-		rec := GlobalRecord(r)
+		rec := recordFor(r, memo.levels())
 		_, n := fingerprint(rec, sendBasis{})
 		if len(batch) == GlobalBatchRows || len(batch) > 0 && size+n > globalBatchBytes {
 			return false
@@ -877,7 +1010,21 @@ type globalMemo struct {
 
 // sendBasis is what a fingerprint follows besides the record: what the site
 // keeps of one (globalSaved.Keeps) and its last call for a re-upload (Resend).
-type sendBasis struct{ keeps, resend int }
+type sendBasis struct {
+	keeps, resend int
+	// levels: the site takes a round's level (globalSaved.Levels), so the records carry it.
+	levels bool
+}
+
+// levels is whether the records carry a round's level; a nil memo's do not.
+func (m *globalMemo) levels() bool {
+	if m == nil {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.basis.levels
+}
 
 // setBasis changes what the fingerprints follow, forgetting the ones made before.
 func (m *globalMemo) setBasis(b sendBasis) {
@@ -897,7 +1044,7 @@ type memoEntry struct {
 // fingerprint is the round's record's fingerprint. A nil memo works it out every time.
 func (m *globalMemo) fingerprint(r Round) int64 {
 	if m == nil {
-		h, _ := fingerprint(GlobalRecord(r), sendBasis{})
+		h, _ := fingerprint(recordFor(r, false), sendBasis{})
 		return h
 	}
 	row := rowHash(r)
@@ -907,7 +1054,7 @@ func (m *globalMemo) fingerprint(r Round) int64 {
 	m.mu.Unlock()
 	if !ok || e.row != row || e.basis != basis {
 		e.row, e.basis = row, basis
-		e.hash, _ = fingerprint(GlobalRecord(r), basis)
+		e.hash, _ = fingerprint(recordFor(r, basis.levels), basis)
 	}
 	m.mu.Lock()
 	e.gen = m.gen
@@ -943,7 +1090,7 @@ func (m *globalMemo) end() {
 func rowHash(r Round) uint64 {
 	h := fnv.New64a()
 	for _, s := range []string{r.ID, r.PlayedAt, r.Tsum, r.Build, r.SkillType, r.ScriptVersion, floatText(r.Duration),
-		intText(r.Score), intText(r.BaseCoins), intText(r.FinalCoins), intText(r.Medals), r.Settings} {
+		intText(r.Score), intText(r.BaseCoins), intText(r.FinalCoins), intText(r.Medals), r.Settings, r.SkillLevel, r.SkillEff, r.SkillSrc} {
 		h.Write([]byte(s))
 		h.Write([]byte{0})
 	}
@@ -1053,6 +1200,8 @@ type GlobalMe struct {
 	} `json:"today"`
 	// Resend is the site's last call for a full re-upload, as RoundsReply's.
 	Resend int `json:"resend"`
+	// Levels is what the site does with levels, as RoundsReply's.
+	Levels int `json:"levels"`
 }
 
 // RoundsReply is the global site's answer to an upload.
@@ -1070,6 +1219,54 @@ type RoundsReply struct {
 	// Resend is the site's last call for a full re-upload (§2.2); 0 for none,
 	// and from a Worker before it.
 	Resend int `json:"resend"`
+	// Levels is 1 from a Worker that reads a round's skill_eff and skill_src
+	// and has /api/v1/levels (§1.3, §2.8); 0 from one before it.
+	Levels int `json:"levels"`
+}
+
+// LevelItem is one round's level as /api/v1/levels takes it (CONTRACT §2.8):
+// its id as sent, and skill_eff and skill_src, both "" to take a level back.
+type LevelItem struct {
+	ID       string `json:"id"`
+	SkillEff string `json:"skill_eff"`
+	SkillSrc string `json:"skill_src"`
+}
+
+// LevelBatch is one gap.round-levels/1 request.
+type LevelBatch struct {
+	Schema string      `json:"schema"`
+	Levels []LevelItem `json:"levels"`
+}
+
+// RoundLevelsSchema names LevelBatch's format; GlobalLevelRows is the most one request holds.
+const (
+	RoundLevelsSchema = "gap.round-levels/1"
+	GlobalLevelRows   = 500
+)
+
+// globalLevelEdge is how long ago a round must have started for its upload
+// not to count as having told the site its level (CONTRACT §7.2): two days
+// inside the window, since the site judges the window by its own clock and
+// the round's start, and may have turned the round away as old. Its level
+// then goes alone as well.
+const globalLevelEdge = globalWindow - 48*time.Hour
+
+// idStart is when a round began, from its UUIDv7 id (its first 12 hex digits
+// are the start in ms, CONTRACT §1.1); false for an id of another shape.
+func idStart(id string) (time.Time, bool) {
+	if len(id) != 36 || id[8] != '-' {
+		return time.Time{}, false
+	}
+	ms, err := strconv.ParseInt(id[:8]+id[9:13], 16, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.UnixMilli(ms).UTC(), true
+}
+
+// Levels sends levels alone, for rounds the site already has.
+func (g *GlobalSite) Levels(ctx context.Context, items []LevelItem) error {
+	return g.do(ctx, http.MethodPost, "/api/v1/levels", LevelBatch{Schema: RoundLevelsSchema, Levels: items}, nil)
 }
 
 // do sends one request. The body goes uncompressed: inflating it would spend

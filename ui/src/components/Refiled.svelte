@@ -9,7 +9,8 @@
 
   // refiled: a summary's [{tsum, from, to, rounds}]. fixes: skill-fixes rows, [] where the site has none.
   // nameOf: a Tsum's name; one: the page is one Tsum's, so the lines leave its name out.
-  let {refiled = [], fixes = [], nameOf = id => id, one = false} = $props();
+  // everyone: the figures are every contributor's (the global site), where no run's reason is published.
+  let {refiled = [], fixes = [], nameOf = id => id, one = false, everyone = false} = $props();
 
   const total = $derived(refiledTotals(refiled).rounds);
   const rows = $derived([...(refiled ?? [])].sort((a, b) => b.rounds - a.rounds));
@@ -63,6 +64,7 @@
           {/each}
           {#if rows.length > MAX}<li class="sub">and {fmt(rows.length - MAX)} more</li>{/if}
         </ul>
+        {#if everyone}<div class="sub">Each from its contributor's own evidence: a Tsum List of the account the rounds were played on, or their coins against that device's other rounds. Whose rounds they are is not published.</div>{/if}
         <div class="sub">A level typed into the script can be left wrong for a stretch; one read from the Tsum List (script 6.0a19 and later) is trusted, and a Tsum List bounds the rounds of its account (Data → Game accounts). The recorded level is kept as it is.</div>
       </details>
     {/if}

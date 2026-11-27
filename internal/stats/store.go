@@ -28,6 +28,9 @@ type Round struct {
 	// Only the rounds page fills them.
 	SkillLevel string `db:"skill_level" json:"skillLevel"`
 	SkillEff   string `db:"skill_eff" json:"skillEffective"`
+	// SkillSrc is where SkillEff comes from when it is not SkillLevel
+	// (skillfix.go: SrcList and the rest); only the forwarder reads it.
+	SkillSrc string `db:"skill_src" json:"-"`
 	// Items is the boost-item bitmask from Settings (see itemBits); nil when unknown.
 	Items *int `db:"-" json:"items"`
 	// Between is the time between this round and the one before on its device

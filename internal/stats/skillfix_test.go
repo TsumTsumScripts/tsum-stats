@@ -142,7 +142,7 @@ func TestSkillFixParity(t *testing.T) {
 	}
 	near := func(a, b float64) bool { return math.Abs(a-b) <= 1e-9*math.Max(1, math.Abs(a)) }
 	for k, c := range cases {
-		levels, fixes := fixRefileRounds(c.Rounds)
+		levels, _, fixes := fixRefileRounds(c.Rounds)
 		moved := 0
 		for i, r := range c.Rounds {
 			if levels[i] != r.Level {

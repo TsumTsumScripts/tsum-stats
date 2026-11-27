@@ -1465,16 +1465,20 @@ nothing. `lastError` is shown only for its own site (or when `url` is `""`).
   has the record, and the fingerprint, it always had. So learning `levels`
   re-sends only the rounds in the window that carry a level.
 - **Levels alone, for older rounds** (§2.8). After the rounds of a pass, and
-  only once `levels` is 1: for rounds played more than 58 days ago (two days
-  inside the window's edge, where the site's clock and the round's start
-  decide, so a round near it goes both ways) that `ts_global_sent` says were
-  sent, the forwarder sends `{id, skill_eff, skill_src}` for each whose level
-  is not the one `ts_global_levels(round_id TEXT PRIMARY KEY, level TEXT NOT NULL, src TEXT NOT NULL, sent_at TEXT NOT NULL)`
-  says the site was last told, an empty pair for a round that counts as
-  recorded again after a level was sent. At most 500 a request, oldest first;
-  after `ok: true` every item is recorded there, whatever the counts, and
-  never sent again unless its level changes. A join of another site empties
-  the table with `ts_global_sent`.
+  only once `levels` is 1: for every round `ts_global_sent` says was sent,
+  the forwarder sends `{id, skill_eff, skill_src}` when the round's level is
+  not the one `ts_global_levels(round_id TEXT PRIMARY KEY, level TEXT NOT NULL, src TEXT NOT NULL, sent_at TEXT NOT NULL)`
+  says the site was last told: its level when it counts at another than
+  recorded, an empty pair when it counts as recorded again after a level was
+  sent. An upload tells the site too: after `ok: true` the levels its rounds
+  carried (or that they carry none) are recorded there, so a round young
+  enough to be sent whole never goes alone as well, except one that began
+  more than 58 days ago (two days inside the window, which the site judges by
+  its own clock and the round's start, and may have turned away as `old`):
+  that one's level goes both ways. So what goes alone is the rounds too old
+  to send. At most 500 a request, oldest first; after `ok: true` every item
+  is recorded, whatever the counts, and never sent again unless its level
+  changes. A join of another site empties the table with `ts_global_sent`.
 - **Never sent**: `device`, `source`, the Tsum lists, the accounts and which
   one a round was linked to, paths.
 - **After `ok: true`**: every row in the batch **except those the reply names

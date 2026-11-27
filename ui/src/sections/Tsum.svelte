@@ -633,7 +633,7 @@
       {#if skills.length}
         <Panel title="By skill level" sub="{levels.recorded ? 'the skill level recorded for each round' : 'the skill level each round counts at: the one recorded, unless the correction re-filed it'} · change is against the level below · pays back in: hours of play for the gain to earn back that level's boxes" expandable={false}>
           <Breakdown rows={skills} {unit} head="Skill" against="prev" />
-          <Refiled refiled={detail.summary.refiled} {fixes} one />
+          <Refiled refiled={detail.summary.refiled} {fixes} one everyone={globalSite} />
         </Panel>
         {#if skills.filter(r => r.rounds >= 20).length > 1}
           <Panel title="{U} per round by skill level" sub="each level's share of its rounds at each amount of {basis}, so levels with fewer rounds still compare">

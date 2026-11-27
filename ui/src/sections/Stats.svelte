@@ -641,7 +641,7 @@
     <div id="s-overview" class="anchor">
       {#if summary}<Kpis t={summary.totals} m={summary.medals.totals} coins={filter.coins} {basis} approx={Boolean(summary.global)} incomplete={summary.incompleteRounds ?? 0}
         totalFirst={Boolean(summary.global)} missing={noSpreads && `no median ${noSpreads}`} />
-        <Refiled refiled={summary.refiled} {fixes} {nameOf} />{/if}
+        <Refiled refiled={summary.refiled} {fixes} {nameOf} everyone={globalSite} />{/if}
     </div>
 
     <Panel id="s-compare" class="anchor" title="Head to head" sub="the Tsums in the filter side by side · the best is marked where there is one, expected coins only when the gap is more than luck explains"

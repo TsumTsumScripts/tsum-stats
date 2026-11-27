@@ -48,6 +48,10 @@ type fakeWorker struct {
 	keeps int
 	// resend is the site's call for a full re-upload every upload and /me reply names.
 	resend int
+	// levels is what every upload's and /me's reply says the site does with levels; 0 leaves it out, as an older Worker does.
+	levels int
+	// levelBatches is every /api/v1/levels request taken, in order.
+	levelBatches []LevelBatch
 	// hold, when set, keeps each upload waiting until it closes; held hears of each one waiting.
 	hold, held chan struct{}
 	log        []string // "rounds" and "unlink", as each was answered
@@ -146,12 +150,24 @@ func (f *fakeWorker) api(w http.ResponseWriter, r *http.Request) {
 			reply["keeps"] = f.keeps
 		}
 		reply["resend"] = f.resend
+		if f.levels > 0 {
+			reply["levels"] = f.levels
+		}
 		f.reply(w, http.StatusOK, reply)
+	case r.URL.Path == "/api/v1/levels" && r.Method == http.MethodPost:
+		var b LevelBatch
+		if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.Schema != RoundLevelsSchema || len(b.Levels) < 1 || len(b.Levels) > GlobalLevelRows || f.levels < 1 {
+			f.reply(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "bad-request"})
+			return
+		}
+		f.levelBatches = append(f.levelBatches, b)
+		f.log = append(f.log, "levels")
+		f.reply(w, http.StatusOK, map[string]any{"ok": true, "accepted": len(b.Levels), "unchanged": 0, "unknown": 0, "foreign": 0, "invalid": 0, "levels": f.levels})
 	case r.URL.Path == "/api/v1/me" && r.Method == http.MethodGet:
 		f.meCalls++
 		f.reply(w, http.StatusOK, map[string]any{"ok": true, "id": id, "status": "active", "since": "2026-10-14",
 			"lastSeen": nil, "rounds": f.taken(), "duplicates": 0, "devices": 1, "first": nil, "last": nil,
-			"today": map[string]int{"rounds": f.taken(), "quota": 5000}, "resend": f.resend})
+			"today": map[string]int{"rounds": f.taken(), "quota": 5000}, "resend": f.resend, "levels": f.levels})
 	case r.URL.Path == "/api/v1/me/unlink" && r.Method == http.MethodPost:
 		delete(f.keys, key)
 		f.unlinked = append(f.unlinked, key)
@@ -1267,5 +1283,135 @@ func TestGlobalDialog(t *testing.T) {
 	cmd.Dir = ui
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+// TestGlobalLevels: the level a round counts at goes with the round while it
+// is young enough to send, and alone once it is not; each once, only to a
+// site that takes levels, and taken back when the round counts as recorded again.
+func TestGlobalLevels(t *testing.T) {
+	app := testApp(t)
+	f := newFakeWorker(t)
+	c, _ := testContributor(t, app, f)
+	if err := c.Join(); err != nil {
+		t.Fatal(err)
+	}
+	// Twelve rounds recorded at 6 seventy days before globalNow, eight ten days before, and five at 1.
+	old, young := globalNow.Add(-70*24*time.Hour), globalNow.Add(-10*24*time.Hour)
+	addLevelRounds(t, app, "global", "phone", "aaaaaaaaaaaa", "goofy", 6, 12, old)
+	addLevelRounds(t, app, "global", "phone", "aaaaaaaaaaaa", "goofy", 6, 8, young)
+	addLevelRounds(t, app, "global", "phone", "aaaaaaaaaaaa", "goofy", 1, 5, young.Add(time.Hour))
+	levelled := func(batches []RoundBatch) (with, without int) {
+		for _, b := range batches {
+			for _, rec := range b.Records {
+				if rec["skill_eff"] != "" {
+					if rec["skill_eff"] != "1" || rec["skill_src"] != "list" || rec["skillLevel"] != "6" {
+						t.Fatalf("a levelled record: %v", rec)
+					}
+					with++
+				} else {
+					if _, ok := rec["skill_src"]; ok {
+						t.Fatalf("a source without a level: %v", rec)
+					}
+					without++
+				}
+			}
+		}
+		return
+	}
+	taken := func() ([]RoundBatch, []LevelBatch) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		b, l := slices.Clone(f.batches), slices.Clone(f.levelBatches)
+		f.batches, f.levelBatches = nil, nil
+		return b, l
+	}
+
+	// The old rounds were sent while they were young: a first pass forty days back, by a Worker from before levels.
+	c.now = func() time.Time { return globalNow.Add(-40 * 24 * time.Hour) }
+	runPass(t, c)
+	if b, l := taken(); len(l) != 0 || len(b) != 1 || len(b[0].Records) != 12 {
+		t.Fatalf("the first pass: %d uploads, %d level requests", len(b), len(l))
+	}
+	c.now = func() time.Time { return globalNow }
+	runPass(t, c)
+	if b, _ := taken(); len(b) != 1 || len(b[0].Records) != 13 {
+		t.Fatalf("the second pass should send the 13 young rounds: %v", b)
+	}
+
+	// A Tsum List read after them says level 1: every round recorded at 6 counts at 1.
+	addList(t, app, "global", "phone", globalNow.Add(-24*time.Hour).Format("20060102-150405"), map[string]int64{"goofy": 1, "a": 2, "b": 3})
+	if err := Refile(app.DB()); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	_ = app.DB().NewQuery("SELECT COUNT(*) FROM ts_rounds WHERE skill_eff = '1' AND skill_level = '6' AND skill_src = 'list'").Row(&n)
+	if n != 20 {
+		t.Fatalf("%d rounds count at 1 by the list, want 20", n)
+	}
+	// A Worker from before levels is sent none of it, and nothing again.
+	runPass(t, c)
+	if b, l := taken(); len(b) != 0 || len(l) != 0 {
+		t.Fatalf("a site that does not take levels was sent %d uploads and %d level requests", len(b), len(l))
+	}
+
+	// The Worker that takes them says so in /me: the same pass sends the eight young rounds again with
+	// their level, and the twelve old ones' levels alone. Nothing else goes again.
+	f.mu.Lock()
+	f.levels = 1
+	f.mu.Unlock()
+	runPass(t, c)
+	b, l := taken()
+	if with, without := levelled(b); with != 8 || without != 0 {
+		t.Fatalf("with levels on: %d rounds with a level and %d without were sent, want 8 and 0", with, without)
+	}
+	if len(l) != 1 || len(l[0].Levels) != 12 {
+		t.Fatalf("level requests: %+v", l)
+	}
+	for _, it := range l[0].Levels {
+		if it.SkillEff != "1" || it.SkillSrc != "list" || len(it.ID) != 36 {
+			t.Fatalf("a level item: %+v", it)
+		}
+	}
+	if c.saved.Levels != 1 {
+		t.Fatalf("levels was not saved: %+v", c.saved)
+	}
+	runPass(t, c)
+	if b, l := taken(); len(b) != 0 || len(l) != 0 {
+		t.Fatalf("a pass with nothing changed sent %d uploads and %d level requests", len(b), len(l))
+	}
+
+	// The player says the account is not known: the rounds count as recorded again, and the site is told, once.
+	none := ""
+	if err := LinkAccount(app.DB(), "global", "phone", "aaaaaaaaaaaa", &none); err != nil {
+		t.Fatal(err)
+	}
+	runPass(t, c)
+	b, l = taken()
+	if with, without := levelled(b); with != 0 || without != 8 {
+		t.Fatalf("taking levels back: %d rounds with a level and %d without were sent, want 0 and 8", with, without)
+	}
+	if len(l) != 1 || len(l[0].Levels) != 12 || l[0].Levels[0].SkillEff != "" || l[0].Levels[0].SkillSrc != "" {
+		t.Fatalf("levels taken back: %+v", l)
+	}
+	runPass(t, c)
+	if b, l := taken(); len(b) != 0 || len(l) != 0 {
+		t.Fatalf("after taking them back, a pass sent %d uploads and %d level requests", len(b), len(l))
+	}
+
+	// Named by the player, the source is "pick"; and a setting called skill_eff never goes as the level.
+	list := "tsum_list_" + globalNow.Add(-24*time.Hour).Format("20060102-150405") + ".csv"
+	if err := LinkAccount(app.DB(), "global", "phone", "aaaaaaaaaaaa", &list); err != nil {
+		t.Fatal(err)
+	}
+	runPass(t, c)
+	b, l = taken()
+	if len(b) != 1 || len(b[0].Records) != 8 || b[0].Records[0]["skill_src"] != "pick" || len(l) != 1 || l[0].Levels[0].SkillSrc != "pick" {
+		t.Fatalf("a named account: %d uploads, levels %+v", len(b), l)
+	}
+	r := globalRound("0192a-9", time.Hour)
+	r.Settings = `{"skill_eff": 9, "skill_src": "list", "skillLevel": 4}`
+	if rec := GlobalRecord(r); rec["skill_eff"] != "" || rec["skill_src"] != "" || rec["skillLevel"] != "4" {
+		t.Fatalf("a setting went as the level: %v", rec)
 	}
 }

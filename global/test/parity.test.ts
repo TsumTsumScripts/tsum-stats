@@ -37,7 +37,9 @@ interface Case {
 interface Fixture {
   now: number;
   /** Each player's passes, in order (a pass is its batches), and the Worker's clock at each, ms. */
-  players: { passes: Record<string, unknown>[][]; passAt: number[]; me: Record<string, unknown> }[];
+  players: { passes: Record<string, unknown>[][]; passAt: number[]; me: Record<string, unknown>; levels: Record<string, unknown>[][] }[];
+  /** Per pass, what the Worker should answer the levels sent alone (POST /api/v1/levels), added up. */
+  levelUploads: { accepted?: number; unchanged?: number }[];
   /** What the Worker should answer, added up over every player's batches, per pass. */
   uploads: Totals[];
   cases: Case[];
@@ -206,7 +208,21 @@ describe.skipIf(!fixtures[FIXTURE])("the global site against the server", () => 
         }
       }
       sum.retry.sort();
-      expect(sum, `pass ${p + 1}`).toEqual(fx.uploads[p]);
+      if (!Object.keys(fx.uploads[p].rejected).length || !sum.rejected.old) delete sum.rejected.old;
+      expect(sum, `pass ${p + 1}`).toEqual({ ...fx.uploads[p], rejected: Object.fromEntries(Object.entries(fx.uploads[p].rejected).filter(([, n]) => n > 0)) });
+      // Then the levels of rounds too old to send again, alone (CONTRACT §2.8).
+      const lv = { accepted: 0, unchanged: 0 };
+      for (let i = 0; i < fx.players.length; i++) {
+        for (const batch of fx.players[i].levels[p]) {
+          const res = await call("/api/v1/levels", { body: batch, key: keys[i], now: fx.players[i].passAt[p] });
+          const body = await json<{ ok: boolean; accepted: number; unchanged: number; unknown: number; foreign: number; invalid: number }>(res);
+          expect(res.status, JSON.stringify(body)).toBe(200);
+          expect([body.unknown, body.foreign, body.invalid], JSON.stringify(body)).toEqual([0, 0, 0]);
+          lv.accepted += body.accepted;
+          lv.unchanged += body.unchanged;
+        }
+      }
+      expect(lv, `the levels of pass ${p + 1}`).toEqual({ accepted: fx.levelUploads[p].accepted ?? 0, unchanged: fx.levelUploads[p].unchanged ?? 0 });
       expect((await rollup(now)).more, "the rollup did not finish").toBe(false);
     }
     for (let i = 0; i < fx.players.length; i++) {
