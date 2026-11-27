@@ -4,8 +4,9 @@
   what owning it says (level, skill, boxes to max), and its best rounds.
   On the global site it is every contributor's rounds of it: by skill level
   and items, ranked among every Tsum, by UTC day; no rounds, settings or
-  Tsum lists, so no best rounds, recent form or boxes to max. It lists the
-  Tsums new in the last 30 days under the header, whichever Tsum is shown.
+  Tsum lists, so no best rounds, recent form or boxes to max. Without a Tsum
+  picked it is the list of Tsums (most played; on the global site the Tsums
+  new in the last 30 days above it); with one, All Tsums goes back to it.
 -->
 <script>
   import {onMount} from 'svelte';
@@ -17,7 +18,7 @@
   import NewTsums from '../components/NewTsums.svelte';
   import Panel from '../components/Panel.svelte';
   import Seg from '../components/Seg.svelte';
-  import {drawDaily, drawHistogram, drawItems, drawSkillSpread} from '../lib/charts.js';
+  import {drawHistogram, drawItems, drawSkillSpread} from '../lib/charts.js';
   import {BOX_PRICE, toMax} from '../lib/boxes.js';
   import {JACKPOT_TIMES} from '../lib/snapshot/engine.js';
   import {cardContext} from '../lib/card.js';
@@ -48,7 +49,7 @@
   const filter = $state(blank());
 
   const VIEW_KEY = 'tsum-stats.tsum-views';
-  const views = $state({daily: 'exp', items: 'exp', best: 'coins', ...loadPref(VIEW_KEY, {})});
+  const views = $state({items: 'exp', best: 'coins', ...loadPref(VIEW_KEY, {})});
   function setView(key, v) {
     views[key] = v;
     savePref(VIEW_KEY, {...views});
@@ -307,13 +308,9 @@
 
   const args = $derived(s && {
     skills: [detail.skillBins, s.histogram],
-    daily: [s.daily, s.dailyTsums, ctx, mv('daily')],
     hist: [s.histogram, s.totals, ctx],
     items: [s.mix, mv('items')],
   });
-  const dailySub = $derived({rate: `${basis} per second of play`, hour: `${basis} an hour of play`, avg: `average ${basis} per round`, stack: `total ${basis} each day`,
-    exp: 'expected net coins an hour of play · band: where the day\'s true figure most likely is (two standard errors)'}[mv('daily')]
-    + (globalSite ? ' · by the UTC day each round began' : ''));
   const builds = $derived(new Set((s?.mix ?? []).map(m => m.build)).size > 1 || Boolean(filter.build));
 
   // Best rounds show what the round made, before item costs.
@@ -397,6 +394,7 @@
       <div class="tsum-title"><h2>Pick a Tsum</h2><div class="sub">Everything about one Tsum: how it plays at each skill level, with each setting, and its best rounds.</div></div>
     {/if}
     <div class="tsum-pick">
+      {#if filter.id}<button type="button" class="btn" title="Back to the list of Tsums" onclick={() => set({id: ''})}>← All Tsums</button>{/if}
       <TsumCombo options={pickOptions} onpick={pick} placeholder="Find a Tsum…" label="Show another Tsum" />
       {#if filter.id}<a class="btn" href={statsLink} title="This Tsum on the Stats page, with its rounds table">Open in Stats</a>{/if}
       {#if filter.id && s?.totals.rounds}<CopyButton title="Everything" label="Copy all" root={() => page} />{/if}
@@ -438,8 +436,8 @@
     {/if}
   </div>
 
-  <!-- The global site: one click to each new Tsum, from any Tsum's page too (the tab keeps the last one picked). -->
-  {#if globalSite}<NewTsums current={filter.id} played={playedRounds} onpick={id => set({id})} />{/if}
+  <!-- The global site: one click to each new Tsum, on the list of Tsums (a Tsum's own page has All Tsums to go back to it). -->
+  {#if globalSite && !filter.id}<NewTsums current={filter.id} played={playedRounds} onpick={id => set({id})} />{/if}
 
   {#if !filter.id}
     <div class="panel">
@@ -488,13 +486,6 @@
           </Panel>
         {/if}
       {/if}
-
-      <Panel title="{U} per day" sub={dailySub}>
-        {#snippet tools()}
-          <Seg sm label="Chart" value={mv('daily')} onpick={v => setView('daily', v)} options={[...rateOpts(), ['avg', 'Average'], ['stack', 'Total']]} />
-        {/snippet}
-        <Chart draw={drawDaily} args={args?.daily} {unit} />
-      </Panel>
 
       <Panel title="{U} per round" sub="how many rounds ended with each amount of {basis}{globalSite ? ' · ≈ from 2 % wide bins' : ''}">
         <Chart draw={drawHistogram} args={args?.hist} {unit} />

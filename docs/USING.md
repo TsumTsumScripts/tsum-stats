@@ -405,7 +405,9 @@ tooltip everywhere else.
 
 **Tsum** in the top bar (`#/tsum?id=<tsum>`) is everything about one Tsum. Open
 it from there, or with **Tsum page →** in the Stats focus bar, which carries the
-range, primary stat, game and a single device across. It has its own time range
+range, primary stat, game and a single device across. Without a Tsum picked
+(`#/tsum`) it is the list of Tsums: the most played, a click each to its page;
+on a Tsum's page, **← All Tsums** goes back to it, keeping the filters. It has its own time range
 (7, 30 or 90 days, any number in its *Last N days* box, or all time, the
 default), the same primary stat and *Less
 item costs* switches, and game, skill type and device pickers when there is more
@@ -473,8 +475,9 @@ nothing is left out of them. Stats keeps every round.
   value; chains per scan, max chain length and bubble strategy first. Settings often changed together, so a difference is not proof of cause.
 - **By skill type**, **By script version** and **By device**, when there is
   more than one.
-- The KPI tiles, per-day, histogram and items charts, as on Stats, for
-  this Tsum alone, and its ten best rounds by coins, rate or score.
+- The KPI tiles, histogram and items charts, as on Stats, for
+  this Tsum alone, and its ten best rounds by coins, rate or score. Its figures
+  per day are on Stats, with the Tsum focused (**Open in Stats**).
 
 Every panel, and the overview tiles with the insights under them, can be copied
 as a picture as on Stats; on this page the card always shows the Tsum's
@@ -763,14 +766,14 @@ everyone's rounds, and in the *Winter Village* theme until you pick another:
 - **The Tsum page** is there, over everyone's rounds of the Tsum: its rank by
   rate among every Tsum, its share of all rounds and its players, the KPI
   tiles, consistency and rounds under a target (≈, from the bins), by skill
-  level with its spread chart, per day, the histogram, by items and *Do the
+  level with its spread chart, the histogram, by items and *Do the
   items pay?*, *By chain settings*, and *By script setting* for chains per scan, max chain length
   and bubble strategy. Coin-bonus jackpots are left out in final coins as
   here; days the site archived before it told jackpots apart keep theirs in. Not there: recent form, boxes to the next skill, other settings,
   versions, devices and best rounds. The Catalog links each
   played Tsum to it.
-- **New Tsums.** The Tsum page, under its header whichever Tsum it shows, and
-  the Catalog, above the roster, list the Tsums added to the game in the last
+- **New Tsums.** The Tsum page's list of Tsums (before one is picked), under
+  its header, and the Catalog, above the roster, list the Tsums added to the game in the last
   30 days, on INTL or JP, newest first: each with the build and day it came out
   there, and its rounds, and a link to its Tsum page. The day is the first time
   the game's files had the Tsum, its art and that build's name (`released` in
