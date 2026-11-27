@@ -365,6 +365,8 @@ func ExportSnapshot(db dbx.Builder, site fs.FS, dir string, o SnapshotOptions) (
 	}
 	for i := range man.SkillFixes {
 		man.SkillFixes[i].Player = ""
+		// A list's device is named as the snapshot names devices.
+		man.SkillFixes[i].ListDevice = namer(man.SkillFixes[i].ListDevice)
 	}
 	if man.PlaySettings, err = PlayedPlaySettings(db); err != nil {
 		return res, err

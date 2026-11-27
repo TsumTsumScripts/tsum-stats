@@ -230,6 +230,35 @@ func registerRoutes(se *core.ServeEvent, events *Events, importer *Importer, pul
 		return e.JSON(http.StatusOK, s)
 	})
 
+	// The game accounts the Tsum Lists show, and which one each stretch of rounds was played on (accounts.go).
+	g.GET("/accounts", func(e *core.RequestEvent) error {
+		a, err := DescribeAccounts(e.App.DB())
+		if err != nil {
+			return e.InternalServerError("", err)
+		}
+		return e.JSON(http.StatusOK, a)
+	})
+	// The player's answer for one stretch: a list of the account, "" for not known, null to forget it.
+	g.POST("/accounts/link", func(e *core.RequestEvent) error {
+		var body struct {
+			Build  string  `json:"build"`
+			Device string  `json:"device"`
+			Tag    string  `json:"tag"`
+			List   *string `json:"list"`
+		}
+		if err := e.BindBody(&body); err != nil {
+			return e.BadRequestError("Expected the stretch and the list.", err)
+		}
+		if err := LinkAccount(e.App.DB(), body.Build, body.Device, body.Tag, body.List); err != nil {
+			return e.InternalServerError("", err)
+		}
+		a, err := DescribeAccounts(e.App.DB())
+		if err != nil {
+			return e.InternalServerError("", err)
+		}
+		return e.JSON(http.StatusOK, a)
+	}).BindFunc(sameOrigin)
+
 	g.GET("/round-devices", func(e *core.RequestEvent) error {
 		d, err := PlayedDevices(e.App.DB())
 		if err != nil {

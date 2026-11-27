@@ -24,6 +24,8 @@ type Importer struct {
 	changed func(ImportResult)
 	// stored is the Tsums whose rounds were stored since the last refile.
 	stored map[string]bool
+	// listed is set when a Tsum List was stored since.
+	listed bool
 }
 
 // ImportResult says what one scan or upload stored.
@@ -197,6 +199,8 @@ func (im *Importer) importData(name string, data []byte, fallbackDevice string, 
 		if err == nil {
 			res.Files++
 			res.Lists++
+			// A list bounds the levels of any Tsum's rounds (skillfix.go).
+			im.listed = true
 		}
 		return err
 	}
@@ -241,14 +245,18 @@ func (im *Importer) remember(path string, info fs.FileInfo) {
 // refile works out again the effective skill level of the Tsums whose rounds
 // were just stored (skillfix.go: Refile), once per import however many files.
 func (im *Importer) refile(res *ImportResult) {
-	if len(im.stored) == 0 {
+	if len(im.stored) == 0 && !im.listed {
 		return
 	}
 	tsums := make([]string, 0, len(im.stored))
 	for t := range im.stored {
 		tsums = append(tsums, t)
 	}
-	im.stored = nil
+	if im.listed {
+		// Every Tsum.
+		tsums = nil
+	}
+	im.stored, im.listed = nil, false
 	if err := Refile(im.app.DB(), tsums...); err != nil {
 		res.Errors = append(res.Errors, "skill levels: "+err.Error())
 	}

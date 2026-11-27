@@ -894,6 +894,8 @@ export function createEngine(loader) {
         case 'play-settings': return playSettings();
         case 'skill-levels': return skillLevels(params);
         case 'skill-fixes': return skillFixes(params);
+        // A snapshot carries the levels the lists and account links gave (skillFix), not the links themselves.
+        case 'accounts': return {accounts: [], stretches: []};
         case 'health': return health(params);
         // A snapshot keeps each device's newest Tsum list only.
         case 'owned-history': return [];

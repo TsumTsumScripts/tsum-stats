@@ -67,7 +67,30 @@ var schema = []string{
 	)`,
 	// The runs of rounds counted at another skill level than recorded, and why
 	// (skillfix.go: Refile). Made again from the rounds, so nothing is lost with it.
-	`CREATE TABLE IF NOT EXISTS ts_skill_fixes (
+	skillFixesTable,
+	`CREATE INDEX IF NOT EXISTS ts_skill_fixes_tsum ON ts_skill_fixes (tsum)`,
+	// Which game account a stretch of rounds (game, device name, device tag)
+	// was played on, as the player said: list_file is one of that account's
+	// Tsum Lists, '' for "not known" (accounts.go). Only the player's answers
+	// are here; nothing in ts_rounds changes.
+	`CREATE TABLE IF NOT EXISTS ts_account_links (
+		build     TEXT NOT NULL,
+		device    TEXT NOT NULL,
+		tag       TEXT NOT NULL,
+		list_file TEXT NOT NULL,
+		PRIMARY KEY (build, device, tag)
+	)`,
+	// What the global stats site has taken (global.go), so a round is sent
+	// again only when its record changes. hash is the record's fingerprint.
+	`CREATE TABLE IF NOT EXISTS ts_global_sent (
+		round_id TEXT PRIMARY KEY,
+		hash     INTEGER NOT NULL,
+		sent_at  TEXT NOT NULL
+	)`,
+}
+
+// skillFixesTable is ts_skill_fixes; refileOnce makes it again when its columns change.
+const skillFixesTable = `CREATE TABLE IF NOT EXISTS ts_skill_fixes (
 		tsum        TEXT NOT NULL,
 		player      TEXT NOT NULL,
 		from_level  INTEGER NOT NULL,
@@ -83,17 +106,12 @@ var schema = []string{
 		against_mid REAL NOT NULL,
 		ratio       REAL NOT NULL,
 		confidence  TEXT NOT NULL,
-		medals      INTEGER NOT NULL DEFAULT 0
-	)`,
-	`CREATE INDEX IF NOT EXISTS ts_skill_fixes_tsum ON ts_skill_fixes (tsum)`,
-	// What the global stats site has taken (global.go), so a round is sent
-	// again only when its record changes. hash is the record's fingerprint.
-	`CREATE TABLE IF NOT EXISTS ts_global_sent (
-		round_id TEXT PRIMARY KEY,
-		hash     INTEGER NOT NULL,
-		sent_at  TEXT NOT NULL
-	)`,
-}
+		medals      INTEGER NOT NULL DEFAULT 0,
+		list_device TEXT NOT NULL DEFAULT '',
+		list_stamp  TEXT NOT NULL DEFAULT '',
+		list_level  INTEGER NOT NULL DEFAULT 0,
+		list_bound  TEXT NOT NULL DEFAULT ''
+	)`
 
 // legacyTables are the names databases from 0.6 and earlier use, which the
 // program shipped under another name.
@@ -163,6 +181,12 @@ func refileOnce(app core.App) error {
 	err := app.DB().NewQuery(`SELECT COUNT(*) FROM ts_imports WHERE path = {:p}`).Bind(dbx.Params{"p": path}).Row(&n)
 	if err != nil || n > 0 {
 		return err
+	}
+	// The fixes are made from the rounds, so a table of an older shape is simply made again.
+	for _, q := range []string{`DROP TABLE IF EXISTS ts_skill_fixes`, skillFixesTable, `CREATE INDEX IF NOT EXISTS ts_skill_fixes_tsum ON ts_skill_fixes (tsum)`} {
+		if _, err := app.DB().NewQuery(q).Execute(); err != nil {
+			return err
+		}
 	}
 	if err := Refile(app.DB()); err != nil {
 		return err

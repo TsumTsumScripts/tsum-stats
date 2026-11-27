@@ -98,7 +98,8 @@ Cloudflare account only, never the GAP one (`global/README.md`,
 | `internal/stats/queries.go` | `Filter` (`ParseFilter`, the WHERE), the play settings (`PlaySettings`, `playSettingSQL`), the rounds page and its sort columns, played Tsums, devices, skill types and play settings, the latest Tsum list |
 | `internal/stats/summary.go` | `Summarize`: everything above the tables (KPIs, per day / hour / Tsum / mix, spreads, the coin histogram); item sets and their cost (`itemBits`) |
 | `internal/stats/health.go` | `DescribeHealth`: the Script versions panel's answer (unread figures by version and device, expected coins per version × Tsum × skill × items) |
-| `internal/stats/skillfix.go` | The skill level correction: `Refile` works out the level each round counts at (`ts_rounds.skill_eff`) from all of its Tsum's rounds, `SkillFixes` the runs that moved and why (`ts_skill_fixes`), `refiledStats` a filter's moved rounds. The Go port of `ui/src/lib/skillFix.js` |
+| `internal/stats/accounts.go` | Game accounts from the Tsum Lists (`loadAccounts`: lists grouped by what they say), which account each stretch of rounds was played on (`linker`: the player's answer in `ts_account_links`, else the device name, else the game's one account), a list's bounds on a Tsum's level (`Account.bound`); `DescribeAccounts`, `LinkAccount` for the page's picker |
+| `internal/stats/skillfix.go` | The skill level correction: `Refile` works out the level each round counts at (`ts_rounds.skill_eff`) from all of its Tsum's rounds (the account's Tsum Lists first, then the coin rules), `SkillFixes` the runs that moved and why (`ts_skill_fixes`), `refiledStats` a filter's moved rounds. The Go port of `ui/src/lib/skillFix.js` |
 | `internal/stats/tsum.go` | `DescribeTsum`: the Tsum page's answer (by setting, every setting together (`ComboStat`), version, device; form, skill bins, rank) |
 | `internal/stats/art.go` | `Art`: Tsum portraits fetched for the page at `/api/stats/art/{id}` (their origin sends no CORS headers), kept in memory |
 | `internal/stats/server.go` | `Register`, `Config`, `StarterHook`: wiring into PocketBase, the `/api/stats` routes (`registerRoutes`, `registerGlobalRoutes`), the topics `ts/devices`, `ts/rounds`, `ts/imports` and their broadcaster, the loopback and same-origin guards |
@@ -119,7 +120,8 @@ through a fake adb; unzip refusing escapes), `legacy_test.go`, `site_test.go`
 origin), `global_test.go` (the forwarder against a
 fake Worker), `skillfix_test.go` (`TestSkillFixParity` runs
 `ui/tests/skill-fix-parity.mjs`; `TestRefile`, the correction through the
-tables and the figures), `presets_test.go` (the gallery calls, same fake), `globaldata_test.go` (the global files kept and passed on), `global_parity_test.go` (`TestGlobalParity`, which runs
+tables and the figures), `accounts_test.go` (lists into accounts, list bounds,
+linking, the player's answers), `presets_test.go` (the gallery calls, same fake), `globaldata_test.go` (the global files kept and passed on), `global_parity_test.go` (`TestGlobalParity`, which runs
 `global/test/parity.test.ts`).
 
 ### `internal/starter/` -- the service starter's website
@@ -169,7 +171,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `ui/src/sections/Catalog.svelte` | Every Tsum against the latest Tsum list; the roster on the global site. `catalog/MaxOut.svelte`: cost and time to max; `catalog/Progress.svelte`: boxes opened between a device's Tsum lists |
 | `ui/src/sections/Presets.svelte` | Presets: the gallery (global site, `presets.json`), Convert (pasted share codes, or presets GAP Companion sent in `#/presets?p=`) with Copy code and Add to GAP Companion; on the local app, Share to the gallery and the contributor's own (CONTRACT §2.7, §7.3). Not in a snapshot |
 | `ui/src/sections/Help.svelte` | How to get data in |
-| `components/` dialogs | `DataDialog.svelte` (what is stored, importing), `PublishDialog.svelte` (Share), `ContributeDialog.svelte` (the global stats) |
+| `components/` dialogs | `DataDialog.svelte` (what is stored, importing, and `Accounts.svelte` in it: the game accounts the Tsum Lists show and the picker for the stretches of rounds no account is known for), `PublishDialog.svelte` (Share), `ContributeDialog.svelte` (the global stats) |
 | `components/` top bar | `LivePills.svelte` (live devices), `SnapshotNote.svelte`, `GlobalNote.svelte`, `ThemePicker.svelte`, `Dropdown.svelte` |
 | `components/` building blocks | `CopyButton.svelte` (copy as an image), `Panel.svelte`, `Chart.svelte`, `Legend.svelte`, `Tip.svelte`, `DataTable.svelte` (TanStack core; client or server paging), `Seg.svelte`, `DaysBox.svelte` ("Last [N] days", any rolling time range; the Stats rail and the Tsum page), `Toasts.svelte`, `Avatar.svelte`, `TsumCell.svelte`, `TsumChip.svelte`, `TsumCombo.svelte` (text box with its own suggestion list, in place of `<datalist>`), `Refiled.svelte` (the note where rounds count at another skill level than recorded: how many, which, why, and the switch to the figures as recorded), `NewTsums.svelte` (the global site's Tsums out in the last 30 days, from the catalog's `released`; on the Tsum page's list of Tsums and the Catalog) |
 | `ui/src/lib/util.js` | Formats, `api()`, the catalog, `tsumName`, Tsum colours, `IMAGE_URL`; time ranges (`cleanDays`, `daysLabel`) and the global site's players over one (`playersIn`) |
@@ -264,6 +266,7 @@ plain JS, counting D1), `env.d.ts`.
 | `parseFilter`, `parseTime`, `sqlTime`, `itemCost`, `histBounds`, `bucketOf` (the global engine reuses them; the Worker imports `parseTime` and `sqlTime`) | `ui/src/lib/snapshot/engine.js` |
 | `decodePart`, `cutCell` (an outlier range on a cell's bins), `THEMES` (the global site's theme list) | `ui/src/lib/global/engine.js` |
 | `refile`, `runsOf`, `FIX`, `trustedVersion`; `Refile`, `SkillFixes`, `SkillFixVersion`, `Filter.AsRecorded` | `ui/src/lib/skillFix.js`; `internal/stats/skillfix.go`; `queries.go` |
+| `Account`, `Stretch`, `DescribeAccounts`, `LinkAccount`, `loadAccounts`, `linker`; the `ts_account_links` table | `internal/stats/accounts.go`; `schema.go` |
 | `aggregate`; `CELLS`; `CELL_COLUMNS`; `Run`; `limits`; `refileStep`, `decide`, `unitRuns`; `trustedSQL` | `global/src/ingest.ts`; `rollup.ts`; `parts.ts`; `run.ts`; `env.ts`; `refile.ts`; `records.ts` |
 
 ## Adding something -- what a change has to touch

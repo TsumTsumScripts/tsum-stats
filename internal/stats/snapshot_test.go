@@ -215,8 +215,9 @@ func TestSnapshotParity(t *testing.T) {
 		}
 	})
 	addTsumLists(t, app)
-	// A run the skill level correction moves, so the engine's effective levels are held to the server's.
+	// A run the skill level correction moves, and rounds a Tsum List rules out, so the engine's effective levels are held to the server's.
 	fillRefiled(t, app)
+	fillListed(t, app)
 	if err := Refile(app.DB()); err != nil {
 		t.Fatal(err)
 	}
@@ -416,8 +417,20 @@ func TestSnapshotParity(t *testing.T) {
 	for i := range fixes {
 		fixes[i].Player = ""
 	}
+	var donald, minnie []SkillFix
+	for _, f := range fixes {
+		if f.Tsum == "donald" {
+			donald = append(donald, f)
+		} else if f.Rule == "list" && f.ListDevice == "pixel-7" {
+			minnie = append(minnie, f)
+		}
+	}
+	if len(donald) != 1 || len(minnie) != 1 || len(fixes) != 2 {
+		t.Fatalf("want one fix by coins and one by a list, got %+v", fixes)
+	}
 	cases = append(cases, testCase{Name: "skill fixes", Route: "skill-fixes", Params: map[string]any{}, Expected: roundtrip(fixes)},
-		testCase{Name: "skill fixes of one Tsum", Route: "skill-fixes", Params: map[string]any{"tsum": "donald"}, Expected: roundtrip(fixes)},
+		testCase{Name: "skill fixes of one Tsum", Route: "skill-fixes", Params: map[string]any{"tsum": "donald"}, Expected: roundtrip(donald)},
+		testCase{Name: "accounts are the local site's", Route: "accounts", Params: map[string]any{}, Expected: roundtrip(Accounts{Accounts: []*Account{}, Stretches: []Stretch{}})},
 		testCase{Name: "skill fixes of another", Route: "skill-fixes", Params: map[string]any{"tsum": "daisy"}, Expected: roundtrip([]SkillFix{})})
 	for name, q := range map[string]map[string]string{
 		"everything": {}, "one Tsum": {"tsum": "elsa"}, "a range": {"from": "2026-09-05 00:00:00", "to": "2026-09-20 00:00:00"},

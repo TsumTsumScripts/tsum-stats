@@ -827,6 +827,7 @@ export function createGlobalEngine(loader) {
         case 'themes': return THEMES.map(t => ({...t}));
         case 'devices': case 'round-devices': case 'owned-sources': case 'owned-history': case 'skill-fixes': return [];
         case 'owned': return {list: null};
+        case 'accounts': return {accounts: [], stretches: []};
         default: throw new Error(`${path}: not available on the global site`);
       }
     },

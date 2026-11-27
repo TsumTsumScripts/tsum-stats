@@ -35,7 +35,7 @@ const (
 
 // SkillFixVersion names the rules; a database corrected under another is
 // corrected again at the next start (refileOnce).
-const SkillFixVersion = "1"
+const SkillFixVersion = "2"
 
 var fixVersionRE = regexp.MustCompile(`^(\d+)\.(\d+)(?:\.\d+)*(?:([ab])(\d+)?)?`)
 
@@ -445,9 +445,18 @@ type SkillFix struct {
 	Rounds int    `db:"rounds" json:"rounds"`
 	First  string `db:"first" json:"first"`
 	Last   string `db:"last" json:"last"`
-	// Rule is "order" (the player's levels went down) or "trusted" (the same
-	// coins as the player's own later rounds with Auto Set Skill Level).
+	// Rule is "list" (a Tsum List of the account says the level could not be
+	// the one recorded), "order" (the player's levels went down) or "trusted"
+	// (the same coins as the player's own later rounds with Auto Set Skill Level).
 	Rule string `db:"rule" json:"rule"`
+	// For "list": the list that says so (its device name and stamp, UTC), the
+	// level it read, and whether it was read after the rounds ("cap": the
+	// level was at most that) or before ("floor": at least that). The other
+	// rules leave these empty, and the fields below them at zero for "list".
+	ListDevice string `db:"list_device" json:"listDevice"`
+	ListStamp  string `db:"list_stamp" json:"listStamp"`
+	ListLevel  int    `db:"list_level" json:"listLevel"`
+	ListBound  string `db:"list_bound" json:"listBound"`
 	// Context is the item context the coins were compared in (fixContext); N
 	// and Mid the run's rounds and median there, AgainstN and AgainstMid the
 	// run's it was held to; Ratio is Mid over AgainstMid. Medals for a medal Tsum.
@@ -493,10 +502,22 @@ var refileMu sync.Mutex
 // rounds, and records the runs that moved in ts_skill_fixes. It writes only
 // the rows whose effective level changed. Whoever stores rounds calls it for
 // their Tsums afterwards: a stored round starts at its recorded level (the
-// table's triggers), and one more round can change a run's verdict.
+// table's triggers), and one more round can change a run's verdict. A new
+// Tsum List or account link can move any Tsum's rounds: all of them then.
+//
+// Per round, in this order: the Tsum Lists of the account it was played on
+// (accounts.go) hold its recorded level within what they read, since a level
+// never goes down (at most the oldest later reading, at least the newest
+// earlier one); the coin rules (fixRefileRounds) then judge the runs of
+// those levels, a round the lists pin to one level counting as trusted; and
+// a coin verdict the lists rule out is dropped.
 func Refile(db dbx.Builder, tsums ...string) error {
 	refileMu.Lock()
 	defer refileMu.Unlock()
+	lk, err := newLinker(db)
+	if err != nil {
+		return err
+	}
 	if len(tsums) == 0 {
 		if err := db.NewQuery(`SELECT DISTINCT tsum FROM ts_rounds WHERE tsum <> ''`).Column(&tsums); err != nil {
 			return err
@@ -506,19 +527,21 @@ func Refile(db dbx.Builder, tsums ...string) error {
 		if tsum == "" {
 			continue
 		}
-		if err := refileTsum(db, tsum); err != nil {
+		if err := refileTsum(db, tsum, lk); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func refileTsum(db dbx.Builder, tsum string) error {
+func refileTsum(db dbx.Builder, tsum string, lk *linker) error {
 	var rows []struct {
 		ID      string `db:"round_id"`
 		At      string `db:"played_at"`
 		Build   string `db:"build"`
+		Device  string `db:"device"`
 		Tag     string `db:"tag"`
+		Stretch string `db:"stretch"`
 		Version string `db:"script_version"`
 		Level   string `db:"skill_level"`
 		Eff     string `db:"skill_eff"`
@@ -527,7 +550,7 @@ func refileTsum(db dbx.Builder, tsum string) error {
 		Medals  *int64 `db:"medals"`
 	}
 	p := dbx.Params{"t": tsum}
-	if err := db.NewQuery(`SELECT round_id, played_at, build, ` + deviceTagSQL + ` AS tag, script_version, skill_level, skill_eff, items, base_coins, medals
+	if err := db.NewQuery(`SELECT round_id, played_at, build, device, ` + deviceTagSQL + ` AS tag, ` + stretchTagSQL + ` AS stretch, script_version, skill_level, skill_eff, items, base_coins, medals
 		FROM ts_rounds WHERE tsum = {:t} ORDER BY played_at, round_id`).Bind(p).All(&rows); err != nil {
 		return err
 	}
@@ -540,9 +563,39 @@ func refileTsum(db dbx.Builder, tsum string) error {
 		}
 	}
 	rounds := make([]fixRound, len(rows))
+	bounds := make([]listBound, len(rows))
+	// The rounds the lists moved, by player, levels and list: one fix each.
+	type listKey struct {
+		player   string
+		from, to int
+		list     *AccountList
+		bound    string
+	}
+	var listFixes []*SkillFix
+	listFix := map[listKey]*SkillFix{}
 	for i, r := range rows {
 		level, _ := strconv.Atoi(r.Level)
-		rounds[i] = fixRound{ID: r.ID, At: r.At, Player: r.Build + "|" + r.Tag, Level: level, Trusted: trustedVersion(r.Version), Context: fixContext(r.Items)}
+		trusted := trustedVersion(r.Version)
+		if a, _ := lk.account(r.Build, r.Device, r.Stretch); a != nil {
+			bounds[i] = a.bound(tsum, r.At)
+			to, list, which := bounds[i].clamp(level)
+			if list != nil {
+				k := listKey{r.Build + "|" + r.Tag, level, to, list, which}
+				f := listFix[k]
+				if f == nil {
+					f = &SkillFix{Player: k.player, From: level, To: to, First: r.At, Rule: "list", Confidence: "high",
+						ListDevice: list.Device, ListStamp: list.Stamp, ListLevel: to, ListBound: which}
+					listFix[k] = f
+					listFixes = append(listFixes, f)
+				}
+				f.Rounds++
+				f.Last = r.At
+				level = to
+			}
+			// Read the same before and after: the level is known.
+			trusted = trusted || (level > 0 && bounds[i].Floor == bounds[i].Cap && bounds[i].Floor == level)
+		}
+		rounds[i] = fixRound{ID: r.ID, At: r.At, Player: r.Build + "|" + r.Tag, Level: level, Trusted: trusted, Context: fixContext(r.Items)}
 		v := r.Base
 		if medal {
 			v = r.Medals
@@ -552,6 +605,15 @@ func refileTsum(db dbx.Builder, tsum string) error {
 		}
 	}
 	levels, fixes := fixRefileRounds(rounds)
+	// A coin verdict outside what the lists read is dropped.
+	for i := range rounds {
+		if kept, list, _ := bounds[i].clamp(levels[i]); list != nil && kept != levels[i] {
+			levels[i] = rounds[i].Level
+		}
+	}
+	for _, f := range listFixes {
+		fixes = append(fixes, *f)
+	}
 	// The rounds whose effective level is not the one stored, by the level to store.
 	changed := map[string][]string{}
 	for i, r := range rows {
@@ -587,8 +649,10 @@ func refileTsum(db dbx.Builder, tsum string) error {
 		return err
 	}
 	for _, f := range fixes {
-		if _, err := db.NewQuery(`INSERT INTO ts_skill_fixes (tsum, player, from_level, to_level, rounds, first, last, rule, context, n, mid, against_n, against_mid, ratio, confidence, medals)
-			VALUES ({:t}, {:p}, {:f}, {:to}, {:r}, {:first}, {:last}, {:rule}, {:c}, {:n}, {:mid}, {:an}, {:am}, {:ratio}, {:conf}, {:medals})`).Bind(dbx.Params{
+		if _, err := db.NewQuery(`INSERT INTO ts_skill_fixes (tsum, player, from_level, to_level, rounds, first, last, rule, context, n, mid, against_n, against_mid, ratio, confidence, medals,
+				list_device, list_stamp, list_level, list_bound)
+			VALUES ({:t}, {:p}, {:f}, {:to}, {:r}, {:first}, {:last}, {:rule}, {:c}, {:n}, {:mid}, {:an}, {:am}, {:ratio}, {:conf}, {:medals}, {:ld}, {:ls}, {:ll}, {:lb})`).Bind(dbx.Params{
+			"ld": f.ListDevice, "ls": f.ListStamp, "ll": f.ListLevel, "lb": f.ListBound,
 			"t": tsum, "p": f.Player, "f": f.From, "to": f.To, "r": f.Rounds, "first": f.First, "last": f.Last, "rule": f.Rule, "c": f.Context,
 			"n": f.N, "mid": f.Mid, "an": f.AgainstN, "am": f.AgainstMid, "ratio": f.Ratio, "conf": f.Confidence, "medals": medal,
 		}).Execute(); err != nil {
@@ -607,7 +671,7 @@ func SkillFixes(db dbx.Builder, tsum string) ([]SkillFix, error) {
 		q += ` WHERE tsum = {:t}`
 		p["t"] = tsum
 	}
-	err := db.NewQuery(q + ` ORDER BY tsum, first, player, from_level`).Bind(p).All(&out)
+	err := db.NewQuery(q + ` ORDER BY tsum, first, player, from_level, to_level, rule`).Bind(p).All(&out)
 	return out, err
 }
 
