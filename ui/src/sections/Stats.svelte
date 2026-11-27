@@ -7,7 +7,7 @@
   by skill level and items instead of devices, and coin and medal ranges only.
 -->
 <script>
-  import {onMount, tick} from 'svelte';
+  import {onMount, tick, untrack} from 'svelte';
   import {isGlobal} from '../lib/global/client.js';
   import {isSnapshot} from '../lib/snapshot/client.js';
   import {SvelteSet} from 'svelte/reactivity';
@@ -29,6 +29,8 @@
   import FocusBar from './stats/FocusBar.svelte';
   import HeadToHead from './stats/HeadToHead.svelte';
   import Kpis from './stats/Kpis.svelte';
+  import Refiled from '../components/Refiled.svelte';
+  import {levels, levelsParam, refiledTotals} from '../lib/levels.svelte.js';
   import Versions from './stats/Versions.svelte';
   import {EXP_WHAT, RUN_WHAT, expErr, expHour, oneLongRound, runHour, runRateHour} from '../lib/expected.js';
 
@@ -188,6 +190,8 @@
     ...Object.fromEntries(OUTLIER_KEYS.map(k => [k, filter[k]])),
     from: localDayStart(range.from), to: localDayEnd(range.to),
     skill: filter.skill, ...(globalSite ? {items: filter.items} : {}),
+    // Skill levels as recorded, or as the correction files them (lib/levels.svelte.js).
+    levels: levelsParam(),
   });
 
   /**
@@ -324,7 +328,7 @@
     // Nor play settings.
     playChoices = await api('play-settings').catch(() => ({}));
     // The skill levels to filter by: the global site's from its status, the local site's and a snapshot's from their rounds.
-    if (!globalSite) localSkills = (await api('skill-levels').catch(() => [])).filter(v => v.value !== '').map(v => Number(v.value)).sort((a, b) => a - b);
+    if (!globalSite) localSkills = (await api('skill-levels', {levels: levelsParam()}).catch(() => [])).filter(v => v.value !== '').map(v => Number(v.value)).sort((a, b) => a - b);
     played = (await api('tsums')).filter(t => t.tsum);
   }
 
@@ -533,6 +537,8 @@
       {meta: {cls: 'medal', hidden: true, show: coinMode}}),
     num('durationSeconds', 'Time', r => r.durationSeconds, fmtDuration),
     {id: 'skillType', header: 'Skill', accessorKey: 'skillType', cell: r => (r.skillType ? skillTypeName(r.skillType) : '—'), enableSorting: false, meta: {cls: 'dim', hidden: true}},
+    {id: 'skillLevel', header: 'Level', accessorKey: 'skillLevel', snippet: levelCell, enableSorting: false,
+      meta: {cls: 'dim', title: 'The skill level recorded for the round. "3 → 5" was recorded as 3 and is counted as 5 (the skill level correction)'}},
     {id: 'device', header: 'Device', accessorKey: 'device', cell: r => r.device || '—', sortDescFirst: false, meta: {cls: 'dim'}},
   ];
 
@@ -573,6 +579,22 @@
     loadRounds();
   }
 
+  // The switch between corrected and recorded skill levels reloads what is by level.
+  let levelsSeen = levels.recorded;
+  $effect(() => {
+    if (levels.recorded === levelsSeen) return;
+    levelsSeen = levels.recorded;
+    untrack(() => { loadTsumOptions(); loadSummary(); loadRounds(); });
+  });
+  /** The rounds per Tsum the summary counts at another level than recorded. */
+  const refiledBy = $derived(refiledTotals(summary?.refiled).byTsum);
+  /** Why they moved, where the site can say (not the global site). */
+  let fixes = $state([]);
+  $effect(() => {
+    if (globalSite || !summary?.refiled?.length) return;
+    api('skill-fixes').then(f => { fixes = f; }, () => { fixes = []; });
+  });
+
   export const refresh = debounce(() => { loadTsumOptions(); loadSummary(); loadRounds(); }, 800);
 
   /** A round arrived live: refresh, and flash its row if it lands on this page. */
@@ -585,7 +607,14 @@
 {#snippet tsumCell(r)}
   <TsumCell id={r.tsum} name={r.tsum ? nameOf(r.tsum) : 'Not identified'} color={colorOf(r.tsum)} onpick={r.tsum ? e => focusOn(r.tsum, e) : null} />
   {#if fewPlayers(r)}<span class="sub few-flag" title="Too few players' rounds to stand for everyone's yet">few players</span>{/if}
+  {#if refiledBy.get(r.tsum)}<span class="sub few-flag" title="{fmt(refiledBy.get(r.tsum))} of its rounds {levels.recorded ? 'would count' : 'count'} at another skill level than recorded (the skill level correction): see the note under the totals">⇄ {fmt(refiledBy.get(r.tsum))} re-filed</span>{/if}
   {#if oneLongRound(r)}<span class="sub few-flag" title="Its longest round is {pct(r.expTopShare)} of its play time, so that round sets much of Expected/h: Typical/h is the typical round's pace">one long round</span>{/if}
+{/snippet}
+{#snippet levelCell(r)}
+  {#if !r.skillLevel}—
+  {:else if r.skillEffective && r.skillEffective !== r.skillLevel}
+    <span title="Recorded as skill {r.skillLevel}, {levels.recorded ? 'which the skill level correction would count' : 'counted'} as skill {r.skillEffective}">{r.skillLevel} <b>→ {r.skillEffective}</b></span>
+  {:else}{r.skillLevel}{/if}
 {/snippet}
 {#snippet roundTsumCell(r)}
   <TsumCell id={r.tsum} name={r.tsum ? tsumName(catalog, r.tsum) : 'Not identified'} color={colorOf(r.tsum)}
@@ -619,7 +648,8 @@
 
     <div id="s-overview" class="anchor">
       {#if summary}<Kpis t={summary.totals} m={summary.medals.totals} coins={filter.coins} {basis} approx={Boolean(summary.global)} incomplete={summary.incompleteRounds ?? 0}
-        totalFirst={Boolean(summary.global)} missing={noSpreads && `no median ${noSpreads}`} />{/if}
+        totalFirst={Boolean(summary.global)} missing={noSpreads && `no median ${noSpreads}`} />
+        <Refiled refiled={summary.refiled} {fixes} {nameOf} />{/if}
     </div>
 
     <Panel id="s-compare" class="anchor" title="Head to head" sub="the Tsums in the filter side by side · the best is marked where there is one, expected coins only when the gap is more than luck explains"

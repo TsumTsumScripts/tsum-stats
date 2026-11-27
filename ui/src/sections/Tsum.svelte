@@ -10,7 +10,7 @@
   Tsums new in the last 30 days above them; with one, All Tsums goes back to it.
 -->
 <script>
-  import {onMount} from 'svelte';
+  import {onMount, untrack} from 'svelte';
   import {isGlobal} from '../lib/global/client.js';
   import Avatar from '../components/Avatar.svelte';
   import Chart from '../components/Chart.svelte';
@@ -35,6 +35,8 @@
   import Legend from '../components/Legend.svelte';
   import BestSettings from './tsum/BestSettings.svelte';
   import Breakdown from './tsum/Breakdown.svelte';
+  import Refiled from '../components/Refiled.svelte';
+  import {levels, levelsParam, refiledInLevel} from '../lib/levels.svelte.js';
   import Earners from './tsum/Earners.svelte';
   import Insights from './tsum/Insights.svelte';
   import ItemPayback from './tsum/ItemPayback.svelte';
@@ -134,7 +136,7 @@
       d.setDate(d.getDate() - n + 1);
       from = new Date(`${isoDay(d)}T00:00:00`).toISOString();
     }
-    return {device: filter.device, skillType: filter.skillType, skill: filter.skill, build: filter.build, coins: filter.coins, net: net ? '1' : '', from};
+    return {device: filter.device, skillType: filter.skillType, skill: filter.skill, build: filter.build, coins: filter.coins, net: net ? '1' : '', from, levels: levelsParam()};
   }
 
   function set(patch) {
@@ -278,6 +280,8 @@
   const skills = $derived(settingRows('skillLevel', k => `Skill ${k}`)
     .sort((a, b) => Number(a.key) - Number(b.key))
     .map((r, i, all) => ({...r, mark: owned?.own?.skill != null && Number(r.key) === owned.own.skill ? 'now' : '',
+      // The rounds in the row that were recorded at another level (the skill level correction).
+      refiled: refiledInLevel(detail?.summary?.refiled, r.key),
       // The boxes from the level below to this one (boxes[i] takes skill i to i+1), in coins; a medal Tsum's take medals.
       stepCost: i && Number(all[i - 1].key) === Number(r.key) - 1 && entry?.boxes?.[Number(r.key) - 1] && !entry.medal
         ? entry.boxes[Number(r.key) - 1] * BOX_PRICE.coins : null})));
@@ -402,6 +406,21 @@
     Object.assign(filter, next);
     load();
   }
+
+  // The switch between corrected and recorded skill levels reloads the page's figures.
+  let levelsSeen = levels.recorded;
+  $effect(() => {
+    if (levels.recorded === levelsSeen) return;
+    levelsSeen = levels.recorded;
+    untrack(load);
+  });
+  /** Why this Tsum's re-filed runs moved, where the site can say (not the global site). */
+  let fixes = $state([]);
+  $effect(() => {
+    const id = filter.id;
+    if (globalSite || !id || !detail?.summary?.refiled?.length) { fixes = []; return; }
+    api('skill-fixes', {tsum: id}).then(f => { if (id === filter.id) fixes = f; }, () => { fixes = []; });
+  });
 
   export const refresh = debounce(() => { loadOptions(); load(); }, 800);
 </script>
@@ -570,8 +589,9 @@
       {/if}
 
       {#if skills.length}
-        <Panel title="By skill level" sub="the skill level set in the script for each round · change is against the level below · pays back in: hours of play for the gain to earn back that level's boxes" expandable={false}>
+        <Panel title="By skill level" sub="{levels.recorded ? 'the skill level recorded for each round' : 'the skill level each round counts at: the one recorded, unless the correction re-filed it'} · change is against the level below · pays back in: hours of play for the gain to earn back that level's boxes" expandable={false}>
           <Breakdown rows={skills} {unit} head="Skill" against="prev" />
+          <Refiled refiled={detail.summary.refiled} {fixes} one />
         </Panel>
         {#if skills.filter(r => r.rounds >= 20).length > 1}
           <Panel title="{U} per round by skill level" sub="each level's share of its rounds at each amount of {basis}, so levels with fewer rounds still compare">

@@ -10,7 +10,8 @@
   import {differs, errText, expHour, trusted} from '../../lib/expected.js';
   import {fmt, fmtRate, parseUTC, pct} from '../../lib/util.js';
 
-  // rows: [{label, rounds, avgCoins, maxCoins, coinsPerSec, avgScore, first, last, exp*, mark?, stepCost?}].
+  // rows: [{label, rounds, avgCoins, maxCoins, coinsPerSec, avgScore, first, last, exp*, mark?, stepCost?, refiled?}].
+  // refiled (skill levels): {text, title}, the row's rounds recorded at another level (lib/levels.svelte.js: refiledInLevel).
   // stepCost (skill levels, against 'prev'): the coins the boxes from the row above to this one cost, when
   // the row above is the level below; the row then says how many hours of play its gain takes to earn that back.
   // against: 'prev' compares each row with the one above it, 'most' with the most played row.
@@ -74,6 +75,7 @@
           <td>
             <span class="bd-label">{r.label}</span>
             {#if r.mark}<span class="tag">{r.mark}</span>{/if}
+            {#if r.refiled}<span class="sub" title={r.refiled.title}>⇄ {r.refiled.text}</span>{/if}
             {#if !r.sure}<span class="sub" title={medals ? 'Too few rounds to trust the figures yet' : 'Not yet known within ± 5 %: more rounds will settle it'}>{medals ? 'few rounds' : 'uncertain'}</span>{/if}
           </td>
           <td class="num">{fmt(r.rounds)}</td>
