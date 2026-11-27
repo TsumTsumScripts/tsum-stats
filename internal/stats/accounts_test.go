@@ -1,7 +1,11 @@
 package stats
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -261,5 +265,140 @@ func TestListsBoundTheLevelsOfLinkedRounds(t *testing.T) {
 	_ = app.DB().NewQuery(`SELECT COUNT(*) FROM ts_rounds WHERE tsum = 'goofy' AND json_extract(settings, '$.skillLevel') = 6 AND skill_level = '6'`).Row(&n)
 	if n != 30 {
 		t.Fatalf("recorded levels changed: %d", n)
+	}
+}
+
+// TestAccountsParity holds accounts.go to ui/src/lib/accounts.js, which the
+// global Worker runs: the same lists, the same accounts, the same bounds.
+func TestAccountsParity(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed")
+	}
+	script, _ := filepath.Abs("../../ui/tests/accounts-parity.mjs")
+	if _, err := os.Stat(script); err != nil {
+		t.Skip("no ui/tests/accounts-parity.mjs")
+	}
+	type jsList struct {
+		ID    string           `json:"id"`
+		Build string           `json:"build"`
+		At    string           `json:"at"`
+		Skill map[string]int64 `json:"skill"`
+		Level map[string]int64 `json:"level"`
+	}
+	type ask struct {
+		Account int    `json:"account"`
+		Tsum    string `json:"tsum"`
+		At      string `json:"at"`
+		Level   int    `json:"level"`
+	}
+	type jsCase struct {
+		Name  string   `json:"name"`
+		Lists []jsList `json:"lists"`
+		Asks  []ask    `json:"asks"`
+	}
+	g := &fixGen{seed: 3}
+	tsums := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"}
+	var cases []jsCase
+	var accounts [][]*Account
+	for n := 0; n < 40; n++ {
+		// A few accounts' lists in one stream: each account levels up now and then, a list may be partial,
+		// misread a Tsum, read no skill at all, or come from the other game.
+		type acct struct {
+			build string
+			skill map[string]int64
+		}
+		var accts []acct
+		for k := 0; k < 1+g.next(3); k++ {
+			a := acct{[]string{"global", "global", "jp"}[g.next(3)], map[string]int64{}}
+			for _, ts := range tsums[:6+g.next(7)] {
+				a.skill[ts] = int64(1 + g.next(6))
+			}
+			accts = append(accts, a)
+		}
+		var lists []AccountList
+		var builds []string
+		c := jsCase{Name: fmt.Sprintf("stream %d", n), Lists: []jsList{}}
+		for i := 0; i < 3+g.next(10); i++ {
+			a := accts[g.next(len(accts))]
+			if g.next(3) == 0 {
+				ts := tsums[g.next(len(tsums))]
+				if a.skill[ts] > 0 && a.skill[ts] < 6 {
+					a.skill[ts]++
+				}
+			}
+			l := AccountList{File: fmt.Sprintf("list-%02d", i), At: fmt.Sprintf("2026-10-%02d 00:00:00", 1+i), skill: map[string]int64{}, level: map[string]int64{}}
+			for ts, s := range a.skill {
+				if g.next(8) == 0 {
+					continue
+				}
+				if g.next(40) == 0 {
+					s = max(1, s-1)
+				}
+				if g.next(15) != 0 {
+					l.level[ts] = s * 10
+				}
+				l.skill[ts] = s
+			}
+			if g.next(12) == 0 {
+				l.skill, l.level = map[string]int64{}, map[string]int64{}
+			}
+			c.Lists = append(c.Lists, jsList{l.File, a.build, l.At, l.skill, l.level})
+			// loadAccounts leaves a list with nothing read out before grouping; accounts.js does it itself.
+			if len(l.skill) > 0 {
+				lists, builds = append(lists, l), append(builds, a.build)
+			}
+		}
+		got := groupAccounts(lists, builds)
+		for q := 0; q < 30 && len(got) > 0; q++ {
+			c.Asks = append(c.Asks, ask{g.next(len(got)), tsums[g.next(len(tsums))], fmt.Sprintf("2026-10-%02d %02d:00:00", g.next(16), 12*g.next(2)), g.next(8)})
+		}
+		cases = append(cases, c)
+		accounts = append(accounts, got)
+	}
+	data, _ := json.Marshal(cases)
+	file := filepath.Join(t.TempDir(), "cases.json")
+	if err := os.WriteFile(file, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(node, script, file).Output()
+	if err != nil {
+		t.Fatalf("accounts-parity.mjs: %v\n%s", err, out)
+	}
+	var js []struct {
+		Accounts [][]string `json:"accounts"`
+		Answers  [][2]int   `json:"answers"`
+	}
+	if err := json.Unmarshal(out, &js); err != nil {
+		t.Fatal(err)
+	}
+	several, moved := 0, 0
+	for k, c := range cases {
+		var ids [][]string
+		for _, a := range accounts[k] {
+			var of []string
+			for _, l := range a.Lists {
+				of = append(of, l.File)
+			}
+			ids = append(ids, of)
+		}
+		if fmt.Sprint(ids) != fmt.Sprint(js[k].Accounts) {
+			t.Fatalf("%s: accounts differ:\n Go %v\n JS %v", c.Name, ids, js[k].Accounts)
+		}
+		if len(ids) > 1 {
+			several++
+		}
+		for i, q := range c.Asks {
+			want, _, _ := accounts[k][q.Account].bound(q.Tsum, q.At).clamp(q.Level)
+			if js[k].Answers[i] != [2]int{want, want} {
+				t.Fatalf("%s: %+v counts at %d in Go, %v in JS (by the bound, by the segments)", c.Name, q, want, js[k].Answers[i])
+			}
+			if want != q.Level {
+				moved++
+			}
+		}
+	}
+	if several < 10 || moved < 50 {
+		t.Fatalf("%d cases with several accounts, %d levels moved: the data tests too little", several, moved)
 	}
 }

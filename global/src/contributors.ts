@@ -6,7 +6,7 @@ import { dayOf } from "./days";
 import { limits, type Env } from "./env";
 import { HttpError, bearer, isoTime, ok, readObject } from "./http";
 import { markDirty } from "./presets";
-import { LEVELS } from "./levels";
+import { LISTS } from "./lists";
 
 /** The contributor a request's key belongs to. */
 export interface Contributor {
@@ -130,7 +130,7 @@ export async function me(env: Env, c: Contributor, nowMs: number): Promise<Respo
     last: row.last,
     today: { rounds: row.day === dayOf(nowMs / 1000) ? row.day_rounds : 0, quota: limits(env).quota },
     resend: c.resend,
-    levels: LEVELS,
+    lists: LISTS,
   });
 }
 

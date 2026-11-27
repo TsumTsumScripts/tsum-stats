@@ -16,7 +16,7 @@ import { HttpError, ok, readObject } from "./http";
 import { checkRecords, isJackpot, type Round } from "./records";
 import { fixContext, trustedVersion } from "../../ui/src/lib/skillFix.js";
 import { isMedalTsum } from "./catalog";
-import { LEVELS, levelStatements, type LevelChange } from "./levels";
+import { LISTS } from "./lists";
 
 export const SCHEMA = "gap.round-stats/1";
 export const MAX_RECORDS = 250;
@@ -47,13 +47,7 @@ interface Stored {
   base: number;
   final: number;
   medals: number | null;
-  /** The level its contributor's app counts it at (round_levels), null for none. */
-  level: number | null;
-  source: string | null;
 }
-
-/** A level as one word, "" for none: what an upload's is compared with. */
-const levelWord = (l: { level: number | null; source: string | null } | null) => (l && l.level !== null ? `${l.level}:${l.source}` : "");
 
 /** The figures a re-send may change: everything but the key and who sent it first. */
 const FIGURES = [
@@ -263,16 +257,26 @@ export async function ingest(records: Record<string, unknown>[], env: Env, c: Co
   const hashes = [...new Set(rounds.map(r => r.settingsHash))];
   const tags = [...new Set(rounds.map(r => r.device))];
   let gaps = new Map<string, number | null>();
+  const bounds = new Map<string, { from_at: number; floor: number; cap: number }[]>();
   if (rounds.length) {
-    const [had, settings, devices] = await db.batch([
+    const [had, settings, devices, bounded] = await db.batch([
       db.prepare(`SELECT r.key, r.contributor, r.played_at, r.build, r.tsum, r.skill, r.skill_type, r.items, r.scan, r.chain, r.bubble, r.version, s.hash,
-          r.duration, r.score, r.base, r.final, r.medals, l.level, l.source
-        FROM json_each(?1) j JOIN rounds r ON r.key = j.value LEFT JOIN settings s ON s.id = r.settings LEFT JOIN round_levels l ON l.key = r.key`)
+          r.duration, r.score, r.base, r.final, r.medals
+        FROM json_each(?1) j JOIN rounds r ON r.key = j.value LEFT JOIN settings s ON s.id = r.settings`)
         .bind(JSON.stringify(rounds.map(r => r.key))),
       db.prepare("SELECT s.hash FROM json_each(?1) j JOIN settings s ON s.hash = j.value").bind(JSON.stringify(hashes)),
       db.prepare(`SELECT d.device_hash, d.first_seen, d.last_seen FROM json_each(?1) j
         JOIN devices d ON d.device_hash = j.value AND d.contributor = ?2`).bind(JSON.stringify(tags), c.id),
+      // What this contributor's Tsum Lists say of the batch's devices' Tsums (skill_bound, lists.ts), by its key.
+      db.prepare(`SELECT b.tsum, b.build, b.device, b.from_at, b.floor, b.cap FROM json_each(?1) j JOIN skill_bound b
+        ON b.tsum = j.value ->> 0 AND b.build = j.value ->> 1 AND b.device = j.value ->> 2 AND b.contributor = ?2 ORDER BY b.from_at`)
+        .bind(JSON.stringify([...new Set(rounds.filter(r => r.skill >= 1).map(r => JSON.stringify([r.tsum, r.build, r.device])))].map(k => JSON.parse(k))), c.id),
     ]);
+    for (const b of bounded.results as { tsum: string; build: number; device: string; from_at: number; floor: number; cap: number }[]) {
+      const k = `${b.tsum}|${b.build}|${b.device}`;
+      bounds.set(k, [...(bounds.get(k) ?? []), b]);
+    }
+    reads += bounded.meta.rows_read;
     stored = new Map((had.results as unknown as Stored[]).map(s => [s.key, s]));
     for (const s of settings.results as { hash: string }[]) knownSettings.add(s.hash);
     for (const d of devices.results as { device_hash: string; first_seen: number; last_seen: number }[]) knownDevices.set(d.device_hash, d);
@@ -289,9 +293,7 @@ export async function ingest(records: Record<string, unknown>[], env: Env, c: Co
   const freshTsums: Record<string, string> = {};
   const changedDays = new Set<string>();
   const devices = new Map<string, { first: number; last: number; rounds: number }>();
-  // The levels to set or take back (CONTRACT §1.3), and the stored rounds only whose level changed.
-  const levels: LevelChange[] = [];
-  let unchanged = 0, duplicates = 0, levelOnly = 0;
+  let unchanged = 0, duplicates = 0;
   for (const r of rounds) {
     const d = devices.get(r.device) ?? { first: r.playedAt, last: r.playedAt, rounds: 0 };
     d.first = Math.min(d.first, r.playedAt);
@@ -304,26 +306,23 @@ export async function ingest(records: Record<string, unknown>[], env: Env, c: Co
       fresh.add(day);
       if (!(freshTsums[r.tsum] >= day)) freshTsums[r.tsum] = day;
       d.rounds++;
-      // The sums below file it as recorded; its day's recompute files it at its level.
-      if (r.level) {
-        levels.push([r.key, r.level.level, r.level.source]);
-        changedDays.add(day);
-      }
+      // The sums below file a round as recorded. Where its account's Tsum Lists say otherwise (or give
+      // it one level, which the evidence counts as trusted), its day's recompute files it by them.
+      const b = bounds.get(`${r.tsum}|${r.build}|${r.device}`)?.filter(x => x.from_at <= r.playedAt).at(-1);
+      if (b && r.skill >= 1 && ((b.cap > 0 && r.skill > b.cap) || r.skill < b.floor || (b.cap > 0 && b.floor === b.cap))) changedDays.add(day);
     } else if (s.contributor !== c.id) {
       duplicates++;
-    } else if (same(s, r) && levelWord(s) === levelWord(r.level)) {
+    } else if (same(s, r)) {
       unchanged++;
     } else {
       // A changed round is not added on top of its old figures: its day is
       // recomputed in full. Its day is its start's, from the key, so a changed
-      // end never moves it. A level set, changed or no longer sent is such a change.
-      if (!same(s, r)) write.push(r);
-      else levelOnly++;
-      if (levelWord(s) !== levelWord(r.level)) levels.push([r.key, r.level?.level ?? null, r.level?.source ?? null]);
+      // end never moves it.
+      write.push(r);
       changedDays.add(keyDay(r.key));
     }
   }
-  const accepted = write.length + levelOnly;
+  const accepted = write.length;
 
   // The rows each statement writes, as D1 counts them (an indexed settings row is two).
   const newSettings = new Map(write.filter(r => !knownSettings.has(r.settingsHash)).map(r => [r.settingsHash, r.settings]));
@@ -332,10 +331,13 @@ export async function ingest(records: Record<string, unknown>[], env: Env, c: Co
     return !had || d.rounds > 0 || d.first < had.first_seen || d.last > had.last_seen;
   });
   const freshRows = write.filter(r => !stored.has(r.key));
-  const est = write.length + 2 * newSettings.size + deviceRows.length + 1 + (freshRows.length ? 2 : 0) + changedDays.size + 2 * levels.length;
+  const est = accepted + 2 * newSettings.size + deviceRows.length + 1 + (freshRows.length ? 2 : 0) + changedDays.size;
 
   const stmts: D1PreparedStatement[] = [];
-  if (write.length) {
+  if (changedDays.size) {
+    stmts.push(db.prepare("INSERT OR IGNORE INTO dirty_days (day) SELECT value FROM json_each(?1)").bind(JSON.stringify([...changedDays])));
+  }
+  if (accepted) {
     if (newSettings.size) {
       stmts.push(db.prepare(`INSERT INTO settings (hash, json) SELECT s->>0, s->>1 FROM (SELECT value AS s FROM json_each(?1)) WHERE true
         ON CONFLICT (hash) DO NOTHING`).bind(JSON.stringify([...newSettings])));
@@ -343,7 +345,7 @@ export async function ingest(records: Record<string, unknown>[], env: Env, c: Co
     const freshDays = JSON.stringify([...fresh].sort());
     stmts.push(
       db.prepare(UPSERT_ROUNDS).bind(JSON.stringify(write.map(r => row(r, gaps))), c.id, JSON.stringify([...new Set(write.map(r => r.settingsHash))])),
-      db.prepare(RACED).bind(freshDays, write.length),
+      db.prepare(RACED).bind(freshDays, accepted),
     );
     if (freshRows.length) {
       const sums = aggregate(freshRows, gaps);
@@ -351,10 +353,6 @@ export async function ingest(records: Record<string, unknown>[], env: Env, c: Co
         JSON.stringify(sums.cells), JSON.stringify(sums.bins), JSON.stringify(sums.cc), JSON.stringify(sums.units)));
     }
   }
-  if (changedDays.size) {
-    stmts.push(db.prepare("INSERT OR IGNORE INTO dirty_days (day) SELECT value FROM json_each(?1)").bind(JSON.stringify([...changedDays])));
-  }
-  stmts.push(...levelStatements(db, levels, now));
   if (deviceRows.length) {
     stmts.push(db.prepare(`INSERT INTO devices (device_hash, contributor, first_seen, last_seen, rounds)
         SELECT d->>0, ?2, d->>1, d->>2, d->>3 FROM (SELECT value AS d FROM json_each(?1)) WHERE true
@@ -375,5 +373,5 @@ export async function ingest(records: Record<string, unknown>[], env: Env, c: Co
       WHERE id = ?1 AND (CASE WHEN day = ?2 THEN day_rounds ELSE 0 END) + ?3 > ?4`).bind(c.id, today, accepted, lim.quota));
   }
   await spend(db, nowMs, { est, cap: lim.budget - lim.reserve, reads, checks }, stmts);
-  return { accepted, unchanged, duplicates, rejected, retry, keeps: KEEPS, resend: c.resend, levels: LEVELS };
+  return { accepted, unchanged, duplicates, rejected, retry, keeps: KEEPS, resend: c.resend, lists: LISTS };
 }

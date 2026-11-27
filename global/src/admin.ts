@@ -5,6 +5,7 @@
 // moderation never waits for a budget a bad contributor may have spent.
 import { restore } from "./archive";
 import { spend } from "./budget";
+import { QUEUE_EVIDENCE } from "./lists";
 import { addDays, dayOf, isDay, keyDay } from "./days";
 import { limits, type Env } from "./env";
 import { HttpError, isoTime, ok, readObject } from "./http";
@@ -135,6 +136,13 @@ export async function adminPost(action: string, req: Request, env: Env, nowMs: n
           ON CONFLICT (contributor, tsum) DO UPDATE SET day = excluded.day WHERE excluded.day > day`).bind(from, into),
         db.prepare("DELETE FROM recent WHERE contributor = ?1").bind(from),
         db.prepare("UPDATE presets SET contributor = ?2 WHERE contributor = ?1").bind(from, into),
+        // Its Tsum Lists and links go with it (the other's own win a clash); the bounds are made again for both as one.
+        db.prepare("UPDATE OR IGNORE tsum_lists SET contributor = ?2, archived = 0 WHERE contributor = ?1").bind(from, into),
+        db.prepare("DELETE FROM tsum_lists WHERE contributor = ?1").bind(from),
+        db.prepare("UPDATE OR IGNORE device_links SET contributor = ?2, archived = 0 WHERE contributor = ?1").bind(from, into),
+        db.prepare("DELETE FROM device_links WHERE contributor = ?1").bind(from),
+        db.prepare("DELETE FROM skill_bound WHERE contributor = ?1").bind(from),
+        db.prepare(QUEUE_EVIDENCE).bind(into),
         markDirty(db),
         db.prepare("DELETE FROM contributors WHERE id = ?1").bind(from),
         db.prepare("DELETE FROM state WHERE key = 'people'"),
@@ -165,15 +173,15 @@ export async function adminPost(action: string, req: Request, env: Env, nowMs: n
     }
 
     case "restore": {
-      if (body.levels === true) {
-        // The oldest day that left D1 and has a contributor's level to apply (levels.ts: level_days),
-        // a call at a time like any restore; `days` is how many wait, this one included until it is done.
-        const days = JSON.parse((await db.prepare("SELECT value FROM state WHERE key = 'level_days'").first<{ value: string }>())?.value ?? "[]") as string[];
+      if (body.evidence === true) {
+        // The oldest day that left D1 and that changed bounds can move (lists.ts: evidence_days),
+        // a call at a time like any restore; `days` is how many still wait.
+        const days = JSON.parse((await db.prepare("SELECT value FROM state WHERE key = 'evidence_days'").first<{ value: string }>())?.value ?? "[]") as string[];
         if (!days.length) return ok({ day: null, done: true, days: 0 });
         const res = await restore(env, days[0], nowMs);
         if (res.done) {
           await spend(db, nowMs, { est: 1, cap: null }, [db.prepare(`UPDATE state SET value = (SELECT json_group_array(value) FROM json_each(state.value) WHERE value != ?1)
-            WHERE key = 'level_days'`).bind(days[0])]);
+            WHERE key = 'evidence_days'`).bind(days[0])]);
         }
         return ok({ ...res, days: days.length - (res.done ? 1 : 0) });
       }

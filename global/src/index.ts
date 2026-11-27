@@ -7,7 +7,7 @@ import { serveData } from "./data";
 import type { Env } from "./env";
 import { HttpError, bearer, fail, requireJson } from "./http";
 import { postRounds } from "./ingest";
-import { postLevels } from "./levels";
+import { postLists } from "./lists";
 import { mine, remove, submit } from "./presets";
 import { runJob } from "./job";
 
@@ -18,7 +18,7 @@ type Handler = (req: Request, env: Env, nowMs: number) => Promise<Response>;
 const ROUTES: Record<string, [string, Handler]> = {
   "/api/v1/join": ["POST", join],
   "/api/v1/rounds": ["POST", postRounds],
-  "/api/v1/levels": ["POST", async (req, env, now) => postLevels(req, env, await authContributor(req, env), now)],
+  "/api/v1/lists": ["POST", async (req, env, now) => postLists(req, env, await authContributor(req, env), now)],
   "/api/v1/me": ["GET", async (req, env, now) => me(env, await authContributor(req, env), now)],
   "/api/v1/me/unlink": ["POST", async (req, env, now) => unlink(env, await authContributor(req, env), now)],
   "/api/v1/presets": ["POST", async (req, env, now) => submit(req, env, await authContributor(req, env), now)],

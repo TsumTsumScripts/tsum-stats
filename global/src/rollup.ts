@@ -12,7 +12,7 @@
 // Both are SQL that writes only the rows that change, so the Worker never
 // carries the rows. Each is one D1 batch: a run cut short leaves nothing half done.
 import { MEDAL_TSUMS, knownList } from "./catalog";
-import { HARD_SOURCES_SQL, JACKPOT_SQL, contextSQL, trustedSQL } from "./records";
+import { JACKPOT_SQL, contextSQL, trustedSQL } from "./records";
 import { DAY_ROUNDS, dayRange } from "./days";
 import type { Job } from "./job";
 
@@ -59,20 +59,26 @@ const pendingCell = (i: number) => `e.value ->> ${i < STATED ? i + 1 : i === STA
 /**
  * The rounds of day ?1-?2 (dayRange), ?5 the day, as columns the aggregates
  * read: `stated` the level each was recorded at, `skill` the level it counts
- * at (CONTRACT §3.2, the order of evidence): the one its contributor's app
- * sent (round_levels), whatever its source; else the one a fix of this site's
- * own correction covers it with (skill_fix, refile.ts: its device, Tsum,
- * build and recorded level, on a day within the fix's; the newest fix when
- * two overlap); else the recorded one. `hard_level` is the contributor's
- * level when a Tsum List is behind it, else NULL.
+ * at (CONTRACT §3.2, the order of evidence). First what the Tsum Lists of
+ * its device's account say (skill_bound, lists.ts: the row in force when the
+ * round ended): `lv`, the recorded level held between `lo` and `hi` (0: no
+ * such bound). Then the coin rules: a fix covers it (skill_fix, refile.ts:
+ * its device, Tsum, build and that level, on a day within the fix's; the
+ * newest when two overlap) and moves it, but never past what the lists say.
+ * `pinned` is a round the lists give one level: known, as one the script read.
  */
-const DAY_SOURCE = `(SELECT contributor, played_at, build, tsum, skill AS stated, coalesce((SELECT l.level FROM round_levels l WHERE l.key = rounds.key),
-      (SELECT f.level FROM skill_fix f
-      WHERE f.tsum = rounds.tsum AND f.build = rounds.build AND f.device = substr(rounds.key, 21) AND f.stated = rounds.skill
-        AND f.from_day <= ?5 AND f.to_day >= ?5 ORDER BY f.from_day DESC LIMIT 1), skill) AS skill,
-    (SELECT l.level FROM round_levels l WHERE l.key = rounds.key AND l.source IN ${HARD_SOURCES_SQL}) AS hard_level,
-    skill_type, items, scan, chain, bubble, duration, score, base, final, medals, version,
-    bin_base, bin_final, bin_medals, gap, substr(key, 21) AS device FROM rounds WHERE ${DAY_ROUNDS})`;
+const DAY_SOURCE = `(SELECT *, coalesce((SELECT f.level FROM skill_fix f
+      WHERE f.tsum = b.tsum AND f.build = b.build AND f.device = b.device AND f.stated = b.lv
+        AND f.from_day <= ?5 AND f.to_day >= ?5 AND f.level >= b.lo AND (b.hi = 0 OR f.level <= b.hi) ORDER BY f.from_day DESC LIMIT 1), lv) AS skill,
+    (lo > 0 AND lo = hi AND lv = lo) AS pinned
+  FROM (SELECT *, bnd / 100 AS lo, bnd % 100 AS hi,
+      CASE WHEN stated < 1 THEN stated WHEN bnd % 100 > 0 AND stated > bnd % 100 THEN bnd % 100 WHEN stated < bnd / 100 THEN bnd / 100 ELSE stated END AS lv
+    FROM (SELECT contributor, played_at, build, tsum, skill AS stated,
+        skill_type, items, scan, chain, bubble, duration, score, base, final, medals, version,
+        bin_base, bin_final, bin_medals, gap, substr(key, 21) AS device,
+        coalesce((SELECT k.floor * 100 + k.cap FROM skill_bound k WHERE k.tsum = rounds.tsum AND k.build = rounds.build AND k.device = substr(rounds.key, 21)
+          AND k.contributor = rounds.contributor AND k.from_at <= rounds.played_at ORDER BY k.from_at DESC LIMIT 1), 0) AS bnd
+      FROM rounds WHERE ${DAY_ROUNDS})) b)`;
 
 /** A pending sum its day's last full recompute already read (state skip: {day: seq}); `day` names its day. */
 const notSkipped = (day: string) => `p.seq > coalesce((SELECT value FROM state WHERE key = 'skip') ->> ('$."' || ${day} || '"'), 0)`;
@@ -343,17 +349,15 @@ const FULL_SKIP = `INSERT INTO state (key, value) SELECT 'skip', json_object(?5,
   ON CONFLICT (key) DO UPDATE SET value = json_set(value, '$."' || ?5 || '"', excluded.value ->> ('$."' || ?5 || '"'))`;
 
 /**
- * The day's skill_units rows from its rounds, as recorded (a fix never moves
- * the evidence it was made on): the catalog's Tsums' rounds with a level, of
- * contributors who are not hidden. A round a contributor's Tsum List gave a
- * level counts at that level, and as trusted: it is known, as a level the
- * script read from the list is.
+ * The day's skill_units rows from its rounds: the catalog's Tsums' rounds
+ * with a level, of contributors who are not hidden, each at the level the
+ * Tsum Lists leave it at (a fix of the coin rules never moves the evidence it
+ * was made on, a list does), and trusted when the lists give it one level.
  */
 const UNITS_OF = `SELECT ?5 AS day, build, tsum, device, lv AS skill, context, trusted,
     count(*) AS n, count(CASE WHEN v > 0 THEN 1 END) AS vn, coalesce(sum(CASE WHEN v > 0 THEN v END), 0) AS vsum, min(played_at) AS first, max(played_at) AS last
-  FROM (SELECT build, tsum, device, coalesce(hard_level, stated) AS lv, ${contextSQL("items")} AS context,
-      (hard_level IS NOT NULL OR ${trustedSQL("version")}) AS trusted, played_at,
-      CASE WHEN instr(?7, ',' || tsum || ',') > 0 THEN medals ELSE base END AS v FROM ${DAY_SOURCE} WHERE ${FULL_PUBLIC} AND coalesce(hard_level, stated) >= 1)
+  FROM (SELECT build, tsum, device, lv, ${contextSQL("items")} AS context, (pinned OR ${trustedSQL("version")}) AS trusted, played_at,
+      CASE WHEN instr(?7, ',' || tsum || ',') > 0 THEN medals ELSE base END AS v FROM ${DAY_SOURCE} WHERE ${FULL_PUBLIC} AND lv >= 1)
   GROUP BY build, tsum, device, lv, context, trusted`;
 const FULL_UNITS = `INSERT INTO skill_units (${unitNames.join(", ")})
   SELECT * FROM (${UNITS_OF}) WHERE true

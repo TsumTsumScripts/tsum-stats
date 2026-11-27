@@ -7,6 +7,7 @@
 import { archiveKey, bannedName, namedPrefix, unlinkedName } from "./archive";
 import { addDays, DAY_ROUNDS, dayParams, dayRange } from "./days";
 import type { Job } from "./job";
+import { listsPrefix } from "./lists";
 
 /** unlink:<id>, written by contributors.ts: unlink. */
 interface Unlinking {
@@ -69,11 +70,24 @@ export async function unlinkStep(job: Job): Promise<void> {
     }
 
     if (!u.days.length) {
-      if (!run.room(5)) {
+      if (!run.room(9, 2)) {
+        job.more = true;
+        return;
+      }
+      // Its Tsum Lists and links are evidence about its accounts, not rounds: they leave with it, the archive's copies too.
+      const files = await run.list({ prefix: listsPrefix(row.id) });
+      if (files.objects.length) await run.del(files.objects.map(o => o.key));
+      if (files.truncated) {
         job.more = true;
         return;
       }
       const stmts = [
+        // The days its lists moved rounds on are made again without them.
+        run.stmt(`INSERT OR IGNORE INTO dirty_days (day) SELECT DISTINCT u.day FROM skill_bound b JOIN skill_units u
+          ON u.tsum = b.tsum AND u.build = b.build AND u.device = b.device WHERE b.contributor = ?1 AND u.day > ?2`, row.id, job.droppedThrough),
+        run.stmt("DELETE FROM skill_bound WHERE contributor = ?1", row.id),
+        run.stmt("DELETE FROM tsum_lists WHERE contributor = ?1", row.id),
+        run.stmt("DELETE FROM device_links WHERE contributor = ?1", row.id),
         run.stmt("DELETE FROM contributors WHERE id = ?1", row.id),
         // Deleted at unlink, and an upload landing after it is refused (ingest.ts), but no
         // device row may outlive the contributor: it would tie a device hash to the id.

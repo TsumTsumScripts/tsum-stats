@@ -109,6 +109,7 @@ Cloudflare account only, never the GAP one (`global/README.md`,
 | `internal/stats/publish.go` | `Publisher`: Share's saved token and choices, the background publish, topic `ts/publish` |
 | `internal/stats/presets.go` | The preset gallery from this computer (CONTRACT §2.7, §7.3): submit, mine and delete with the saved contributor key; `galleryError` (the site's code for the page) |
 | `internal/stats/globaldata.go` | `GlobalData`: the global site's published files, fetched and kept a while for the page's own global engine (`/api/stats/global-data/`) |
+| `internal/stats/globallists.go` | The forwarder's Tsum Lists and account links (CONTRACT §2.8, §7.2): every list once (`ts_global_lists`), a link per device tag this computer knows the account of (`ts_global_links`), `GlobalEvidence` |
 | `internal/stats/global.go` | `Contributor`: the forwarder to the global site (CONTRACT §7) -- join, leave and unlink, the hourly passes, refusals and `Retry-After`, `GlobalRecord`, `RoundBatch`, topic `ts/global` |
 
 Tests: `stats_test.go` (CSV parsing, event + CSV merge, filters, summary, Tsum
@@ -121,7 +122,7 @@ origin), `global_test.go` (the forwarder against a
 fake Worker), `skillfix_test.go` (`TestSkillFixParity` runs
 `ui/tests/skill-fix-parity.mjs`; `TestRefile`, the correction through the
 tables and the figures), `accounts_test.go` (lists into accounts, list bounds,
-linking, the player's answers), `presets_test.go` (the gallery calls, same fake), `globaldata_test.go` (the global files kept and passed on), `global_parity_test.go` (`TestGlobalParity`, which runs
+linking, the player's answers; `TestAccountsParity` runs `ui/tests/accounts-parity.mjs`), `presets_test.go` (the gallery calls, same fake), `globaldata_test.go` (the global files kept and passed on), `global_parity_test.go` (`TestGlobalParity`, which runs
 `global/test/parity.test.ts`).
 
 ### `internal/starter/` -- the service starter's website
@@ -179,6 +180,7 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `ui/src/lib/levels.svelte.js` | Skill levels as recorded or corrected, page-wide (`levels.recorded`, a per-browser preference; `levelsParam`, the `levels` parameter of every stats route), and a summary's re-filed rounds added up (`refiledTotals`, `refiledInLevel`) |
 | `ui/src/lib/expected.js` | Expected net coins (`EXPECTED_BONUS`, `expRate`, `expHour`, `sumExp`): the page's side of `summary.go`'s `Expected` sums |
 | `ui/src/lib/skillCurve.js` | `levelGains`: each Tsum's gain from one skill level to the next, within item sets (the Catalog's what to max next) |
+| `ui/src/lib/accounts.js` | **Game accounts from Tsum Lists, and a list's bounds on a round's level** (`groupAccounts`, `ACCOUNT` its thresholds, `boundAt`, `clamp`, `segmentsOf`). The Worker runs it (`global/src/lists.ts`); the server's port is `internal/stats/accounts.go` |
 | `ui/src/lib/skillFix.js` | **The skill level correction's rules** (`refile`, `runsOf`, `FIX` its thresholds, `trustedVersion`): which runs of rounds count at another level than recorded. Shared with the Worker; the server's port is `internal/stats/skillfix.go` |
 | `ui/src/lib/fit.js` | A number too long for its box shows its short form, 1.3B (`fit`, the action; `refit`, which the copy card calls too) |
 | `ui/src/lib/popup.js` | `popup`, the action every popup uses (menus, suggestion lists, the column picker, the tooltip, toasts): the browser's top layer, above every panel and dialog whatever its z-index, placed at its anchor |
@@ -198,13 +200,14 @@ snapshot is the local build tagged `<meta name="tsum-snapshot">` by
 | `ui/tests/share-codes.test.mjs` | The codec against the script's golden codes, and the companion links (`npm run test:codes`) |
 | `ui/tests/skill-fix.test.mjs` | The correction's rules on made-up rounds: what moves and what must not (`npm run test:fix`) |
 | `ui/tests/skill-fix-parity.mjs` | The correction over rounds Go wrote, run by `TestSkillFixParity` |
+| `ui/tests/accounts-parity.mjs` | `accounts.js` over lists Go wrote, run by `TestAccountsParity` |
 | `ui/tests/global-engine.test.mjs` | The global engine against the snapshot engine over the same rounds (`npm run test:global`) |
 
 ## Source map -- the Worker, `global/`
 
 `global/README.md` § Layout is the file table, one row per `global/src/` file;
 this is its index. `migrations/0001_init.sql` is the D1 schema (CONTRACT §3.1),
-`migrations/0002_cell_bins.sql` its bins per cell, `migrations/0005_presets.sql` the preset gallery (`0006_preset_limits.sql` its limits), `migrations/0007_gaps.sql` the time between rounds, `migrations/0008_skill_fix.sql` the skill level correction's tables (`cells4`, `skill_units`, `skill_fix`), `migrations/0009_round_levels.sql` a contributor's own level for a round (`round_levels`, `level_log`),
+`migrations/0002_cell_bins.sql` its bins per cell, `migrations/0005_presets.sql` the preset gallery (`0006_preset_limits.sql` its limits), `migrations/0007_gaps.sql` the time between rounds, `migrations/0008_skill_fix.sql` the skill level correction's tables (`cells4`, `skill_units`, `skill_fix`), `migrations/0009_tsum_lists.sql` Tsum Lists as evidence (`tsum_lists`, `device_links`, `skill_bound`),
 `wrangler.jsonc` the bindings, route, cron and tunables, `deploy.sh` the
 by-hand deploy when the Devkit is not available.
 
@@ -219,13 +222,13 @@ by-hand deploy when the Devkit is not available.
 | `global/src/budget.ts`, `global/src/run.ts` | The day's write and read budget (§2.6); one invocation's D1/R2 share |
 | `global/src/job.ts` | The hourly job: claims dirty days, runs each step on its own |
 | `global/src/rollup.ts`, `global/src/parts.ts`, `global/src/unlink.ts`, `global/src/archive.ts` | Steps: `cells`/`cell_bins`/`contrib_cells`/`skill_units`; part files, compaction and the manifest; finishing unlinks; archive, drop and restore |
-| `global/src/levels.ts` | A contributor's own level for a round (CONTRACT §1.3): `POST /api/v1/levels` (§2.8), the statements an upload shares with it, the job step that writes `level_log` to the archive |
+| `global/src/lists.ts` | Tsum Lists as evidence (CONTRACT §1.3): `POST /api/v1/lists` (§2.8), and the job's step 1b' that groups a contributor's lists into accounts with `ui/src/lib/accounts.js`, links its devices, keeps their bounds in `skill_bound` and archives the lists |
 | `global/src/refile.ts` | The skill level correction's step (CONTRACT §3.2, 1c): a Tsum's `skill_units` as runs, judged by `ui/src/lib/skillFix.js`, kept in `skill_fix`, at most once a day |
 | `global/src/data.ts` | `GET /data/global/*` from R2 through the edge cache |
 
 Tests (vitest in workerd; `vitest.config.ts` binds `test/tunables.json`, the
 Free numbers, in place of `wrangler.jsonc`'s): `admin.test.ts`,
-`archive.test.ts`, `refile.test.ts` (the skill level correction), `levels.test.ts` (a contributor's level for a round: with an upload, alone, the order of evidence, final days), `data.test.ts`, `deploy.test.ts` (the token reaches wrangler
+`archive.test.ts`, `refile.test.ts` (the skill level correction), `lists.test.ts` (Tsum Lists as evidence: storage, accounts and links, bounds, the order of evidence, final days, an unlink), `data.test.ts`, `deploy.test.ts` (the token reaches wrangler
 only), `ingest.test.ts`, `presets.test.ts` (the gallery), `records.test.ts`, `rollup.test.ts`,
 `unlink.test.ts`, `tunables.test.ts`, `volume.test.ts` (a day of 80,000
 rounds), `parity.test.ts` (driven by Go's `TestGlobalParity`; skipped by `npm
