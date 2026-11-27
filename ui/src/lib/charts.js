@@ -188,6 +188,71 @@ export function drawDaily(container, daily, dailyTsums, ctx, mode) {
   return keyLegend(top);
 }
 
+// ---- Tsum usage per month: rounds stacked by Tsum (top 8 + Other), or each Tsum's share of the month ----
+
+const monthLabel = new Intl.DateTimeFormat(undefined, {month: 'long', year: 'numeric', timeZone: 'UTC'});
+const monthTick = new Intl.DateTimeFormat(undefined, {month: 'short', year: '2-digit', timeZone: 'UTC'});
+/** "YYYY-MM" → the month after it. */
+const nextMonth = m => {
+  const [y, mo] = m.split('-').map(Number);
+  return mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
+};
+const monthDate = m => new Date(`${m}-01T00:00:00Z`);
+
+/**
+ * dailyTsums: the summary's rounds per day and Tsum, added up by the month of
+ * each day (the day a round began; UTC on the global site). Every month from
+ * the first to the last is a column, one without rounds empty. mode 'rounds'
+ * stacks the rounds; 'share' each Tsum's part of its month. thisMonth
+ * ("YYYY-MM") is the month still running, said so in its tooltip.
+ */
+export function drawUsage(container, dailyTsums, ctx, mode, thisMonth = '') {
+  const f = frame(container, {top: 12, right: 16, bottom: 26, left: 52});
+  const {g, inner} = f;
+  const rows = dailyTsums.filter(r => r.rounds > 0);
+  if (!rows.length) return empty(f);
+  const totals = d3.rollup(rows, rs => d3.sum(rs, r => r.rounds), r => r.tsum);
+  const top = topKeys([...totals.keys()], id => totals.get(id), 8, ctx);
+  const byMonth = d3.rollup(rows, rs => {
+    const o = {};
+    for (const r of rs) o[top.keyOf(r.tsum)] = (o[top.keyOf(r.tsum)] || 0) + r.rounds;
+    return o;
+  }, r => r.day.slice(0, 7));
+  const seen = [...byMonth.keys()].sort();
+  const months = [seen[0]];
+  while (months.at(-1) < seen.at(-1)) months.push(nextMonth(months.at(-1)));
+  const share = mode === 'share';
+  const pts = months.map(month => {
+    const o = byMonth.get(month) ?? {};
+    const total = top.keys.reduce((s, k) => s + (o[k] || 0), 0);
+    return {month, total, ...Object.fromEntries(top.keys.map(k => [k, share ? (total ? (o[k] || 0) / total : 0) : o[k] || 0]))};
+  });
+  const series = d3.stack().keys(top.keys)(pts);
+  const x = d3.scaleBand().domain(months).range([0, inner.w]).paddingInner(0.2).paddingOuter(0.1);
+  const y = d3.scaleLinear().domain([0, share ? 1 : d3.max(pts, p => p.total) || 1]).nice().range([inner.h, 0]);
+  const fmtY = share ? v => pct(v) : v => compact.format(v);
+  g.append('g').attr('class', 'grid').call(d3.axisLeft(y).ticks(5).tickSize(-inner.w).tickFormat(''));
+  // A label every few months when they would crowd: about 64px each.
+  const every = Math.max(1, Math.ceil(months.length / Math.max(1, Math.floor(inner.w / 64))));
+  g.append('g').attr('class', 'axis').attr('transform', `translate(0,${inner.h})`)
+    .call(d3.axisBottom(x).tickValues(months.filter((m, i) => (months.length - 1 - i) % every === 0))
+      .tickFormat(m => monthTick.format(monthDate(m))).tickSizeOuter(0));
+  g.append('g').attr('class', 'axis').call(d3.axisLeft(y).ticks(5).tickFormat(fmtY).tickSizeOuter(0));
+
+  const bw = x.bandwidth();
+  const tip = p => [[b(monthLabel.format(monthDate(p.month))), p.month === thisMonth ? dim(' · so far') : ''],
+    [b(fmt(p.total)), ' rounds'],
+    ...top.keys.filter(k => p[k]).sort((a, c) => p[c] - p[a])
+      .map(k => [sw(top.color(k)), `${top.label(k)} `, b(share ? pct(p[k]) : fmt(p[k]))])];
+  // A 2px gap between stacked segments, taken from the top of each; a click on a Tsum's focuses on it.
+  hoverable(g.append('g').selectAll('g').data(series).join('g').attr('fill', s => top.color(s.key))
+    .selectAll('rect').data(s => s.map(d => Object.assign(d, {key: s.key}))).join('rect')
+    .attr('x', d => x(d.data.month)).attr('width', bw)
+    .attr('y', d => y(d[1]) + (d[1] > d[0] ? 1 : 0)).attr('height', d => Math.max(0, y(d[0]) - y(d[1]) - 2))
+    .attr('rx', Math.min(3, bw / 4)), d => tip(d.data), d => (d.key !== OTHER && ctx.onPick ? e => ctx.onPick(d.key, e) : null));
+  return keyLegend(top);
+}
+
 // ---- Head to head: one line per compared Tsum, per day ----
 
 const COMPARE = {
