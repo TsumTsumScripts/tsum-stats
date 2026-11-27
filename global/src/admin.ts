@@ -165,6 +165,18 @@ export async function adminPost(action: string, req: Request, env: Env, nowMs: n
     }
 
     case "restore": {
+      if (body.levels === true) {
+        // The oldest day that left D1 and has a contributor's level to apply (levels.ts: level_days),
+        // a call at a time like any restore; `days` is how many wait, this one included until it is done.
+        const days = JSON.parse((await db.prepare("SELECT value FROM state WHERE key = 'level_days'").first<{ value: string }>())?.value ?? "[]") as string[];
+        if (!days.length) return ok({ day: null, done: true, days: 0 });
+        const res = await restore(env, days[0], nowMs);
+        if (res.done) {
+          await spend(db, nowMs, { est: 1, cap: null }, [db.prepare(`UPDATE state SET value = (SELECT json_group_array(value) FROM json_each(state.value) WHERE value != ?1)
+            WHERE key = 'level_days'`).bind(days[0])]);
+        }
+        return ok({ ...res, days: days.length - (res.done ? 1 : 0) });
+      }
       if (!isDay(body.day)) throw new HttpError(400, "bad-request");
       return ok(await restore(env, body.day, nowMs));
     }

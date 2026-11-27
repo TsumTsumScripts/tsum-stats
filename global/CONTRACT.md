@@ -33,7 +33,8 @@ The forwarder sends exactly what the script sends when it posts directly
   Workers Free's 10 ms.
 - **Base columns** (`csv.go: statsBaseColumns`): `id`, `datetime`,
   `script_version`, `skill_type`, `tsum`, `build`, `duration_seconds`,
-  `score`, `base_coins`, `final_coins`, `medals`.
+  `score`, `base_coins`, `final_coins`, `medals`; and, from the forwarder
+  only, `skill_eff` and `skill_src` (§1.3). The script sends neither.
 - **Every other column is a setting.** Its cell becomes a value as
   `csv.go: settingValue` does: `T` → true, `F` → false, a number (Go
   `ParseFloat`) → number, anything else the string; an empty cell is left out.
@@ -72,11 +73,11 @@ checked in this order:
 | reason | rule |
 |:--|:--|
 | `id` | not a UUIDv7 as above, or `datetime` unreadable, or `played_at` more than 10 minutes **before** the id's start time (clock skew). There is no limit on how long after the start a round may end |
-| `old` | the id's start time is more than **60 days** (`ACCEPT_DAYS`) before now, or its start day is on or before a day already archived (§3.4; such a day is final even if `ACCEPT_DAYS` grows) |
+| `old` | the id's start time is more than **60 days** (`ACCEPT_DAYS`) before now, or its start day is on or before a day already archived (§3.4; such a day is final even if `ACCEPT_DAYS` grows, **but for the level its rounds count at**: §1.3, §2.8) |
 | `future` | the id's start time or `played_at` is more than 10 minutes after now |
 | `tsum` | `tsum` is not a Tsum id at all: not `/^[A-Za-z0-9_.-]{1,48}$/` |
 | `settings` | the settings are past their bounds: more than 64 setting columns with a value, a setting name over 64 characters, a value over 256 characters, or the canonical settings JSON over 4,096 bytes (UTF-8). Empty cells do not count |
-| `field` | `script_version` or `skill_type` over 64 characters (`records.ts: FIELD_MAX`), or with a control character (U+0000–U+001F, U+007F). A field is kept whole or the record is not kept: never cut short |
+| `field` | `skill_eff` or `skill_src` there but not as §1.3 writes them; or `script_version` or `skill_type` over 64 characters (`records.ts: FIELD_MAX`), or with a control character (U+0000–U+001F, U+007F). A field is kept whole or the record is not kept: never cut short |
 | `build` | `build` is not `global`/`jp`, and the settings have no boolean `jpVersion` (true → `jp`, false → `global`) |
 | `incomplete` | `score`, `base_coins`, `final_coins` or `duration_seconds` is null, or `medals` is null for a catalog `medal: true` Tsum |
 | `duration` | `duration_seconds` is 0 or less (no rate can be made of it). There is **no upper limit**: rounds of some Tsums last hours |
@@ -123,6 +124,37 @@ Derived from an accepted record:
 - **known**: whether the bundled catalog has the Tsum; only then do its rounds
   reach the public figures.
 
+### 1.3 The level a round counts at, from its contributor
+
+The recorded skill level (`settings.skillLevel`, `rounds.skill`) is whatever
+the script was set to. The local app works out the level a round was most
+likely played at (`docs/INTERNALS.md` § The skill level correction), partly
+from evidence only it has: the Tsum Lists of the account the round was
+played on. The forwarder sends that level for every round that counts at
+another level than recorded:
+
+- `skill_eff`: the level, a whole number `1`–`10`.
+- `skill_src`: where it comes from. `list`: a Tsum List of the account the
+  app linked the round to by itself; `pick`: a list of the account the player
+  named. Both are **hard evidence** (a list read the level). `order` and
+  `trusted`: the app's coin rules (`ui/src/lib/skillFix.js`).
+
+Both or neither: a record with one, or with a value outside these, is
+rejected as `field`. A round that counts at its recorded level carries
+neither, as every upload from the script does. **The recorded level is never
+changed by them**: `rounds.skill`, the settings and the archive's round files
+are as an upload without the two columns leaves them. The level is stored
+beside the round (`round_levels`, §3.1) and every one sent is kept
+(`archive/levels/`, §3.4).
+
+A level reaches the site two ways: with its round in an upload (§2.2), while
+the round is young enough to be sent; or alone, at any age, for a round the
+site already has (§2.8). **This is the one thing a final day still takes**: a
+round of an archived day can no longer be added or changed (§1.2 `old`), but
+the level it counts at can, since the evidence for it (a Tsum List imported
+later, the player naming an account) may arrive long after the round. Its
+day's figures are then made again (§3.2).
+
 ## 2. The Worker's HTTP API
 
 Host `https://tsum-stats.gapscripts.app`. JSON in and out; every reply has
@@ -137,6 +169,7 @@ otherwise join, or spend its visitors' joins. A request body may be gzipped
 |:--|:--|:--|
 | `POST /api/v1/join` | none | Makes a contributor |
 | `POST /api/v1/rounds` | contributor, or none to join first (§2.2.1) | Takes a `gap.round-stats/1` batch |
+| `POST /api/v1/levels` | contributor | Takes a `gap.round-levels/1` batch: the level rounds already here count at (§2.8) |
 | `GET /api/v1/me` | contributor | The contributor's own record |
 | `POST /api/v1/me/unlink` | contributor | Unlinks the contributor |
 | `POST /api/v1/presets` | contributor | Submits a preset to the gallery (§2.7) |
@@ -199,12 +232,13 @@ deleted at the first run after 00:00 UTC.
 Reply **200**:
 
 ```json
-{"ok": true, "accepted": 240, "unchanged": 5, "duplicates": 3, "rejected": {"pace": 2, "future": 1}, "retry": ["0192…"], "keeps": 2, "resend": 0}
+{"ok": true, "accepted": 240, "unchanged": 5, "duplicates": 3, "rejected": {"pace": 2, "future": 1}, "retry": ["0192…"], "keeps": 2, "resend": 0, "levels": 1}
 ```
 
-- `accepted`: rows inserted, or this contributor's rows whose figures changed.
+- `accepted`: rows inserted, or this contributor's rows whose figures or
+  level (§1.3) changed.
 - `unchanged`: this contributor's rows already stored with the same figures
-  (no write).
+  and the same level, or none both times (no write).
 - `duplicates`: rows another contributor sent first. Never changed; counted in
   this contributor's `dup_rounds`.
 - `rejected`: §1.2 reasons with counts; only reasons that occurred.
@@ -221,6 +255,12 @@ Reply **200**:
   statement. When it goes up, the forwarder sends every round it has once
   more (§7.2). `/api/v1/me` carries it too, so a pass with nothing new to
   send hears of it. A Worker before it leaves `resend` out (0).
+- `levels`: **1** from the Worker that reads `skill_eff` and `skill_src`
+  (§1.3) and has `/api/v1/levels` (§2.8); `/api/v1/me` carries it too. A
+  Worker before it leaves it out, and would file the two columns as settings,
+  so the forwarder sends neither, nor calls §2.8, until it has seen it
+  (§7.2). It is not `keeps` going up: nothing is sent again for it but the
+  rounds that carry a level.
 
 `ok: true` means "do not send these again" (the script moves its cursor on
 it), even when rows were rejected, **except the records named in `retry`**,
@@ -246,9 +286,16 @@ again), its quota (`429 quota`, on accepted rows) and today's budget
   `contrib_cells` rows by device, their `skill_units` rows (§3.1), their start
   days, and `{tsum: the newest of those days}`. The hourly job
   adds these in (§3.2, step 1a) without reading `rounds`;
+- `round_levels` and `level_log` (§3.1): the level of each new round that
+  carries one, and of each of this contributor's stored rounds whose level
+  differs from the one stored: set, changed, or taken back when the round now
+  comes without one. Two rows a level. Another contributor's round keeps its
+  own;
 - `dirty_days`: the start days of this contributor's **changed** rows (a
   changed round is recomputed, never added on top: a minimum cannot be taken
-  back), and, when another upload stored one of this batch's new rounds a
+  back), those of the rounds whose level changed, and those of the new rounds
+  that carry a level (the upload's sums file a round as recorded; its day's
+  recompute files it at its level), and, when another upload stored one of this batch's new rounds a
   moment earlier (the insert wrote fewer rows than expected), the batch's
   days, so its `pending` sums are never counted twice (§3.2: `skip`). A start
   day never moves, since it comes from the key;
@@ -380,6 +427,12 @@ counted in the day's budget (§2.6).
   pass sends every round in its window again; unchanged rounds write nothing,
   changed ones are recomputed as any change is. The window is the
   forwarder's 60 days, which is all §1.2 accepts: an archived day stays final.
+- `restore {"levels": true}`: the same for the oldest day in `state`
+  `level_days` (§2.8: a day out of D1 with a contributor's level to apply),
+  a call at a time; reply as `restore`'s plus `days`, how many such days are
+  left (`{"day": null, "done": true, "days": 0}` when none). A day done
+  leaves the list; its recompute and its rounds leaving D1 again are the
+  hourly job's, as after any restore.
 - `rollup {}`: runs the hourly job now (also how tests trigger it); the reply
   is the run's report: `{folded, refiled, recomputed, rendered, unlinked, archived,
   dropped, compacted, manifest, more, queries, r2, read, written, bytes,
@@ -465,9 +518,44 @@ share slot or a skill). Only the code is stored, written again by the table
 - Every change sets `state` `presets_dirty` to a fresh value; the job publishes
   `presets.json` (§4.3) and clears that value only.
 
+### 2.8 `POST /api/v1/levels`
+
+The level rounds the site already has count at (§1.3), with nothing else of
+the rounds: the forwarder's way to correct rounds too old to be sent again.
+
+```json
+{"schema": "gap.round-levels/1", "levels": [{"id": "0192…", "skill_eff": "1", "skill_src": "list"}, {"id": "0192…", "skill_eff": "", "skill_src": ""}]}
+```
+
+`levels` is 1–500 objects. `id` is the round's id as it was sent (§1.1), from
+which the key is made as an upload makes it; `skill_eff` and `skill_src` as
+§1.3, or both `""` to **take the round's level back** (it counts as recorded
+again, or as the site's own correction files it). Reply **200**:
+
+```json
+{"ok": true, "accepted": 2, "unchanged": 0, "unknown": 0, "foreign": 0, "invalid": 0, "levels": 1}
+```
+
+- `accepted`: levels stored, changed or taken back.
+- `unchanged`: the site has that level for the round already (or none, for
+  one taken back): no write.
+- `unknown`: a round the site does not have. For a day whose rounds have
+  left D1 (§3.2, step 4b) the round cannot be looked up: it is taken when the
+  contributor has a `devices` row for the id's device, else it is `unknown`.
+- `foreign`: a round another contributor sent first. Never changed.
+- `invalid`: an id that is not a UUIDv7, or a level not as §1.3.
+
+`ok: true` means "do not send these again", whatever the counts. The checks
+of an upload apply (§2.2): the contributor still linked (401), today's
+budget (503 `budget`, at two rows a level stored plus a row a day). There is
+no quota on levels, and no age limit. In the same batch as the levels, each
+changed round's start day goes into `dirty_days` when its rounds are in D1,
+**archived or not**, and into `state` `level_days` when they have left it
+(§3.2).
+
 ## 3. Storage
 
-### 3.1 D1 schema (`global/migrations/0001_init.sql`, `0002_cell_bins.sql`, `0003_skill_type.sql`, `0005_presets.sql`: the gallery's `presets`, `0006_preset_limits.sql`: its limits, §2.7, `0007_gaps.sql`: the time between rounds, `0008_skill_fix.sql`: the skill level correction)
+### 3.1 D1 schema (`global/migrations/0001_init.sql`, `0002_cell_bins.sql`, `0003_skill_type.sql`, `0005_presets.sql`: the gallery's `presets`, `0006_preset_limits.sql`: its limits, §2.7, `0007_gaps.sql`: the time between rounds, `0008_skill_fix.sql`: the skill level correction, `0009_round_levels.sql`: a contributor's level for a round, §1.3)
 
 ```sql
 CREATE TABLE contributors (
@@ -519,7 +607,19 @@ CREATE TABLE rounds (
   bubble TEXT NOT NULL DEFAULT ''
 ) WITHOUT ROWID;
 
--- Days to recompute in full from their rounds: a ban, a changed round, a rebuild, a restore.
+-- 0009: the level a contributor's own app counts a round at (§1.3). Private, kept for good, also once the
+-- round's day has left D1; a day's full recompute reads it by key.
+CREATE TABLE round_levels (
+  key TEXT PRIMARY KEY,                  -- the round's key (§1.1)
+  level INTEGER NOT NULL,                -- 1-10
+  source TEXT NOT NULL,                  -- list | pick | order | trusted
+  at INTEGER NOT NULL                    -- epoch s: when the site took it
+) WITHOUT ROWID;
+-- Every change to round_levels, in order, until the job has written it to archive/levels/ (§3.4):
+-- a level set, or taken back (level and source NULL).
+CREATE TABLE level_log (seq INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, level INTEGER, source TEXT, at INTEGER NOT NULL);
+
+-- Days to recompute in full from their rounds: a ban, a changed round or level, a rebuild, a restore.
 CREATE TABLE dirty_days (day TEXT PRIMARY KEY) WITHOUT ROWID;
 
 -- New rounds waiting to be added into the day tables, one row per upload batch,
@@ -845,6 +945,28 @@ The steps:
       stretches of one level on one day move together. A past day is
       recomputed again only when a fix on it changes. A full recompute for
       any other reason applies the fixes there are.
+
+      **The order of evidence.** A day's recompute files each round at, in
+      this order: (1) the level its contributor sent for it (`round_levels`,
+      §1.3), whatever its source; (2) else the level of this step's fix that
+      covers it; (3) else its recorded level. `stated` is always the recorded
+      one. A contributor's `list` or `pick` level is a Tsum List's reading,
+      which no coins can argue with. Its `order` or `trusted` level is the
+      same rules as this step's, run by the app on that device's exact runs
+      and medians where this step has a day's sums and means: the finer
+      verdict wins, and this step's stands only for the rounds no app
+      levelled (the script's own uploads, older apps, the rounds an app left
+      as recorded). In `skill_units` a round with a `list` or `pick` level
+      counts at that level and as trusted, as a round whose level the script
+      read from the Tsum List does; the other rounds count as recorded.
+   4. **Levels on days that have left D1** (`state` `level_days`, §2.8): the
+      job cannot recompute rounds it does not have, and does not fetch them
+      by itself, since a restore writes every round of the day back and
+      deletes it again (two rows a round) for what may be one level.
+      `POST /api/v1/admin/restore {"levels": true}` restores the oldest such
+      day (§2.5); its recompute then files its rounds by the order above. A
+      day still in D1, archived or not, needs none of this: its level change
+      marked it dirty, and step 1b recomputes it as any changed day.
 2. **Render** the part (§4.2) of each day whose tables changed (`state`
    `render` keeps the days still to do), oldest first. A replaced file goes
    to `state` `trash` (step 6).
@@ -875,6 +997,8 @@ The steps:
    parts' files add up to less than `VALUE_MAX_BYTES`; its day parts go to the
    trash. A bigger month, or one whose render fails, gets `state`
    `nocompact:<month>` and stays in day parts. One a run.
+   - 5b. **The level log**: `level_log`'s rows to `archive/levels/` (§3.4),
+     up to 5,000 a file, then deleted. Nothing when it is empty.
 6. **Finish and the manifest** (§4.1): the run's state writes, then the
    manifest, when a part pointer changed, the counts of people may have moved
    (`recent` changed, an unlink finished, the first manifest of a UTC day, or
@@ -908,7 +1032,8 @@ newest: {tsum: {day: contributors}}, catalog}`),
 `trash` (`[[R2 key, ms]]`), `archived_through`, `dropped_through`, `held`
 (`[[day, rounds]]`), `archive` (the day in progress), `restored` (`[[day,
 rounds]]`), `restore:<day>`, `settings_archived`, `span:<id>`,
-`unlink:<id>`, `merged:<id>`, `gone:<id>`, `nocompact:<month>`,
+`unlink:<id>`, `merged:<id>`, `gone:<id>`, `nocompact:<month>`, `level_days`
+(`[day]`, §2.8),
 `contributor_seq`; and `resend`, written only by its admin route (§2.5).
 
 ### 3.3 R2 layout (bucket `tsum-global`)
@@ -923,6 +1048,7 @@ rounds]]`), `restore:<day>`, `settings_archived`, `span:<id>`,
 | `archive/YYYY-MM/YYYY-MM-DD/u<hex>.json` | no | Unlinked rounds for one day, files sized by bytes |
 | `archive/YYYY-MM/YYYY-MM-DD/b<hex>.json` | no | A banned contributor's files once it unlinked: kept for good, never restored |
 | `archive/settings/<firstId>-<lastId>.json` | no | Settings rows, written once per new range, sized by bytes |
+| `archive/levels/<firstSeq>-<lastSeq>.json` | no | Every level a contributor sent for a round (§1.3), in the order they came |
 
 `<sha8>` is the first 8 hex digits of the file's SHA-256. Only
 `data/global/*` is served; the Worker answers `/data/global/<name>` from
@@ -960,6 +1086,18 @@ A day counts as archived (`archived_through`) once all its files are written,
 from its staged pieces; its rows leave D1 later, if ever (§3.2, step 4b:
 `dropped_through`). Every later change to an archived day (an unlink, a
 merge) is carried to its files too.
+
+**Levels are not in the round files.** A round's file is the round as
+recorded; the level its contributor's app counts it at (§1.3) is in
+`round_levels`, which no step ever empties, so a restore needs to read
+nothing back for it: the restored day's recompute finds the levels where they
+always were, the ones sent after the day was archived included. What R2 keeps
+of them is the log: the job writes `level_log`'s rows, oldest first, to
+`archive/levels/<firstSeq>-<lastSeq>.json`
+(`{"kind": "tsum-global-levels", "format": 1, "levels": [{"seq", "key", "level", "source", "at"}]}`,
+`level` and `source` null for one taken back; at most 5,000 a file) and
+deletes them from D1. Every level ever sent is in those files, in order;
+`round_levels` is what replaying them gives.
 
 A restore files each file's rounds under: `u` → 0; `b` → never;
 `c<id>` → `id`, following `merged:*`; never for a gone-banned id or one merged
@@ -1282,10 +1420,11 @@ answer has `tsum.go: TsumDetail`'s fields, plus `global: {approx: true}`:
 
 ### 7.1 Settings (`<data dir>/global.json`, mode 0600)
 
-`{"url": "https://tsum-stats.gapscripts.app", "id": 17, "key": "…", "enabled": true, "joinedAt": "…", "sent": 12345, "lastUpload": "…", "lastCheck": "…", "lastError": "", "retryAt": "", "keeps": 2, "resend": 1}`
+`{"url": "https://tsum-stats.gapscripts.app", "id": 17, "key": "…", "enabled": true, "joinedAt": "…", "sent": 12345, "lastUpload": "…", "lastCheck": "…", "lastError": "", "retryAt": "", "keeps": 2, "resend": 1, "levels": 1}`
 
-`keeps` is the highest `keeps` an upload's reply named (§2.2), and
-`resend` the highest `resend` an upload's or `/me`'s reply named; each is
+`keeps` is the highest `keeps` an upload's reply named (§2.2), `resend` the
+highest `resend` an upload's or `/me`'s reply named, and `levels` the
+highest `levels` either named (§2.2); each is
 left out while it is 0. They stay through a refused key and a new join of the
 same site, and go back to 0 with a join of another.
 
@@ -1317,7 +1456,27 @@ nothing. `lastError` is shown only for its own site (or when `url` is `""`).
   row or a different fingerprint, oldest first, **at most 100 a request**
   (`GlobalBatchRows`; fewer when their JSON passes 768 KiB, to stay under
   the 1 MiB body limit), and stops at the first refusal.
-- **Never sent**: `device`, `source`, the Tsum lists, paths.
+- **The level a round counts at** (§1.3). Once a reply has named `levels`
+  1, a round whose effective level (`ts_rounds.skill_eff`) is not its
+  recorded one carries `skill_eff` and `skill_src` (`ts_rounds.skill_src`)
+  in its record, and so in its fingerprint: a level that appears, changes or
+  goes (the player named an account, a new Tsum List came in) sends that
+  round again, once, like any change to it; a round that counts as recorded
+  has the record, and the fingerprint, it always had. So learning `levels`
+  re-sends only the rounds in the window that carry a level.
+- **Levels alone, for older rounds** (§2.8). After the rounds of a pass, and
+  only once `levels` is 1: for rounds played more than 58 days ago (two days
+  inside the window's edge, where the site's clock and the round's start
+  decide, so a round near it goes both ways) that `ts_global_sent` says were
+  sent, the forwarder sends `{id, skill_eff, skill_src}` for each whose level
+  is not the one `ts_global_levels(round_id TEXT PRIMARY KEY, level TEXT NOT NULL, src TEXT NOT NULL, sent_at TEXT NOT NULL)`
+  says the site was last told, an empty pair for a round that counts as
+  recorded again after a level was sent. At most 500 a request, oldest first;
+  after `ok: true` every item is recorded there, whatever the counts, and
+  never sent again unless its level changes. A join of another site empties
+  the table with `ts_global_sent`.
+- **Never sent**: `device`, `source`, the Tsum lists, the accounts and which
+  one a round was linked to, paths.
 - **After `ok: true`**: every row in the batch **except those the reply names
   in `retry`** goes into
   `ts_global_sent(round_id TEXT PRIMARY KEY, hash INTEGER NOT NULL, sent_at TEXT NOT NULL)`

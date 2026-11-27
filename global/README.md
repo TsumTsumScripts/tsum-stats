@@ -49,6 +49,7 @@ cite it by section (`CONTRACT §3.2`).
 | `src/job.ts` | The hourly job: claims dirty days, runs each step on its own, and lists the `state` keys it keeps |
 | `src/rollup.ts` | Step 1: the `pending` sums folded into `cells`, `cell_bins`, `contrib_cells` and `skill_units`, and full recomputes, which file a round under the level its `skill_fix` gives it |
 | `src/refile.ts` | Step 1c: the skill level correction. One Tsum's `skill_units` as runs (in SQL), judged by `ui/src/lib/skillFix.js`, kept in `skill_fix`; the days to recompute |
+| `src/levels.ts` | A contributor's own level for a round (§1.3): `POST /api/v1/levels` (§2.8), the statements an upload shares with it (`round_levels`, `level_log`), and the job's step that writes the log to `archive/levels/` |
 | `src/parts.ts` | Part files (split when too long), month compaction, the trash, the manifest and its running totals |
 | `src/unlink.ts` | Step 3: finishing an unlink, day by day |
 | `src/archive.ts` | Steps 4 and 4b and restore: final days staged and written to `archive/`, dropped from D1 lazily, and back |
@@ -58,6 +59,7 @@ cite it by section (`CONTRACT §3.2`).
 | `migrations/0003_skill_type.sql` | Each round's skill type kept, and `cells2` / `cell_bins2` keyed by it, copied from `cells` / `cell_bins` |
 | `migrations/0004_jackpot.sql` | `cells3` / `cell_bins3` keyed by coin-bonus jackpots too, copied from `cells2` / `cell_bins2`; `pending.format`, so sums of the old layout are recomputed, not folded |
 | `migrations/0008_skill_fix.sql` | `cells4` / `cell_bins4` keyed by the recorded skill level too (`stated`), copied from `cells3` / `cell_bins3`; `skill_units`, `skill_fix` and `pending.units` for the skill level correction |
+| `migrations/0009_round_levels.sql` | `round_levels` (the level a contributor's app counts a round at, kept for good) and `level_log` (every change, until it is in `archive/levels/`) |
 | `wrangler.jsonc` | Bindings, the route, the cron, the local dev address, the tunables |
 | `deploy.sh` | The deploy from a terminal, with its account checks, for when the GAP Devkit (its Tsum Tsum global stats card is the deploy) is not available |
 | `test/` | vitest in workerd (below) |
@@ -89,6 +91,19 @@ first sends nothing again until the Worker says so. The re-sends change their
 rounds, so their days are recomputed over the next runs: expect a day of
 heavier hourly runs as each player's app comes round. Days already archived
 keep skill type `''` (*Not recorded*).
+
+**After the deploy that adds `0009_round_levels.sql`** nothing is recomputed
+and nothing is sent again by itself: the two tables start empty. The Worker
+goes first (a local app that sent `skill_eff` to a Worker before it would
+have it filed as a setting, which is why the app waits for `levels: 1` in a
+reply). Then each player's updated app sends, once, the rounds in its window
+that count at another level than recorded, and for older rounds the level
+alone (`POST /api/v1/levels`). Each such round's day is recomputed once; a
+day still in D1 by the hourly job itself, archived or not. Only a day whose
+rounds have left D1 (`dropped_through`; none while D1 holds under
+`RETAIN_ROWS`) waits in `state` `level_days` for
+`POST /api/v1/admin/restore {"levels": true}`, which costs two row writes
+per round of that day, so it is the admin's call.
 
 **After the deploy that adds `0008_skill_fix.sql`** nothing is recomputed for
 it: every cell is copied into `cells4` at its recorded level, the parts
@@ -133,7 +148,9 @@ and to refuse values over a size, as production D1 does.
 `test/volume.test.ts` runs a day of 80,000 rounds from 70 players, uploaded
 as the forwarder does, with the hourly job after each hour, and checks what
 D1 reads and that every row written is in the budget.
-`test/refile.test.ts` is the skill level correction: the units the fold and
+`test/levels.test.ts` is a contributor's own level for a round: sent with an
+upload or alone, the order of evidence, an archived day and a day that left
+D1. `test/refile.test.ts` is the skill level correction: the units the fold and
 the recompute keep, a run re-filed a day at a time and published, a Tsum
 corrected once a day, what must stay as recorded, and the step's budgets.
 
@@ -230,6 +247,7 @@ curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "$J" -d '{"id":17}' $H/
 curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "$J" -d '{"from":18,"into":17}' $H/api/v1/admin/merge
 curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "$J" -d '{"from":"2026-09-01","to":"2026-09-30"}' $H/api/v1/admin/rebuild
 curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "$J" -d '{"day":"2026-08-01"}' $H/api/v1/admin/restore
+curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "$J" -d '{"levels":true}' $H/api/v1/admin/restore   # the oldest day out of D1 with a level to apply; repeat until "days": 0
 curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "$J" -d '{}' $H/api/v1/admin/rollup
 curl -s -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "$J" -d '{}' $H/api/v1/admin/resend
 ```

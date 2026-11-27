@@ -10,7 +10,24 @@ import { DAY, bin, dayStart } from "./days";
 const BASE_COLUMNS = new Set([
   "id", "datetime", "script_version", "skill_type", "tsum", "build",
   "duration_seconds", "score", "base_coins", "final_coins", "medals",
+  // The level the sender's own app counts the round at, and where that comes from (CONTRACT §1.3); the script sends neither.
+  "skill_eff", "skill_src",
 ]);
+
+/** Where a contributor's level for a round comes from (CONTRACT §1.3); the first two are a Tsum List's, hard evidence. */
+export const LEVEL_SOURCES = ["list", "pick", "order", "trusted"];
+export const HARD_SOURCES_SQL = "('list', 'pick')";
+
+/**
+ * A level as sent (`skill_eff`, `skill_src`): {level, source}; null for none
+ * (both empty); "bad" for anything else, which is never guessed at.
+ */
+export function readLevel(eff: unknown, src: unknown): { level: number; source: string } | null | "bad" {
+  const e = text(eff), s = text(src);
+  if (e === "" && s === "") return null;
+  const level = /^([1-9]|10)$/.test(e) ? Number(e) : 0;
+  return level && LEVEL_SOURCES.includes(s) ? { level, source: s } : "bad";
+}
 
 /** The boost items in the settings' names, by bit (summary.go: itemBits). */
 const ITEM_BITS: [string, number][] = [
@@ -46,6 +63,8 @@ export interface Round {
   skill: number;
   /** The script's skill type (`skill_type`), as sent; "" when it sent none. */
   skillType: string;
+  /** The level the sender's app counts it at and where from (`skill_eff`, `skill_src`); null when it sent none. */
+  level: { level: number; source: string } | null;
   items: number;
   /**
    * The play settings (CONTRACT §1.2), from the settings as the engines read
@@ -83,7 +102,7 @@ const PACE_MS = 40_000;
 /** Clock skew allowed: how far ahead of now a time, or before its start a round's end, may be. */
 const SKEW = 10 * 60;
 
-const UUID7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const UUID7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /**
  * A Tsum id as the catalog writes them. A well-formed one the bundled catalog
  * lacks (a Tsum newer than this deploy) is kept, but left out of the public
@@ -198,6 +217,8 @@ function readRecord(rec: Record<string, unknown>, now: number, oldest: number): 
   if (utf8Over(json, SETTINGS_MAX.json)) return "settings";
   const version = text(rec.script_version), skillType = text(rec.skill_type);
   if (version.length > FIELD_MAX || skillType.length > FIELD_MAX || CONTROL.test(version) || CONTROL.test(skillType)) return "field";
+  const level = readLevel(rec.skill_eff, rec.skill_src);
+  if (level === "bad") return "field";
 
   let build = text(rec.build);
   if (build !== "global" && build !== "jp") {
@@ -224,7 +245,7 @@ function readRecord(rec: Record<string, unknown>, now: number, oldest: number): 
     for (const [name, b] of ITEM_BITS) if (settings[name] === true) items |= b;
   }
   return {
-    hex, startMs, playedAt, tsum, items,
+    hex, startMs, playedAt, tsum, items, level,
     known: TSUMS.has(tsum),
     build: build === "jp" ? 1 : 0,
     skill: Number.isInteger(skill) && (skill as number) >= 1 && (skill as number) <= 10 ? (skill as number) : -1,

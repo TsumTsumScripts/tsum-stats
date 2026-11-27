@@ -27,6 +27,7 @@
 //   nocompact:<month> a month too big for one part
 //   refile_queue      {tsum: 1}: Tsums whose skill_units changed since their last skill level correction (rollup.ts adds, refile.ts takes)
 //   refiled           {tsum: [day, rows]}: the UTC day each was last corrected on, and the rows that pass read
+//   level_days        days whose rounds have left D1 with a contributor's level still to apply (levels.ts; admin restore {levels})
 //   presets_dirty     presets changed since presets.json was published (presets.ts)
 // and, written by the admin route only, resend (the full re-upload number, CONTRACT §2.2).
 import { archiveStarved, archiveStep, dropRestored, dropStep } from "./archive";
@@ -38,6 +39,7 @@ import { compactStep, finish, renderStep } from "./parts";
 import { DAY_QUERIES, foldStep, recomputeStep, type Pending } from "./rollup";
 import { DIRTY as PRESETS_DIRTY, publishPresets } from "./presets";
 import { refileStep } from "./refile";
+import { levelLogStep } from "./levels";
 import { Run } from "./run";
 import { unlinkStep } from "./unlink";
 
@@ -95,6 +97,8 @@ export interface Job {
   /** The Tsums waiting for the skill level correction, and when each was last corrected (state refile_queue, refiled), as the run began. */
   refileQueue: string[];
   refiledOn: Record<string, [string, number]>;
+  /** Rows of level_log still to write to archive/levels/ (levels.ts). */
+  levelLog: number;
   /** The presets_dirty mark to publish for, or null when presets.json is current. */
   presetsDirty: string | null;
   /** Some step left work for the next run. */
@@ -150,7 +154,7 @@ export async function runJob(env: Env, nowMs: number): Promise<Report> {
   const steps: Step[] = [
     ["fold", foldStep], ["refile", refileStep], ["recompute", recomputeStep], ...(starved ? archive : []),
     ["render", renderStep], ["unlink", unlinkStep], ["restored", dropRestored],
-    ...(starved ? [] : archive), ["drop", dropStep], ["compact", compactStep], ["presets", publishPresets],
+    ...(starved ? [] : archive), ["drop", dropStep], ["compact", compactStep], ["levels", levelLogStep], ["presets", publishPresets],
   ];
   for (const [name, step] of steps) {
     try {
@@ -199,6 +203,7 @@ async function open(run: Run, lim: Limits): Promise<Job> {
     run.stmt("DELETE FROM dirty_days WHERE day IN (SELECT value FROM json_each((SELECT value FROM state WHERE key = 'recompute')))"),
     // The days left for later runs, and the state.
     run.stmt(`SELECT 'dirty' AS key, CAST(count(*) AS TEXT) AS value FROM dirty_days
+      UNION ALL SELECT 'level_log', CAST(count(*) AS TEXT) FROM level_log
       UNION ALL SELECT key, CASE WHEN key >= 'part:' AND key < 'part;'
           THEN json_object('from', value ->> 'from', 'to', value ->> 'to', 'rounds', value ->> 'rounds', 'bytes', value ->> 'bytes', 'files', value -> 'files')
         WHEN key = 'totals' THEN '1' WHEN key = 'people' THEN (CASE WHEN json_type(value, '$.newest') IS NULL THEN '' ELSE coalesce(value ->> 'catalog', '') END) ELSE value END
@@ -243,6 +248,7 @@ async function open(run: Run, lim: Limits): Promise<Job> {
     recentChanged: false,
     refileQueue: [],
     refiledOn: {},
+    levelLog: 0,
     presetsDirty: null,
     more: false,
     report: {
@@ -267,6 +273,7 @@ async function open(run: Run, lim: Limits): Promise<Job> {
     // Counts made under another catalog, or before the counts by newest day were kept, are made again: a Tsum it lacked now counts.
     else if (key === "people") job.hasPeople = value === catalogId();
     else if (key === "dirty") job.more = value !== "0";
+    else if (key === "level_log") job.levelLog = Number(value);
     else if (key === "refile_queue") job.refileQueue = Object.keys(JSON.parse(value));
     else if (key === "refiled") job.refiledOn = JSON.parse(value);
     else if (key === PRESETS_DIRTY) job.presetsDirty = value;

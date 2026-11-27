@@ -40,8 +40,22 @@ export interface FixRow {
   level: number;
 }
 
-/** The level a round counts at: its fix's (the newest that covers its day), else the one recorded (rollup.ts: DAY_SOURCE). */
-export function levelOf(r: RoundRow, fixes: FixRow[]): number {
+/** A round_levels row: the level a round's contributor sent for it. */
+export interface LevelRow {
+  key: string;
+  level: number;
+  source: string;
+}
+const HARD = new Set(["list", "pick"]);
+
+/**
+ * The level a round counts at (rollup.ts: DAY_SOURCE): its contributor's
+ * (round_levels), else its fix's (the newest that covers its day), else the
+ * one recorded.
+ */
+export function levelOf(r: RoundRow, fixes: FixRow[], levels: Map<string, LevelRow> = new Map()): number {
+  const sent = levels.get(r.key);
+  if (sent) return sent.level;
   const day = keyDay(r.key);
   const f = fixes.filter(x => x.build === r.build && x.tsum === r.tsum && x.device === r.key.slice(20) && x.stated === r.skill && x.from_day <= day && x.to_day >= day)
     .sort((a, b) => (a.from_day < b.from_day ? 1 : -1))[0];
@@ -64,9 +78,12 @@ const maxOf = (xs: number[]) => (xs.length ? Math.max(...xs) : null);
  * contributors are banned, anon ones unlinking. `fixes` are the skill_fix
  * rows a recompute would apply; a day only folded has none applied.
  */
-export function reference(rounds: RoundRow[], hidden: Set<number>, anon: Set<number> = new Set(), fixes: FixRow[] = []) {
+export function reference(rounds: RoundRow[], hidden: Set<number>, anon: Set<number> = new Set(), fixes: FixRow[] = [], sent: LevelRow[] = []) {
+  const levels = new Map(sent.map(l => [l.key, l]));
+  // A level a Tsum List is behind is the round's level for the evidence too, and trusted.
+  const hard = (r: RoundRow) => (HARD.has(levels.get(r.key)?.source ?? "") ? levels.get(r.key)!.level : null);
   const pub = rounds.filter(r => !hidden.has(r.contributor));
-  const cellKey = (r: RoundRow) => JSON.stringify([keyDay(r.key), r.build, r.tsum, levelOf(r, fixes), r.skill_type, r.items, r.scan, r.chain, r.bubble, (r.medals ?? 0) > 0 ? 1 : 0, r.final > 10 * r.base ? 1 : 0, r.skill]);
+  const cellKey = (r: RoundRow) => JSON.stringify([keyDay(r.key), r.build, r.tsum, levelOf(r, fixes, levels), r.skill_type, r.items, r.scan, r.chain, r.bubble, (r.medals ?? 0) > 0 ? 1 : 0, r.final > 10 * r.base ? 1 : 0, r.skill]);
   const cells = [...group(pub, cellKey).entries()]
     .map(([k, rs]) => {
       const [day, build, tsum, skill, skill_type, items, scan, chain, bubble, medal, jackpot, stated] = JSON.parse(k);
@@ -109,7 +126,7 @@ export function reference(rounds: RoundRow[], hidden: Set<number>, anon: Set<num
     };
   });
   // What the correction judges by: the rounds with a level, as recorded, per device, item context and trusted (CONTRACT §3.1).
-  const units = [...group(pub.filter(r => r.skill >= 1), r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.key.slice(20), r.skill, fixContext(r.items), trustedVersion(r.version) ? 1 : 0])).entries()]
+  const units = [...group(pub.filter(r => (hard(r) ?? r.skill) >= 1), r => JSON.stringify([keyDay(r.key), r.build, r.tsum, r.key.slice(20), hard(r) ?? r.skill, fixContext(r.items), hard(r) !== null || trustedVersion(r.version) ? 1 : 0])).entries()]
     .map(([k, rs]) => {
       const [day, build, tsum, device, skill, context, trusted] = JSON.parse(k);
       const values = rs.map(r => (isMedalTsum(r.tsum) ? r.medals : r.base) ?? 0).filter(v => v > 0);
@@ -173,7 +190,7 @@ export async function checkAgainstReference(hidden: Set<number>, anon: Set<numbe
   // The fixes count on the days recomputed since they were made; a test that has any says which days (`fixedDays`).
   const fixes = (await rows<FixRow>("SELECT * FROM skill_fix")).filter(() => fixedDays !== undefined)
     .flatMap(f => fixedDays!.filter(d => d >= f.from_day && d <= f.to_day).map(d => ({ ...f, from_day: d, to_day: d })));
-  const want = reference(await rows<RoundRow>("SELECT * FROM rounds"), hidden, anon, fixes);
+  const want = reference(await rows<RoundRow>("SELECT * FROM rounds"), hidden, anon, fixes, await rows<LevelRow>("SELECT * FROM round_levels"));
   const got = await tables();
   const only = <T extends Record<string, unknown>>(list: T[]) => (days ? list.filter(r => days.includes(r.day as string)) : list);
   sameRows(only(got.cells), want.cells, CELL_KEY);
