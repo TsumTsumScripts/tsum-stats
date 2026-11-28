@@ -91,6 +91,16 @@
   --maxed-ink: #14304a;
   --fav: #ffcf4a;
 
+  /* Buttons by role (docs/USING.md, Themes): snow cream actions, an icy violet way back, icy
+     blue to another page, mint copies; tiles and icon buttons stay teal with the panels */
+  --btn-act-a: #fbf6ec;
+  --btn-act-b: #e6d9c3;
+  --btn-act-ink: #1d3b3c;
+  --btn-act-edge: #fffaf0;
+  --btn-quiet-a: #34696d;
+  --btn-quiet-b: #24504f;
+  --btn-quiet-edge: rgba(246, 239, 228, 0.35);
+
   /* This theme's own */
   --w-cran: #bd4538;
   --w-cran-b: #9a302b;
@@ -176,8 +186,8 @@
 :root .seg button:hover { color: var(--ink); background: rgba(255, 255, 255, 0.08); }
 :root .seg button[aria-pressed="true"] { background: linear-gradient(180deg, var(--accent-a), var(--accent-b)); color: var(--accent-ink);
   box-shadow: 0 0 12px var(--accent-shadow); }
-:root .btn { border-radius: 999px; font-weight: 800; background: linear-gradient(180deg, #34696d, #24504f); border: 1px solid rgba(246, 239, 228, 0.35);
-  color: var(--ink); box-shadow: var(--press); }
+:root .btn { border-radius: 999px; font-weight: 800; background: linear-gradient(180deg, var(--btn-a), var(--btn-b)); border: 1px solid var(--btn-edge);
+  color: var(--btn-ink); box-shadow: var(--press); }
 :root .btn:hover { filter: none; border-color: var(--accent-a); }
 :root .btn.primary { background: linear-gradient(180deg, #d4564a, #b8443b); border-color: rgba(255, 220, 210, 0.5); color: #fffaf2;
   box-shadow: 0 6px 14px rgba(184, 68, 59, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2); }

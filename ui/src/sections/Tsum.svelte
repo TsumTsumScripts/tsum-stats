@@ -489,9 +489,9 @@
       <div class="tsum-title"><h2>Tsums</h2><div class="sub">Every Tsum over the time range. Pick one for everything about it: how it plays at each skill level and with each setting{globalSite ? '' : ', and its best rounds'}.</div></div>
     {/if}
     <div class="tsum-pick">
-      {#if filter.id}<button type="button" class="btn" title="Back to the list of Tsums" onclick={() => set({id: ''})}>← All Tsums</button>{/if}
+      {#if filter.id}<button type="button" class="btn back" title="Back to the list of Tsums" onclick={() => set({id: ''})}>← All Tsums</button>{/if}
       <TsumCombo options={pickOptions} onpick={pick} placeholder="Find a Tsum…" label="Show another Tsum" />
-      {#if filter.id}<a class="btn" href={statsLink} title="This Tsum on the Stats page, with its rounds table">Open in Stats</a>{/if}
+      {#if filter.id}<a class="btn go" href={statsLink} title="This Tsum on the Stats page, with its rounds table">Open in Stats</a>{/if}
       {#if filter.id && s?.totals.rounds}<CopyButton title="Everything" label="Copy all" root={() => page} />{/if}
     </div>
     <!-- The filters are the header's last row rather than a panel of their own. -->
@@ -570,7 +570,7 @@
       {#if (earners?.most ?? played).length}
         <div class="tsum-grid">
           {#each (earners?.most ?? played).slice(0, 24) as t (t.tsum)}
-            <button type="button" class="btn tsum-tile" onclick={() => set({id: t.tsum})}>
+            <button type="button" class="btn quiet tsum-tile" onclick={() => set({id: t.tsum})}>
               <Avatar id={t.tsum} name={nameOf(t.tsum)} />
               <span class="tile-name">{nameOf(t.tsum)}</span>
               <span class="sub">{fmt(t.rounds)}</span>
@@ -700,7 +700,7 @@
       <Panel title="Best rounds" sub="the top 10 in the filter">
         {#snippet tools()}
           <Seg sm label="Best by" value={views.best} onpick={v => setView('best', v)} options={[['coins', U], ['rate', `${U}/s`], ['score', 'Score']]} />
-          <a class="btn" href={statsLink}>All rounds</a>
+          <a class="btn go" href={statsLink}>All rounds</a>
         {/snippet}
         <div class="table-wrap">
           <table>

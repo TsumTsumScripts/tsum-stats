@@ -97,6 +97,13 @@
   --r-fill: #ff8fab; --r-edge: #a83d5c; --r-thread: #80293f; --r-ink: #33101b;
   --p-fill: #9db4ff; --p-edge: #4a5fb3; --p-thread: #34458c; --p-ink: #141d40;
   --g-fill: #5b3f9e; --g-edge: #36246b; --g-thread: #e3d8ff; --g-ink: #ffffff;
+  /* Buttons by role (docs/USING.md, Themes), each its own felt with matching thread: cream
+     actions, lavender for the way back, sky to another page, jade copies; tiles and icon
+     buttons stay the panel's felt (the rule below). One fill each (-a and -b alike): felt has no gradient. */
+  --btn-act-a: #f4efe6; --btn-act-b: #f4efe6; --btn-act-ink: #1c1b2b; --btn-act-edge: #8e89b0;
+  --btn-back-a: #c9b2ff; --btn-back-b: #c9b2ff; --btn-back-ink: #1c0f3d; --btn-back-edge: #5b3f9e;
+  --btn-go-a: #8fd3f0; --btn-go-b: #8fd3f0; --btn-go-ink: #0b2533; --btn-go-edge: #2f6f8c;
+  --btn-copy-a: var(--j-fill); --btn-copy-b: var(--j-fill); --btn-copy-ink: var(--j-ink); --btn-copy-edge: var(--j-thread);
   --weave: repeating-linear-gradient(31deg, var(--weave-hi) 0 1px, transparent 1px 4px),
            repeating-linear-gradient(-57deg, var(--weave-lo) 0 1px, transparent 1px 5px);
   --coin-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 104'%3E%3Ccircle cx='50' cy='57' r='44' fill='%23a85f0c'/%3E%3Ccircle cx='50' cy='52' r='44' fill='%23e8900c'/%3E%3Ccircle cx='50' cy='52' r='38' fill='%23ffbb1a'/%3E%3Ccircle cx='50' cy='55' r='14' fill='%23ffe07a'/%3E%3Ccircle cx='34' cy='39' r='9' fill='%23ffe07a'/%3E%3Ccircle cx='66' cy='39' r='9' fill='%23ffe07a'/%3E%3Ccircle cx='50' cy='53' r='14' fill='%23e2700a'/%3E%3Ccircle cx='34' cy='37' r='9' fill='%23e2700a'/%3E%3Ccircle cx='66' cy='37' r='9' fill='%23e2700a'/%3E%3Ccircle cx='50' cy='52' r='40.5' fill='none' stroke='%23fff4cc' stroke-width='2.4' stroke-dasharray='4.2 3.2'/%3E%3C/svg%3E");
@@ -191,7 +198,8 @@
 
 /* Buttons and toggles: pills with dashed stitching and a hard edge. */
 :root .btn, :root .sort-btn, :root .chip, :root .pill, :root .tag { border: 2px dashed var(--seam); }
-:root .btn { background: var(--panel-hi); background-image: none; color: var(--ink); box-shadow: 0 4px 0 var(--rim); transition: transform .15s; }
+:root .btn { background: var(--btn-a); background-image: none; color: var(--btn-ink); border-color: var(--btn-edge); box-shadow: 0 4px 0 var(--rim); transition: transform .15s; }
+:root .btn.quiet { --btn-edge: var(--seam); }
 :root .btn:hover { filter: none; transform: translateY(-2px) rotate(-2deg); }
 :root .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--rim); }
 :root .btn.primary, :root .seg button[aria-pressed="true"], :root .jump button[aria-current="true"] {

@@ -39,7 +39,7 @@
       {#each recent as t (t.id)}
         {@const name = tsumName(shared.catalog, t.id)}
         {@const rounds = played.get(t.id)}
-        <a class="btn tsum-tile" href={tsumPage(t.id)} aria-current={t.id === current ? 'page' : undefined}
+        <a class="btn quiet tsum-tile" href={tsumPage(t.id)} aria-current={t.id === current ? 'page' : undefined}
           title="{name} · out on {outText(t.out)} · {rounds ? `${fmt(rounds)} rounds` : 'no rounds yet'}" onclick={e => click(e, t.id)}>
           <Avatar id={t.id} {name} />
           <span class="tile-text">

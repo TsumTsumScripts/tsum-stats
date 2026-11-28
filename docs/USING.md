@@ -1047,11 +1047,12 @@ when they draw, and redraw when the theme changes.
 | `--font-body`, `--font-display`, `--radius` | Text and headings; panel corners |
 | `--bg`, `--bg-top`, `--bg-mid`, `--bg-bottom`, `--dots`, `--noise` | The page background: a gradient, a dot grid and a noise texture |
 | `--topbar-bg`, `--hairline`, `--backdrop` | The sticky top bar; the dimming behind dialogs and expanded panels |
-| `--panel`, `--panel-hi`, `--panel-top`, `--panel-bottom`, `--panel-edge`, `--seam` | Panels and buttons: fill, gradient, border, the stitched inner seam |
+| `--panel`, `--panel-hi`, `--panel-top`, `--panel-bottom`, `--panel-edge`, `--seam` | Panels: fill, gradient, border, the stitched inner seam; quiet buttons unless set (below) |
 | `--well`, `--cell`, `--sticky-bg`, `--tip-bg` | Inputs and toggles; table cells; the sticky pager; tooltips |
 | `--ink`, `--muted`, `--faint` | Text, from strongest to faintest |
 | `--drop`, `--press`, `--lift`, `--inset`, `--float` | Shadows: under panels, pressed buttons, top highlight, sunken wells, popovers |
 | `--accent-a`, `--accent-b`, `--accent-edge`, `--accent-shadow`, `--accent-ink` | Pressed toggles, primary buttons, progress, focus rings |
+| `--btn-<role>-a`, `-b`, `-ink`, `-edge` for `act`, `back`, `go`, `copy`, `quiet` | Buttons by role: fill gradient, text, border (§ Buttons, below) |
 | `--link` | The accent as text: links, sort arrows, the head-to-head leader. `--accent-a` unless set; a light theme sets a darker one, since a fill colour is too pale to read as type |
 | `--badge-a`, `--badge-b`, `--hero-top` | The logo badge and Help's step numbers; the hero KPI tile |
 | `--score`, `--coin`, `--medal` (each with `-shadow`), `--good`, `--bad` | Figures by kind; online dots |
@@ -1059,6 +1060,44 @@ when they draw, and redraw when the theme changes.
 | `--chart-other`, `--build-intl`, `--build-jp`, `--build-none`, `--avatar-a`, `--avatar-b` | "Other" slices; the sunburst's game ring; a portrait's backing |
 
 Tsums keep their own colours (`color` in the catalog) in every theme.
+
+### Buttons
+
+**A button never takes its panel's colours unless it is meant to sit quietly in
+them.** Each button has a role, a class on `.btn`, and each role has its own
+colour in every theme:
+
+| Role | Class | Which buttons | Base theme / Winter |
+|:--|:--|:--|:--|
+| Primary | `.btn.primary` | The one call to action: Contribute, Join, Import | The accent (Winter: cranberry) |
+| Action | `.btn` alone | Everything else: Website, Show all time, the pager, Reset, Close, Cancel | Snow cream |
+| Back | `.btn.back` | The way back: ← All Tsums, ← Back | Violet |
+| Go | `.btn.go` | Opens another page: Open in Stats, Tsum page →, All rounds, Add to GAP Companion | Icy blue |
+| Copy | `.btn.copy` | A copy with a label: Copy all, Copy code, Copy link | Mint |
+| Quiet | `.btn.quiet` | Tiles and icon buttons that belong to their panel: Tsum tiles, the earners, a panel's copy and expand icons | The panel's own colours |
+
+The rules every theme keeps, a new one included:
+
+- **Each role its own hue family**, apart from the others, from the panels and
+  from the accent. *Back* is the one hue no other button uses; it is violet
+  where the panels are not (Halloween's panels are violet, so its *back* is pink).
+- **3:1 against the panel**, for the fill or, where the fill is close to the
+  panel (the felt themes on cream), for the border. **4.5:1** for the
+  button's text on its fill.
+- **Set colours, not rules.** A theme sets `--btn-<role>-a`, `-b` (the fill's
+  gradient; the same twice for a flat fill), `-ink` and `-edge` on `:root`. A
+  theme that restyles `.btn` paints it with `var(--btn-a)`, `var(--btn-b)`,
+  `var(--btn-ink)` and `var(--btn-edge)`, which each role points at its own
+  tokens, so the roles reach every theme. A role a theme leaves unset keeps the
+  base value in `ui/src/styles.css`.
+- **Quiet follows the panel.** `--btn-quiet-*` are unset in the base, and
+  `.btn.quiet` falls back to `--panel-hi`, `--panel`, `--ink` and
+  `--panel-edge` where the button sits, so an icon in a tile that recolours
+  those (Winter's and the felt themes' KPI tiles) follows the tile. Set them
+  only to fixed colours; one set to `var(...)` is read at `:root`.
+- **A new button gets a role** when it is added: `back`, `go` or `copy` by what
+  it does, `quiet` only for tiles and icons, `primary` for the one action the
+  view is for. A plain `.btn` is an *action*.
 
 Text in the built-in felt themes is at least 4.5:1 against what it sits on
 (3:1 for large type), disabled buttons aside. Under 720px wide (phones) the

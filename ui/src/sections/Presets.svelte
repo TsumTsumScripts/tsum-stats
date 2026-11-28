@@ -184,9 +184,9 @@
 {/snippet}
 
 {#snippet use(p)}
-  <button type="button" class="btn" title="For the script's settings page: paste it into the share box"
+  <button type="button" class="btn copy" title="For the script's settings page: paste it into the share box"
     onclick={() => copy(`${p.name}: ${p.code ?? encode(p.values)}`, 'the share code')}>Copy code</button>
-  <a class="btn" href={companionLink([p])} target="_blank" rel="noopener" title="Adds it to your presets in GAP Companion">Add to GAP Companion</a>
+  <a class="btn go" href={companionLink([p])} target="_blank" rel="noopener" title="Adds it to your presets in GAP Companion">Add to GAP Companion</a>
   {#if local && me?.joined}<button type="button" class="btn" onclick={() => openShare(p)}>Share to the gallery</button>{/if}
 {/snippet}
 
@@ -197,7 +197,7 @@
       <textarea class="codes" readonly rows={Math.min(8, fromCompanion.length + 1)} aria-label="Share codes">{exportText(fromCompanion)}</textarea>
       {#if companionDropped}<p class="sub">{companionDropped} setting{companionDropped === 1 ? ' was' : 's were'} left out: the script would not take {companionDropped === 1 ? 'its value' : 'their values'}.</p>{/if}
       <div class="preset-actions">
-        <button type="button" class="btn" onclick={() => copy(exportText(fromCompanion), 'the share codes')}>Copy codes</button>
+        <button type="button" class="btn copy" onclick={() => copy(exportText(fromCompanion), 'the share codes')}>Copy codes</button>
       </div>
       <p class="sub">Paste them into the share box on the script's settings page, or send them to someone.
         {#if local && me?.joined}Share one to the gallery below.{:else if local}To share them in the gallery, join the global stats first (Contribute).{/if}</p>
@@ -213,7 +213,7 @@
     {#if pastedNote}<p class="sub" aria-live="polite">{pastedNote}</p>{/if}
     {#if pasted?.presets.length > 1}
       <div class="preset-actions">
-        <a class="btn" href={companionLink(named(pasted.presets))} target="_blank" rel="noopener">Add all {pasted.presets.length} to GAP Companion</a>
+        <a class="btn go" href={companionLink(named(pasted.presets))} target="_blank" rel="noopener">Add all {pasted.presets.length} to GAP Companion</a>
       </div>
     {/if}
   </div>

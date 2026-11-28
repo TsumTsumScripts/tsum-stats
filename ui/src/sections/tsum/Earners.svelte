@@ -19,7 +19,7 @@
   <ol class="earners" class:medal={unit === 'medals'}>
     {#each rows as r, i (r.tsum)}
       <li>
-        <button type="button" class="btn earner" onclick={() => onpick(r.tsum)}
+        <button type="button" class="btn quiet earner" onclick={() => onpick(r.tsum)}
           title="{nameOf(r.tsum)}: {fmt(r.v)} {what} over {fmt(r.rounds)} rounds{r.flag ? ` · ${r.flag}` : ''}">
           <span class="earner-rank">{i + 1}</span>
           <Avatar id={r.tsum} name={nameOf(r.tsum)} />

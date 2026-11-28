@@ -13,7 +13,7 @@
 
 /* Theme tokens: the base look under every theme (from the "Tsum Tsum statistics
    UI mockups" designs), and what shows if a theme file fails to load. A theme in
-   themes/*.css overrides some of these on :root and nothing else; docs/STATS-SITE.md lists what each one colours. */
+   themes/*.css overrides some of these on :root and nothing else; docs/USING.md § Themes lists what each one colours. */
 /* :where() gives these no specificity, so a theme's :root wins wherever it loads. */
 :where(:root) {
   color-scheme: dark;
@@ -62,6 +62,31 @@
   --accent-edge: #b5561a;
   --accent-shadow: #8f3f10;
   --accent-ink: #3a1604;
+  /* Buttons by role, so each kind stands out from the panel it sits on and from the
+     others: a theme sets these (docs/USING.md, Themes, "Buttons"). Each role has a fill
+     gradient (-a to -b), text (-ink) and border (-edge). act: every plain .btn (Website,
+     pager, Reset, Close); back: .btn.back, the way back (All Tsums); go: .btn.go, opens
+     another page (Open in Stats); copy: .btn.copy, a labelled copy (Copy all); quiet:
+     .btn.quiet, tiles and icon buttons that sit in their panel's colours on purpose.
+     The --btn-quiet-* are unset here: the .btn.quiet rule falls back to the panel's tokens
+     where the button is, so it follows a tile that recolours them. The primary button and
+     pressed toggles keep the accent. */
+  --btn-act-a: #f3ead9;
+  --btn-act-b: #d9ccb5;
+  --btn-act-ink: #23263a;
+  --btn-act-edge: #fff6e6;
+  --btn-back-a: #c9b2ff;
+  --btn-back-b: #8f6ee0;
+  --btn-back-ink: #1c0f3d;
+  --btn-back-edge: #e9e0ff;
+  --btn-go-a: #b9e4f5;
+  --btn-go-b: #6fb4d8;
+  --btn-go-ink: #0f2a3a;
+  --btn-go-edge: #e6f6fd;
+  --btn-copy-a: #b8f0c6;
+  --btn-copy-b: #6fcf8f;
+  --btn-copy-ink: #0d2e18;
+  --btn-copy-edge: #e3fbe9;
   --badge-a: #ffe98a;
   --badge-b: #f0a92a;
   --hero-top: rgba(122, 74, 8, 0.55);
@@ -233,8 +258,16 @@ html { overflow-x: clip; }
   background: linear-gradient(180deg, var(--accent-a), var(--accent-b)); border-color: var(--accent-edge);
   color: var(--accent-ink); box-shadow: var(--lift), 0 3px 0 var(--accent-shadow);
 }
-.btn { background: linear-gradient(180deg, var(--panel-hi), var(--panel)); border-color: var(--panel-edge);
-  color: var(--ink); box-shadow: var(--lift), var(--drop); }
+/* A button paints with --btn-a/-b/-ink/-edge, which its role sets from the theme's --btn-<role>-*.
+   A theme's own .btn rule paints with the same four, so the roles reach every theme. */
+.btn { --btn-a: var(--btn-act-a); --btn-b: var(--btn-act-b); --btn-ink: var(--btn-act-ink); --btn-edge: var(--btn-act-edge);
+  background: linear-gradient(180deg, var(--btn-a), var(--btn-b)); border-color: var(--btn-edge);
+  color: var(--btn-ink); box-shadow: var(--lift), var(--drop); }
+.btn.back { --btn-a: var(--btn-back-a); --btn-b: var(--btn-back-b); --btn-ink: var(--btn-back-ink); --btn-edge: var(--btn-back-edge); }
+.btn.go { --btn-a: var(--btn-go-a); --btn-b: var(--btn-go-b); --btn-ink: var(--btn-go-ink); --btn-edge: var(--btn-go-edge); }
+.btn.copy { --btn-a: var(--btn-copy-a); --btn-b: var(--btn-copy-b); --btn-ink: var(--btn-copy-ink); --btn-edge: var(--btn-copy-edge); }
+.btn.quiet { --btn-a: var(--btn-quiet-a, var(--panel-hi)); --btn-b: var(--btn-quiet-b, var(--panel));
+  --btn-ink: var(--btn-quiet-ink, var(--ink)); --btn-edge: var(--btn-quiet-edge, var(--panel-edge)); }
 .btn:hover { filter: brightness(1.1); }
 .btn:active { transform: translateY(2px); box-shadow: var(--lift), var(--press); }
 .btn:disabled { opacity: 0.6; cursor: default; transform: none; }

@@ -192,12 +192,12 @@
       {#if readOnly}
         <ThemePicker />
         {#if globalSite}
-          <a class="btn" id="contribute-link" href={CONTRIBUTE} title="How to add your rounds from tsum-stats">Contribute</a>
+          <a class="btn primary" id="contribute-link" href={CONTRIBUTE} title="How to add your rounds from tsum-stats">Contribute</a>
           <a class="btn" id="site-btn" href={WEBSITE} title="The Tsum Tsum script's website">Website</a>
         {/if}
       {:else if local}
         <div class="topbar-actions">
-          <button type="button" class="btn" id="contribute-btn" title="Add your rounds to the global stats" onclick={() => contributeDialog.open()}>Contribute</button>
+          <button type="button" class="btn primary" id="contribute-btn" title="Add your rounds to the global stats" onclick={() => contributeDialog.open()}>Contribute</button>
           <button type="button" class="btn" id="data-btn" onclick={() => dataDialog.open()}>Data</button>
           <!-- What is used now and then. -->
           <Dropdown bind:this={moreMenu} id="more-btn" title="Share, theme{starter ? ', service starter' : ''}">

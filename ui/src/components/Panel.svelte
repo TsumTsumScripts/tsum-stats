@@ -29,7 +29,7 @@
       {@render tools?.()}
       <CopyButton {title} from={() => node} />
       {#if expandable}
-        <button type="button" class="btn expand-btn" aria-pressed={String(open)} title={open ? 'Close the big view (Esc)' : 'Expand'}
+        <button type="button" class="btn quiet expand-btn" aria-pressed={String(open)} title={open ? 'Close the big view (Esc)' : 'Expand'}
           onclick={toggle}>{open ? '✕' : '⤢'}</button>
       {/if}
     </div>

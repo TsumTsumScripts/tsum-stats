@@ -18,7 +18,7 @@
 
 <div class="panel focus-bar">
   {#if canBack}
-    <button type="button" class="btn" title="The Tsums you had before (the browser's Back does the same)" onclick={() => history.back()}>← Back</button>
+    <button type="button" class="btn back" title="The Tsums you had before (the browser's Back does the same)" onclick={() => history.back()}>← Back</button>
   {/if}
   <span class="sub focus-label">{picked.length > 1 ? `Comparing ${picked.length}` : 'Focused on'}</span>
   <span class="focus-tsums">
@@ -29,6 +29,6 @@
   <input class="search focus-add" list="tsum-options" placeholder="+ Compare with…" autocomplete="off" aria-label="Add a Tsum to compare"
     bind:this={box} onchange={tryAdd} oninput={addSoon}>
   <span class="spacer"></span>
-  {#if pageLink}<a class="btn" href={pageLink} title="Skill levels, settings, rank and best rounds for this Tsum">Tsum page →</a>{/if}
+  {#if pageLink}<a class="btn go" href={pageLink} title="Skill levels, settings, rank and best rounds for this Tsum">Tsum page →</a>{/if}
   <button type="button" class="btn primary" title="Show every Tsum again (Esc)" onclick={clear}>✕ All Tsums</button>
 </div>

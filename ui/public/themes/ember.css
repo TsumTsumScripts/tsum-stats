@@ -94,6 +94,28 @@
   --ember-orange: #ef852e;
   --ember-purple: #b58bf9;
   --ember-yellow: #f3c443;
+  /* Buttons by role (docs/USING.md, Themes): frost-white actions, ember purple for the way
+     back, sky blue to another page, ember teal copies; tiles and icon buttons stay glass */
+  --btn-act-a: #e9edf5;
+  --btn-act-b: #c9d1e0;
+  --btn-act-ink: #151a24;
+  --btn-act-edge: #ffffff;
+  --btn-back-a: #cdb0ff;
+  --btn-back-b: #9d6ff2;
+  --btn-back-ink: #1a0b3a;
+  --btn-back-edge: #e6d9ff;
+  --btn-go-a: #9fd8f5;
+  --btn-go-b: #5fb0df;
+  --btn-go-ink: #0a2233;
+  --btn-go-edge: #dff3fd;
+  --btn-copy-a: #7ff3df;
+  --btn-copy-b: #00cdb1;
+  --btn-copy-ink: #022a24;
+  --btn-copy-edge: #ccfff6;
+  --btn-quiet-a: oklch(0.31 0.028 265 / 0.72);
+  --btn-quiet-b: oklch(0.31 0.028 265 / 0.72);
+  --btn-quiet-ink: oklch(0.95 0.008 265);
+  --btn-quiet-edge: oklch(0.66 0.04 265);
 }
 
 /* Page: the site's three glows and dot grid, in its own oklch colours */
@@ -138,9 +160,9 @@
 :root .seg button[aria-pressed="true"], :root .btn.primary {
   background: var(--ember-accent); border-color: transparent; color: var(--accent-ink); font-weight: 700; box-shadow: var(--ember-glow);
 }
-:root .btn { background: oklch(0.31 0.028 265 / 0.72); border-color: oklch(0.66 0.04 265); color: oklch(0.95 0.008 265);
+:root .btn { background: linear-gradient(180deg, var(--btn-a), var(--btn-b)); border-color: var(--btn-edge); color: var(--btn-ink);
   box-shadow: none; border-radius: 14px; padding: 7px 16px; }
-:root .btn:hover { filter: none; background: oklch(0.37 0.035 265 / 0.85); }
+:root .btn:hover { filter: brightness(1.1); }
 :root .btn.primary:hover { filter: brightness(1.08); background: var(--ember-accent); }
 :root .btn:active { transform: translateY(1px); box-shadow: none; }
 :root .theme-pick select, :root .pager select { border-width: 1px; border-radius: 10px; background: oklch(0.31 0.028 265 / 0.72); }

@@ -104,7 +104,7 @@
         <p><b>Published.</b> {fmt(st.rounds)} rounds are on your page.</p>
         <div class="addr-box">
           <div class="addr"><a href={st.url} target="_blank" rel="noopener"><code>{st.url}</code></a>
-            <button type="button" class="btn" onclick={() => copy(st.url)}>Copy link</button></div>
+            <button type="button" class="btn copy" onclick={() => copy(st.url)}>Copy link</button></div>
         </div>
         <p class="callout" role="note">If the link shows “404”, GitHub is still switching your page on. Wait a minute or two, then refresh.</p>
       {/if}
